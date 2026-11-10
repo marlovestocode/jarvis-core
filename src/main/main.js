@@ -34,6 +34,7 @@ const { createSpeechHost, windowsTts, windowsStt, windowsWake } = require('../co
 const { createVoiceController } = require('../core/voice/controller');
 const { createWhisperStt } = require('../core/voice/whisper');
 const { createPiperTts } = require('../core/voice/piper');
+const { chime } = require('../core/voice/chime');
 const os = require('node:os');
 const { registerHotkeys } = require('./hotkeys');
 const { createMic } = require('./mic');
@@ -140,6 +141,12 @@ ctx.piper = createPiperTts({
 });
 ctx.engines.stt.add(ctx.whisper);
 ctx.engines.tts.add(ctx.piper);
+// wake word heard by Whisper on the mic chosen in settings (Windows' recognizer only hears the default device)
+ctx.engines.wake.add({
+  id: 'whisper', label: 'Whisper on your mic', kind: 'listen',
+  available: () => ctx.whisper.available(),
+  status: async () => (ctx.whisper.available() ? { ready: true, detail: 'Listens on the selected mic' } : { ready: false, detail: 'Whisper is not installed' }),
+});
 const engine = kind => {
   const e = ctx.engines[kind].get(ctx.config.engines[kind]);
   if (e && (!e.available || e.available())) return e;
@@ -158,10 +165,14 @@ ctx.startVoice = () => {
   ctx.voice.listen();
 };
 ctx.bus.on('log', ev => ctx.log(ev.text));
+// "Jarvis" heard: a short chime says it is listening (the orb flares too)
+ctx.bus.on('wake', () => { ctx.log('wake word heard'); ctx.mic?.play(chime(), 22050).catch(() => {}); });
+ctx.updateMic = () => { if (!ctx.mic) return; if (ctx.voice.active || ctx.config.wakeEnabled) ctx.mic.start(); else ctx.mic.stop(); };
 // mic open only while voice is active
 ctx.bus.on('state', () => {
   if (!ctx.mic) return;
-  if (ctx.voice.active) ctx.mic.start(); else ctx.mic.stop();
+  // with the wake word on, the mic stays open (local only) so "Jarvis, <command>" keeps its first words
+  if (ctx.voice.active || ctx.config.wakeEnabled) ctx.mic.start(); else ctx.mic.stop();
 });
 ctx.onQuit = [() => ctx.speechHost.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close()];
 
@@ -179,7 +190,7 @@ app.whenReady().then(async () => {
   const ports = [0, 1, 2, 3, 4, 5].map(i => ctx.config.port + i);
   const bridgeStarting = startBridge({
     bus: ctx.bus, version, ports,
-    onOpen: mode => { if (mode === 'voice') ctx.startVoice(); else ctx.windows?.showChat(); },
+    onOpen: mode => { ctx.log(`open from wallpaper: ${mode}`); if (mode === 'voice') ctx.startVoice(); else ctx.windows?.showChat(); },
   });
   bridgeStarting.catch(() => {});
 
@@ -246,6 +257,7 @@ app.whenReady().then(async () => {
     } },
     { stage: 'voice', run: async () => {
       ctx.voice.applyWake();
+      ctx.updateMic();
       const stt = engine('stt'), tts = engine('tts');
       ctx.log(`voice engines: configured ${ctx.config.engines.stt}/${ctx.config.engines.tts}, using ${stt.id}/${tts.id} (engines in ${ENGINES})`);
       tts.warm?.(ctx.config.voiceRate);

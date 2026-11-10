@@ -1,7 +1,7 @@
 // Local event bridge for the wallpaper (spec §5). Binds 127.0.0.1 only.
 //   GET  /ai/hello            { app: 'jarvis-core', version }  (port discovery)
 //   GET  /ai/stream           SSE: "event: <type>\ndata: <json>"; current state + provider on connect
-//   POST /ai/open[?mode=voice] 204; needs an Origin header (pages only)
+//   POST /ai/open[?mode=voice] 204; foreign Origins refused (the wallpaper sends none)
 // Host/Origin rules copied from sysmon-widget/src/main/bridge.js (okHost, okOrigin).
 const http = require('node:http');
 
@@ -56,7 +56,8 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
     const [url, query = ''] = req.url.split('?');
 
     if (req.method === 'POST' && url === '/ai/open') {
-      if (!origin) { res.writeHead(403); return res.end(); }
+      // No Origin is allowed: Chromium sends none for a POST from a file:// page (the wallpaper).
+      // Web pages always send one on cross-site POSTs, and foreign origins are refused above.
       const mode = new URLSearchParams(query).get('mode') === 'voice' ? 'voice' : 'chat';
       res.writeHead(204, cors); res.end();
       try { onOpen(mode); } catch { /* the app logs its own errors */ }

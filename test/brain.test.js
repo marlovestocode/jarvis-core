@@ -62,3 +62,11 @@ test('prompt: brief mode for quick chat is much shorter', () => {
   assert.ok(brief.length < full.length * 0.6, `${brief.length} vs ${full.length}`);
   assert.match(brief, /J\.A\.R\.V\.I\.S/);
 });
+
+test('router: time and date questions use tools (fresh answer, not copied from history)', () => {
+  for (const t of ['what time is it?', 'What day is it today', "what's the date", 'time?']) {
+    const r = route(t, { source: 'voice' });
+    assert.equal(r.tier, 'deep', t);
+    assert.notEqual(r.tools, false, t);
+  }
+});

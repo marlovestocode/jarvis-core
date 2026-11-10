@@ -5,6 +5,9 @@ const { speakable, createSentenceSplitter } = require('./speech-text');
 
 const SPEAKING_GAIN = 3; // speaker echo must not cut TTS off (Review Focus 1)
 const MAX_BUFFER_MS = 31000;
+const RING_MS = 2500;          // while the wake word is on: the last 2.5 s of mic audio
+const IDLE_MAX_MS = 8000;      // Whisper wake: longest idle utterance checked for "Jarvis"
+const WAKE_PREFIX = /^\s*(?:(?:hey|ok|okay|hi|yo)[\s,]+)?jarvis\b[\s,.!?:;-]*/i;
 
 function createVoiceController({ bus, orchestrator, engines, getConfig, getSessionId, setSessionId = () => {}, vadOptions }) {
   const vad = createVad(vadOptions);
@@ -17,6 +20,9 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
   let turn = 0;                // bumps on cancel/listen so stale async steps stop
   const logged = new Set();
   let wakeOn = null;
+  let ring = [], ringMs = 0;
+  const idleVad = createVad({ silenceMs: 500, maxMs: IDLE_MAX_MS });
+  let idleChunks = [], idleMs = 0, idleBusy = false;
 
   function setState(state, detail) { bus.emit('state', detail ? { state, detail } : { state }); }
   function logOnce(kind, err) {
@@ -46,6 +52,12 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
   }
 
   function feed(pcm, sampleRate) {
+    if (mode === 'idle' && wakeOn?.kind === 'listen') { idleFeed(pcm, sampleRate); return; }
+    if (mode === 'idle' && wakeOn) {      // keep a short history so "Jarvis, <command>" in one breath is not lost
+      ring.push(pcm); ringMs += pcm.length / sampleRate * 1000;
+      while (ringMs > RING_MS && ring.length > 1) { const c = ring.shift(); ringMs -= c.length / sampleRate * 1000; }
+      return;
+    }
     if (mode !== 'listening' && mode !== 'speaking') return;
     const r = vad.push(pcm, sampleRate);
     bus.emit('level', { source: 'mic', rms: vad.rms });
@@ -87,6 +99,37 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       return;
     }
     if (my !== turn) return;
+    await runText(text, my);
+  }
+
+  // Wake word heard by Whisper on the user's own mic: while idle, each short utterance is
+  // transcribed; one that starts with "Jarvis" wakes, and the rest of it is the command.
+  function idleFeed(pcm, sampleRate) {
+    const r = idleVad.push(pcm, sampleRate);
+    idleChunks.push(pcm); idleMs += pcm.length / sampleRate * 1000;
+    while (idleMs > IDLE_MAX_MS + RING_MS && idleChunks.length > 1) { const c = idleChunks.shift(); idleMs -= c.length / sampleRate * 1000; }
+    if (r !== 'end' && r !== 'max') return;
+    const heard = idleVad.heard;
+    const audio = concat(idleChunks);
+    idleChunks = []; idleMs = 0; idleVad.reset();
+    if (!heard || idleBusy) return;
+    idleBusy = true;
+    pick('stt').transcribe(audio, sampleRate).then(async t => {
+      idleBusy = false;
+      const said = String(t || '').trim();
+      if (mode !== 'idle' || !WAKE_PREFIX.test(said)) return;   // not for JARVIS: forget it
+      bus.emit('wake', { text: said });
+      const my = ++turn;
+      mode = 'working';
+      rate = sampleRate;
+      await runText(said, my);
+    }, () => { idleBusy = false; });
+  }
+
+  async function runText(text, my) {
+    const said = text;
+    text = text.replace(WAKE_PREFIX, '').trim();
+    if (!text && WAKE_PREFIX.test(said)) { listen(); return; }   // just "Jarvis": wait for the command
     if (!text) { mode = 'idle'; setState('idle'); return; }
 
     // Streaming speech: engines with createStream speak each sentence as soon as the model
@@ -188,14 +231,20 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
   function applyWake() {
     const want = !!getConfig().wakeEnabled;
     const engine = pick('wake');
-    if (wakeOn && (!want || wakeOn !== engine)) { try { wakeOn.stop(); } catch { /* ignore */ } wakeOn = null; }
+    if (wakeOn && (!want || wakeOn !== engine)) { try { wakeOn.stop?.(); } catch { /* ignore */ } wakeOn = null; }
+    if (want && engine?.kind === 'listen' && !wakeOn) {   // Whisper wake: our own mic, handled in idleFeed
+      wakeOn = engine; idleVad.reset(); idleChunks = []; idleMs = 0;
+      return;
+    }
     if (want && engine && !wakeOn) {
       try {
         engine.start(() => {
           // while speaking, our own TTS can say "Jarvis": barge-in is the VAD's job (×3 gain)
           if (mode !== 'idle') return;
           bus.emit('wake', {});
+          const pre = ring; ring = []; ringMs = 0;
           listen();
+          for (const c of pre) feed(c, 16000);   // start the capture from just before the wake word
         });
         wakeOn = engine;
       } catch (err) { logOnce('Wake word', err); }

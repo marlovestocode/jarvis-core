@@ -52,16 +52,52 @@ function Do-Transcribe($wav) {
   } finally { $eng.Dispose() }
 }
 
+# Wake grammar: "Jarvis" with common lead-ins, plus a dictation garbage model so other speech
+# matches *that* instead of being forced into "Jarvis" (a one-word grammar fires on anything).
+function New-WakeEngine($word) {
+  $eng = New-Object System.Speech.Recognition.SpeechRecognitionEngine (Get-Recognizer)
+  $culture = $eng.RecognizerInfo.Culture
+  $wake = New-Object System.Speech.Recognition.GrammarBuilder
+  $wake.Culture = $culture
+  $lead = New-Object System.Speech.Recognition.Choices
+  foreach ($w in 'hey', 'okay', 'ok', 'hi', 'yo') { $lead.Add($w) }
+  $wake.Append((New-Object System.Speech.Recognition.GrammarBuilder $lead), 0, 1)
+  $wake.Append([string]$word)
+  $wake.AppendWildcard()                                    # "Jarvis, what time is it" still wakes
+  $g = New-Object System.Speech.Recognition.Grammar $wake
+  $g.Name = 'wake'
+  $eng.LoadGrammar($g)
+  $other = New-Object System.Speech.Recognition.DictationGrammar 'grammar:dictation#pronunciation'
+  $other.Name = 'other'
+  $other.Weight = 0.3
+  $eng.LoadGrammar($other)
+  return $eng
+}
+
+# Wake if the wake grammar matched, or if the phonetic garbage model heard an utterance that
+# STARTS with "Jarvis" (a run-on "Jarvis, what time is it" in one breath).
+$WakePhones = '^(?:(?:hh ey|ow k ey|ow k|hh ay|y ow) )?jh aa r v (?:ih|ax|iy|ix) s?(?: |$)'
+function Test-Wake($r) {
+  if ($r.Grammar.Name -eq 'wake') { return $r.Confidence -ge $script:wakeConf }
+  return $r.Grammar.Name -eq 'other' -and $r.Text -match $WakePhones
+}
+
+function Do-WakeTest($wav, $word) {
+  $eng = New-WakeEngine $word
+  try {
+    $eng.SetInputToWaveFile($wav)
+    $r = $null
+    try { $r = $eng.Recognize() } catch { }
+    if (-not $r) { return @{ grammar = ''; text = ''; confidence = 0 } }
+    $script:wakeConf = 0.7
+    return @{ grammar = $r.Grammar.Name; text = $r.Text; confidence = [Math]::Round($r.Confidence, 2); wakes = [bool](Test-Wake $r) }
+  } finally { $eng.Dispose() }
+}
+
 function Do-WakeStart($word, $conf) {
   if ($wake) { return $true }
   $script:wakeConf = $conf
-  $eng = New-Object System.Speech.Recognition.SpeechRecognitionEngine (Get-Recognizer)
-  $choices = New-Object System.Speech.Recognition.Choices
-  $choices.Add([string]$word)
-  $gb = New-Object System.Speech.Recognition.GrammarBuilder
-  $gb.Culture = $eng.RecognizerInfo.Culture
-  $gb.Append($choices)
-  $eng.LoadGrammar((New-Object System.Speech.Recognition.Grammar $gb))
+  $eng = New-WakeEngine $word
   $eng.SetInputToDefaultAudioDevice()
   $null = Register-ObjectEvent -InputObject $eng -EventName SpeechRecognized -SourceIdentifier 'jv.wake'
   $eng.RecognizeAsync([System.Speech.Recognition.RecognizeMode]::Multiple)
@@ -96,6 +132,7 @@ function Handle($line) {
       'transcribe' { Send @{ id = $id; ok = $true; result = (Do-Transcribe ([string]$m.wav)) } }
       'wake-start' { Send @{ id = $id; ok = $true; result = (Do-WakeStart ([string]$m.word) ([double]$m.confidence)) } }
       'wake-stop' { Send @{ id = $id; ok = $true; result = (Do-WakeStop) } }
+      'wake-test' { Send @{ id = $id; ok = $true; result = (Do-WakeTest ([string]$m.wav) ([string]$m.word)) } }
       'synth' {
         $s2 = New-Object System.Speech.Synthesis.SpeechSynthesizer
         try {
@@ -128,7 +165,7 @@ function Pump-Events {
       }
       'jv.wake' {
         $r = $e.SourceEventArgs.Result
-        if ($r -and $r.Confidence -ge $script:wakeConf) { Send @{ ev = 'wake'; confidence = [Math]::Round($r.Confidence, 2) } }
+        if ($r -and (Test-Wake $r)) { Send @{ ev = 'wake'; confidence = [Math]::Round($r.Confidence, 2); text = $r.Text } }
       }
     }
     Remove-Event -EventIdentifier $e.EventIdentifier -ErrorAction SilentlyContinue

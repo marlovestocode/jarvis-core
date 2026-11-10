@@ -73,6 +73,7 @@ function registerIpc(ctx) {
     ctx.applyLogin?.();
     if (modelChanged) ctx.providers.get(ctx.config.provider)?.warm?.().catch?.(() => {}); // load the new model now, not on the first question
     ctx.voice?.applyWake();
+    ctx.updateMic?.();
     orchestrator.announce();
     return { ...(await describeNow()), errors };
   });

@@ -1,6 +1,6 @@
 // Chat overlay (frameless glass panel, bottom-center) and settings window.
 const path = require('node:path');
-const { BrowserWindow, screen } = require('electron');
+const { app, BrowserWindow, screen } = require('electron');
 
 const UI = path.join(__dirname, '..', 'ui');
 const PRELOAD = path.join(__dirname, 'preload.js');
@@ -12,6 +12,7 @@ const webPrefs = { preload: PRELOAD, contextIsolation: true, nodeIntegration: fa
 function createWindows({ hideOnBlur = true } = {}) {
   let chat = null;
   let settings = null;
+  let shownAt = 0;
 
   function placeChat() {
     const { workArea } = screen.getPrimaryDisplay();
@@ -29,14 +30,23 @@ function createWindows({ hideOnBlur = true } = {}) {
     });
     chat.setMenu(null);
     chat.loadFile(path.join(UI, 'chat.html'));
-    chat.on('blur', () => { if (hideOnBlur && !chat.webContents.isDevToolsOpened()) chat.hide(); });
+    // Opened from the wallpaper or a hotkey, Windows may hand focus back for a moment: ignore
+    // blur right after showing, or the chat would vanish the instant it appears.
+    chat.on('blur', () => {
+      if (Date.now() - shownAt < 1200) return;
+      if (hideOnBlur && !chat.webContents.isDevToolsOpened()) chat.hide();
+    });
     return chat;
   }
 
   function showChat() {
     ensureChat();
     placeChat();
+    shownAt = Date.now();
     chat.show();
+    // a background app may not take focus on Windows; ask for it so typing works at once
+    try { app.focus({ steal: true }); } catch { /* older Electron */ }
+    chat.moveTop();
     chat.focus();
     chat.webContents.send('ai:shown');
   }

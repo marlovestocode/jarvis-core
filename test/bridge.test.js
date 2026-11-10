@@ -108,15 +108,15 @@ test('foreign Origin → 403', async () => {
   await br.close();
 });
 
-test('POST open without Origin → 403, with localhost Origin → onOpen(voice)', async () => {
+test('POST open: the wallpaper (file:// page, no Origin header) and local pages may open; foreign sites may not', async () => {
   const { br, opened } = await boot();
-  assert.equal((await req(br.port, { method: 'POST', path: '/ai/open?mode=voice' })).status, 403);
-  assert.deepEqual(opened, []);
-  const r = await req(br.port, { method: 'POST', path: '/ai/open?mode=voice', headers: { Origin: 'http://127.0.0.1:5177' } });
-  assert.equal(r.status, 204);
-  const r2 = await req(br.port, { method: 'POST', path: '/ai/open', headers: { Origin: 'null' } });
-  assert.equal(r2.status, 204);
-  assert.deepEqual(opened, ['voice', 'chat']);
+  // Chromium sends no Origin on a POST from a file:// page: that is the wallpaper's TALK button
+  assert.equal((await req(br.port, { method: 'POST', path: '/ai/open?mode=voice' })).status, 204);
+  assert.equal((await req(br.port, { method: 'POST', path: '/ai/open', headers: { Origin: 'http://127.0.0.1:5177' } })).status, 204);
+  assert.equal((await req(br.port, { method: 'POST', path: '/ai/open', headers: { Origin: 'null' } })).status, 204);
+  assert.equal((await req(br.port, { method: 'POST', path: '/ai/open?mode=voice', headers: { Origin: 'https://evil.example' } })).status, 403);
+  assert.equal((await req(br.port, { method: 'POST', path: '/ai/open', headers: { Host: 'evil.example' } })).status, 403);
+  assert.deepEqual(opened, ['voice', 'chat', 'chat']);
   await br.close();
 });
 

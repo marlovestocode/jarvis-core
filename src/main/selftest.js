@@ -145,6 +145,34 @@ async function run(ctx, outDir) {
       const h = ctx.engines.tts.get('windows').speak('Rate check.', { rate: ctx.config.voiceRate });
       await Promise.race([h.done, wait(10000)]);
       step('speak rate', { sapiRate: seen });
+    } else if (mode === 'wake') {
+      // idle mic hears "Jarvis, what time is it?" and then unrelated speech; mic is fed by hand
+      const os = require('node:os');
+      ctx.mic.start = () => {}; ctx.mic.stop = () => {};
+      ctx.config = { ...ctx.config, wakeEnabled: true, engines: { ...ctx.config.engines, wake: 'whisper' } };
+      ctx.voice.applyWake();
+      const said = async text => {
+        const wav = path.join(os.tmpdir(), 'jarvis-selftest-wake.wav');
+        await ctx.speechHost.request('synth', { wav, text });
+        const b = fs.readFileSync(wav); fs.rmSync(wav, { force: true });
+        const speech = new Int16Array(b.buffer.slice(b.byteOffset + 44, b.byteOffset + b.length - ((b.length - 44) % 2)));
+        const quiet = ms => { const a = new Int16Array(16 * ms); for (let i = 0; i < a.length; i++) a[i] = (Math.random() - .5) * 200; return a; };
+        const all = new Int16Array([...quiet(400), ...speech, ...quiet(800)]);
+        for (let o = 0; o + 320 <= all.length; o += 320) { ctx.voice.feed(all.subarray(o, o + 320), 16000); if (o % 3200 === 0) await wait(1); }
+      };
+      const ev = [];
+      ctx.bus.on('*', e => { if (['wake', 'state'].includes(e.type)) ev.push(e.type === 'wake' ? `wake:${e.text}` : `state:${e.state}`); });
+      await said('I was talking about the weather with a friend.');
+      await wait(1500);
+      step('unrelated speech', { events: ev.slice(), mode: ctx.voice.mode });
+      ev.length = 0;
+      const t0 = Date.now();
+      await said('Jarvis, what time is it?');
+      while (!ctx.voice.speaking && Date.now() - t0 < 20000) await wait(20);
+      const firstSpeech = Date.now() - t0;
+      while (ctx.voice.active && Date.now() - t0 < 30000) await wait(50);
+      const s = ctx.sessions.load(ctx.sessionId);
+      step('wake + command', { events: ev, msToFirstSpeech: firstSpeech, asked: s?.messages.filter(m => m.role === 'user').at(-1)?.content, reply: s?.messages.at(-1)?.content });
     } else if (mode === 'mic-bad') {
       ctx.config = { ...ctx.config, micDeviceId: 'no-such-device' };
       ctx.windows.showChat();

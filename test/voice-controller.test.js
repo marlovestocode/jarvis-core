@@ -289,3 +289,98 @@ test('streaming: talking over JARVIS stops the speech and the model', async () =
   assert.ok(orc.stops >= 1, 'model stopped too');
   assert.equal(vc.mode, 'listening');
 });
+
+// ---- wake word with pre-roll: "Jarvis, what time is it" in one breath ----
+function wakeSetup(sttText) {
+  const bus = createBus(); const events = []; bus.on('*', e => events.push(e));
+  let onWake = null;
+  const wake = { id: 'w', label: 'W', async status() { return { ready: true }; }, start(fn) { onWake = fn; }, stop() {} };
+  const stt = fakeStt(sttText);
+  const orchestrator = fakeOrchestrator('It is noon.', bus);
+  const vc = createVoiceController({ bus, orchestrator, engines: { stt, tts: fakeTts(), wake }, getConfig: () => ({ ...DEFAULTS, wakeEnabled: true }), getSessionId: () => 's' });
+  vc.applyWake();
+  return { bus, events, stt, orchestrator, vc, wake: () => onWake() };
+}
+
+test('wake: audio from just before the wake is kept, so a run-on command is transcribed whole', async () => {
+  const w = wakeSetup('Jarvis, what time is it?');
+  // idle: mic frames go to the ring buffer only (no levels, no VAD)
+  feedAll(w.vc, [...noise(300), ...tone(1500)]);
+  assert.equal(w.events.filter(e => e.type === 'level').length, 0);
+  w.wake();
+  feedAll(w.vc, noise(900));
+  await tick(20);
+  assert.ok(w.stt.calls[0].samples >= 16000 * 1.5, `pre-roll included: ${w.stt.calls[0].samples} samples`);
+  assert.deepEqual(w.orchestrator.sends.map(s => s.text), ['what time is it?'], 'wake word stripped');
+});
+
+test('wake: only "Jarvis" said → keep listening for the command', async () => {
+  const w = wakeSetup('Jarvis.');
+  feedAll(w.vc, [...noise(300), ...tone(500)]);
+  w.wake();
+  feedAll(w.vc, noise(900));
+  await tick(20);
+  assert.equal(w.orchestrator.sends.length, 0);
+  assert.equal(w.vc.mode, 'listening');
+  assert.equal(states(w.events).at(-1), 'listening');
+});
+
+test('wake: ring buffer holds at most ~2.5 s', async () => {
+  const w = wakeSetup('Jarvis, hi');
+  feedAll(w.vc, [...noise(300), ...tone(6000)]);
+  w.wake();
+  feedAll(w.vc, noise(900));
+  await tick(20);
+  assert.ok(w.stt.calls[0].samples <= 16000 * (2.6 + 1.0), `${w.stt.calls[0].samples}`);
+});
+
+// ---- wake word heard by Whisper on the user's own mic (engine kind 'listen') ----
+function listenWakeSetup(sttTexts) {
+  const bus = createBus(); const events = []; bus.on('*', e => events.push(e));
+  const queue = [...sttTexts];
+  const stt = { id: 'w', label: 'W', calls: [], async status() { return { ready: true }; }, async transcribe(pcm) { this.calls.push(pcm.length); return queue.shift() ?? ''; } };
+  const orchestrator = fakeOrchestrator('It is noon.', bus);
+  const wake = { id: 'whisper', label: 'Whisper (your mic)', kind: 'listen', async status() { return { ready: true }; } };
+  const vc = createVoiceController({ bus, orchestrator, engines: { stt, tts: fakeTts(), wake }, getConfig: () => ({ ...DEFAULTS, wakeEnabled: true }), getSessionId: () => 's' });
+  vc.applyWake();
+  return { bus, events, stt, orchestrator, vc };
+}
+
+test('listen-wake: "Jarvis, what time is it" while idle wakes and runs the command from the same audio', async () => {
+  const w = listenWakeSetup(['Jarvis, what time is it?']);
+  feedAll(w.vc, [...noise(300), ...tone(1200), ...noise(700)]);
+  await tick(30);
+  assert.ok(w.events.some(e => e.type === 'wake'));
+  assert.deepEqual(w.orchestrator.sends.map(s => s.text), ['what time is it?']);
+  assert.equal(w.stt.calls.length, 1, 'one transcription: wake + command together');
+});
+
+test('listen-wake: other speech while idle does nothing (no wake, no state change)', async () => {
+  const w = listenWakeSetup(['so I told him about the game']);
+  feedAll(w.vc, [...noise(300), ...tone(1200), ...noise(700)]);
+  await tick(30);
+  assert.equal(w.events.filter(e => e.type === 'wake' || e.type === 'state').length, 0);
+  assert.equal(w.orchestrator.sends.length, 0);
+  assert.equal(w.vc.mode, 'idle');
+});
+
+test('listen-wake: just "Jarvis" → chime-worthy wake, then listens for the command', async () => {
+  const w = listenWakeSetup(['Jarvis.', 'open the chat']);
+  feedAll(w.vc, [...noise(300), ...tone(600), ...noise(700)]);
+  await tick(30);
+  assert.ok(w.events.some(e => e.type === 'wake'));
+  assert.equal(w.vc.mode, 'listening');
+  feedAll(w.vc, [...noise(300), ...tone(800), ...noise(900)]);
+  await tick(30);
+  assert.deepEqual(w.orchestrator.sends.map(s => s.text), ['open the chat']);
+});
+
+test('listen-wake: idle detection is off when the wake word is disabled', async () => {
+  const w = listenWakeSetup(['Jarvis, hi']);
+  w.vc.applyWake.call(null);
+  const vc2 = createVoiceController({ bus: w.bus, orchestrator: w.orchestrator, engines: { stt: w.stt, tts: fakeTts(), wake: { id: 'whisper', kind: 'listen' } }, getConfig: () => ({ ...DEFAULTS, wakeEnabled: false }), getSessionId: () => 's' });
+  vc2.applyWake();
+  feedAll(vc2, [...noise(300), ...tone(1200), ...noise(700)]);
+  await tick(30);
+  assert.equal(w.stt.calls.length, 0);
+});

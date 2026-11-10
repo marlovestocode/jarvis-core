@@ -13,7 +13,7 @@ const DEFAULTS = Object.freeze({
     keepAlive: '30m',                   // keep models in VRAM between questions
   }),
   startAtLogin: true,
-  engines: Object.freeze({ stt: 'whisper', tts: 'piper', wake: 'windows' }), // Windows speech is the fallback
+  engines: Object.freeze({ stt: 'whisper', tts: 'piper', wake: 'whisper' }), // Windows speech is the fallback
   wakeEnabled: false,
   micDeviceId: null,
   voiceRate: 1.0,
