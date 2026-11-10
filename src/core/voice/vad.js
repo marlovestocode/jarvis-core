@@ -4,6 +4,7 @@
 // of quiet, 'max' when the capture reaches maxMs; otherwise 'none'.
 const CALIBRATE_MS = 300;
 const START_MS = 60;
+const SURE_SPEECH = 0.08; // RMS no quiet room reaches: speech even before the floor is known
 
 function rmsOf(pcm) {
   if (!pcm || !pcm.length) return 0;
@@ -33,11 +34,15 @@ function createVad({ silenceMs = 800, maxMs = 30000, minLevel = 0.02 } = {}) {
     elapsed += ms;
 
     if (calibMs < CALIBRATE_MS) {
-      // learn the room from the first 300 ms; no speech detection until then
-      calibSum += r; calibN++; floor = calibSum / calibN;
+      // learn the room from the first 300 ms. Frames clearly louder than any room noise
+      // (user already talking) are not learned and count as speech right away.
       calibMs += ms;
-      if (elapsed >= maxMs) { done = true; return 'max'; }
-      return 'none';
+      if (r <= SURE_SPEECH * gain) {
+        calibSum += r; calibN++; floor = calibSum / calibN;
+        voicedMs = 0;
+        if (elapsed >= maxMs) { done = true; return 'max'; }
+        return 'none';
+      }
     }
 
     const loud = r > threshold();

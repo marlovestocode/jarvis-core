@@ -160,6 +160,37 @@ test('cancel() while speaking stops tts and goes idle; while listening goes idle
   assert.equal(vc.active, false);
 });
 
+test('wake heard while speaking (TTS saying "Jarvis") does not cut the reply', async () => {
+  const bus = createBus();
+  const events = [];
+  bus.on('*', e => events.push(e));
+  let onWake = null;
+  const wake = { id: 'w', label: 'W', async status() { return { ready: true }; }, start(fn) { onWake = fn; }, stop() {} };
+  const tts = fakeTts();
+  const vc = createVoiceController({ bus, orchestrator: fakeOrchestrator('I am Jarvis.', bus), engines: { stt: fakeStt(), tts, wake }, getConfig: () => ({ ...DEFAULTS, wakeEnabled: true }), getSessionId: () => 's' });
+  vc.applyWake();
+  vc.listen();
+  feedAll(vc, [...noise(300), ...tone(600), ...noise(900)]);
+  await tick(20);
+  assert.equal(vc.speaking, true);
+  onWake();
+  await tick(5);
+  assert.equal(vc.speaking, true);
+  assert.equal(tts.aborted, 0);
+});
+
+test('spoken command while a text turn is busy is not dropped silently', async () => {
+  const { events, orchestrator, vc } = setup();
+  orchestrator.send = async () => { throw new Error('BUSY'); };
+  vc.listen();
+  feedAll(vc, [...noise(300), ...tone(600), ...noise(900)]);
+  await tick(20);
+  const last = events.filter(e => e.type === 'state').at(-1);
+  assert.equal(last.state, 'idle');
+  assert.match(last.detail || '', /busy/i);
+  assert.ok(events.some(e => e.type === 'log' && /what time is it/.test(e.text)));
+});
+
 test('feed while idle is ignored (no levels)', () => {
   const { events, vc } = setup();
   feedAll(vc, tone(200));

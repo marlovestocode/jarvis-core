@@ -91,7 +91,15 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     try {
       res = await orchestrator.send(getSessionId(), text, { source: 'voice' });
     } catch (err) {
-      if (my === turn) { mode = 'idle'; setState('idle'); }
+      if (my !== turn) return;
+      mode = 'idle';
+      if (err?.message === 'BUSY') {
+        bus.emit('log', { level: 'warn', text: `Heard "${text}" while a reply was still running; say it again when it finishes.` });
+        setState('idle', 'Busy: say it again when the reply finishes');
+      } else {
+        bus.emit('log', { level: 'warn', text: `Voice turn failed: ${err?.message || err}` });
+        setState('idle');
+      }
       return;
     }
     if (res?.sessionId) setSessionId(res.sessionId);
@@ -144,7 +152,8 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     if (want && engine && !wakeOn) {
       try {
         engine.start(() => {
-          if (mode === 'listening' || mode === 'working') return;
+          // while speaking, our own TTS can say "Jarvis": barge-in is the VAD's job (×3 gain)
+          if (mode !== 'idle') return;
           bus.emit('wake', {});
           listen();
         });

@@ -144,6 +144,43 @@ test('stt: writes a 16-bit mono WAV and returns the text', async () => {
   host.close();
 });
 
+test('host crash: exit is logged, host comes back, wake is re-armed', async () => {
+  const spawn = fakeSpawn();
+  const logs = [];
+  const host = createSpeechHost({ spawn, log: (...a) => logs.push(a.join(' ')) });
+  const wake = windowsWake(host);
+  let woke = 0;
+  wake.start(() => { woke++; });
+  await tick();
+  spawn.kids[0].reply({ id: 1, ok: true, result: true });
+  spawn.kids[0].emit('exit', 3);
+  await tick(20);
+  assert.ok(logs.some(l => /exited/.test(l) && /3/.test(l)), logs.join('\n'));
+  assert.equal(spawn.kids.length, 2, 'restarted without waiting for a request');
+  assert.equal(spawn.kids[1].sent.at(-1).cmd, 'wake-start', 'wake re-armed on the new host');
+  spawn.kids[1].reply({ ev: 'wake' });
+  await tick();
+  assert.equal(woke, 1);
+  host.close();
+});
+
+test('tts levels only react to word events of its own prompt', async () => {
+  const spawn = fakeSpawn();
+  const host = createSpeechHost({ spawn });
+  const tts = windowsTts(host);
+  const h = tts.speak('hi', { rate: 1 });
+  await tick();
+  const kid = spawn.kids[0];
+  const it = h.levels[Symbol.asyncIterator]();
+  kid.reply({ ev: 'word', id: 999 });
+  assert.equal((await it.next()).value, 0, 'foreign word ignored');
+  kid.reply({ ev: 'word', id: kid.sent[0].id });
+  assert.ok((await it.next()).value >= 0.6);
+  kid.reply({ id: kid.sent[0].id, ok: true, result: {} });
+  await h.done;
+  host.close();
+});
+
 test('rateToSapi maps 0.5..2.0 to -10..10', () => {
   assert.equal(rateToSapi(1), 0);
   assert.equal(rateToSapi(2), 10);

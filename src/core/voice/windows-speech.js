@@ -38,15 +38,24 @@ function createSpeechHost({ spawn = childProcess.spawn, script = SCRIPT, log = (
       }
     });
     kid.stderr?.on('data', d => log('speech host:', String(d).trim()));
-    kid.on('error', err => { log('speech host error:', err.message); onExit(kid); });
-    kid.on('exit', () => onExit(kid));
+    kid.on('error', err => { log('speech host error:', err.message); onExit(kid, err.code); });
+    kid.on('exit', code => onExit(kid, code));
     kid.stdin.on?.('error', () => {});
   }
 
-  function onExit(kid) {
+  function emitLocal(ev, msg = {}) {
+    for (const fn of [...(handlers.get(ev) || [])]) { try { fn({ ev, ...msg }); } catch { /* listener bug */ } }
+  }
+
+  // A crash restarts the host once, right away, and tells engines to re-arm (wake word).
+  function onExit(kid, code) {
     if (proc !== kid) return;
     proc = null;
     failAll(new Error('speech host exited'));
+    if (closed) return;
+    log(`speech host exited (code ${code ?? 'none'})`);
+    if (starts >= 2) { log('speech host gave up after a restart; voice uses text only until the app restarts'); return; }
+    try { start(); emitLocal('restart'); } catch (err) { log('speech host restart failed:', err.message); }
   }
 
   function onLine(line) {
@@ -70,10 +79,12 @@ function createSpeechHost({ spawn = childProcess.spawn, script = SCRIPT, log = (
       try { start(); } catch (err) { return Promise.reject(err); }
     }
     const id = nextId++;
-    return new Promise((resolve, reject) => {
+    const p = new Promise((resolve, reject) => {
       pending.set(id, { resolve, reject });
       try { proc.stdin.write(JSON.stringify({ id, cmd, ...args }) + '\n'); } catch (err) { pending.delete(id); reject(err); }
     });
+    p.id = id; // events about this request (word, speak-end) carry the same id
+    return p;
   }
 
   function on(ev, fn) {
@@ -127,8 +138,7 @@ function windowsTts(host) {
       let finished = false;
       const p = host.request('speak', { text: String(text), rate: rateToSapi(rate) });
       p.then(() => {}, () => {}).finally(() => { finished = true; });
-      // the request id is the one just issued; word events carry it
-      const off = host.on('word', () => { level = 0.7; });
+      const off = host.on('word', m => { if (m.id === p.id) level = 0.7; });
       if (signal) {
         if (signal.aborted) host.request('stop-speak').catch(() => {});
         else signal.addEventListener('abort', () => { host.request('stop-speak').catch(() => {}); }, { once: true });
@@ -137,8 +147,9 @@ function windowsTts(host) {
       async function* levels() {
         while (!finished) {
           await new Promise(r => setTimeout(r, 33));
-          yield level;
-          level *= 0.8;
+          const v = level;
+          level *= 0.8;   // decay now, so a word that lands while we wait is shown at full height
+          yield v;
         }
       }
       return { levels: levels(), done };
@@ -164,15 +175,20 @@ function windowsStt(host) {
 
 function windowsWake(host) {
   let off = null;
+  let armed = false;
+  const arm = () => host.request('wake-start', { word: 'Jarvis', confidence: 0.7 }).catch(() => {});
+  host.on('restart', () => { if (armed) arm(); }); // a crashed host forgot the wake word
   return {
     id: 'windows', label: 'Windows speech ("Jarvis")',
     status: statusOf(host, 'wake'),
     start(onWake) {
       if (off) off();
       off = host.on('wake', () => onWake());
-      host.request('wake-start', { word: 'Jarvis', confidence: 0.7 }).catch(() => { if (off) { off(); off = null; } });
+      armed = true;
+      arm();
     },
     stop() {
+      armed = false;
       if (off) { off(); off = null; }
       host.request('wake-stop').catch(() => {});
     },

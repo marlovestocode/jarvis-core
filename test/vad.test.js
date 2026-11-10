@@ -43,6 +43,13 @@ test('vad: gain raises the threshold; reset clears state', () => {
   assert.equal(run(vad, [...noise(300), ...tone(600, 0.05)])[0][0], 'start');
 });
 
+test('vad: speech already going during calibration still starts (and is not learned as noise)', () => {
+  const vad = createVad();
+  const ev = run(vad, [...tone(300), ...tone(1000), ...noise(900)]);
+  assert.deepEqual(ev.map(e => e[0]), ['start', 'end']);
+  assert.ok(ev[0][1] <= 120, `start at ${ev[0][1]}`);
+});
+
 test('vad: noise floor ×3 sets threshold when room is loud', () => {
   const vad = createVad();
   // floor ≈ 0.03 → threshold ≈ 0.09; tone rms ≈ 0.057 must not trigger

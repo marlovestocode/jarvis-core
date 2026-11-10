@@ -154,7 +154,7 @@
     state = ev.state;
     stateEl.textContent = STATE_LABEL[state] || state.toUpperCase();
     stateEl.className = 'state ' + state;
-    if (ev.detail && state === 'error') stateEl.textContent += ' · ' + ev.detail;
+    if (ev.detail && (state === 'error' || state === 'idle')) stateEl.textContent += ' · ' + ev.detail;
     micBtn.classList.toggle('on', state === 'listening');
     if (typeof ev.detail === 'string' && ev.detail.startsWith('Mic unavailable')) {
       micReason = ev.detail;

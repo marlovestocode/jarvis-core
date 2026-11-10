@@ -13,7 +13,7 @@ function Send($obj) { $out.WriteLine(($obj | ConvertTo-Json -Compress -Depth 6))
 
 $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
 $synth.SetOutputToDefaultAudioDevice()
-$speakId = $null
+$prompts = @{}   # Prompt → request id, so every speak gets its own reply
 $null = Register-ObjectEvent -InputObject $synth -EventName SpeakProgress -SourceIdentifier 'jv.word'
 $null = Register-ObjectEvent -InputObject $synth -EventName SpeakCompleted -SourceIdentifier 'jv.done'
 
@@ -87,10 +87,10 @@ function Handle($line) {
       'ping' { Send @{ id = $id; ok = $true; result = 'pong' } }
       'status' { Send @{ id = $id; ok = $true; result = (Do-Status) } }
       'speak' {
-        if ($script:speakId) { $synth.SpeakAsyncCancelAll() }
+        if ($prompts.Count) { $synth.SpeakAsyncCancelAll() }   # older prompts complete as cancelled, each with its own id
         $synth.Rate = [Math]::Max(-10, [Math]::Min(10, [int]$m.rate))
-        $script:speakId = $id
-        $null = $synth.SpeakAsync([string]$m.text)   # reply comes on SpeakCompleted
+        $p = $synth.SpeakAsync([string]$m.text)               # reply comes on SpeakCompleted for this prompt
+        $prompts[$p] = $id
       }
       'stop-speak' { $synth.SpeakAsyncCancelAll(); Send @{ id = $id; ok = $true; result = $true } }
       'transcribe' { Send @{ id = $id; ok = $true; result = (Do-Transcribe ([string]$m.wav)) } }
@@ -114,10 +114,14 @@ function Handle($line) {
 function Pump-Events {
   foreach ($e in @(Get-Event -ErrorAction SilentlyContinue)) {
     switch ($e.SourceIdentifier) {
-      'jv.word' { if ($script:speakId) { Send @{ ev = 'word'; id = $script:speakId } } }
+      'jv.word' {
+        $p = $e.SourceEventArgs.Prompt
+        if ($p -and $prompts.ContainsKey($p)) { Send @{ ev = 'word'; id = $prompts[$p] } }
+      }
       'jv.done' {
-        if ($script:speakId) {
-          $sid = $script:speakId; $script:speakId = $null
+        $p = $e.SourceEventArgs.Prompt
+        if ($p -and $prompts.ContainsKey($p)) {
+          $sid = $prompts[$p]; $prompts.Remove($p)
           Send @{ ev = 'speak-end'; id = $sid }
           Send @{ id = $sid; ok = $true; result = @{ cancelled = [bool]$e.SourceEventArgs.Cancelled } }
         }

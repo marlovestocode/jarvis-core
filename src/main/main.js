@@ -24,6 +24,7 @@ const { createSpeechHost, windowsTts, windowsStt, windowsWake } = require('../co
 const { createVoiceController } = require('../core/voice/controller');
 const { registerHotkeys } = require('./hotkeys');
 const { createMic } = require('./mic');
+const { guardWebContents } = require('./guard');
 const { createWindows } = require('./windows');
 const { createTray } = require('./tray');
 const { registerIpc } = require('./ipc');
@@ -90,6 +91,7 @@ ctx.bus.on('state', () => {
 });
 ctx.onQuit = [() => ctx.speechHost.close(), () => ctx.mic?.destroy()];
 
+app.on('web-contents-created', (_e, wc) => guardWebContents(wc));
 app.on('second-instance', () => ctx.windows?.showChat());
 app.on('window-all-closed', () => { /* tray app: stay alive */ });
 app.on('will-quit', () => {
