@@ -1,0 +1,14 @@
+[
+  { "id": "pow", "q": "What is 23.7 raised to the power 3.2?", "num": 25072.3307, "tol": 0.0005 },
+  { "id": "units", "q": "Convert 65 miles per hour to meters per second.", "num": 29.0576, "tol": 0.001 },
+  { "id": "escape", "q": "What is the escape velocity from Earth's surface in km/s? Use G = 6.674e-11, M = 5.972e24 kg, R = 6.371e6 m.", "num": 11.1857, "tol": 0.002 },
+  { "id": "photon", "q": "What is the energy of a photon with wavelength 500 nm, in electronvolts?", "num": 2.4797, "tol": 0.003 },
+  { "id": "integral", "q": "Compute the integral of x^2 * e^(-x) from 0 to infinity.", "num": 2, "tol": 0.001 },
+  { "id": "deriv", "q": "What is the derivative of x^3 * sin(x), evaluated at x = 2?", "num": 7.5824, "tol": 0.001 },
+  { "id": "stats", "q": "What is the sample standard deviation of 4, 8, 15, 16, 23, 42?", "num": 13.4907, "tol": 0.001 },
+  { "id": "dates", "q": "How many days are there between March 3, 2024 and November 9, 2026?", "num": 981, "tol": 0 },
+  { "id": "projectile", "q": "A ball is thrown straight up at 20 m/s. How high does it rise? Use g = 9.81 m/s^2.", "num": 20.3874, "tol": 0.002 },
+  { "id": "bigint", "q": "What is 2^100 exactly? Give every digit.", "text": "1267650600228229401496703205376" },
+  { "id": "root", "q": "Find the real root of x^3 - 2x - 5 = 0 to six decimal places.", "num": 2.0945515, "tol": 0.000001 },
+  { "id": "gpu", "q": "What graphics card does this PC have?", "text": "3050" }
+]
