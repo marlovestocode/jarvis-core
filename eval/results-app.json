@@ -1,115 +1,115 @@
 {
   "mode": "app",
   "model": "jarvis-worker:latest",
-  "pass": 11,
+  "pass": 12,
   "total": 12,
-  "totalMs": 61998,
+  "totalMs": 49500,
   "rows": [
     {
       "id": "pow",
       "ok": true,
-      "ms": 4994,
+      "ms": 1912,
       "tools": [
         "calculate"
       ],
       "route": "jarvis-worker:latest",
-      "answer": "23.7 raised to the power of 3.2 is approximately **25,072**."
+      "answer": "23.7 raised to the power of 3.2 is **25,072.3306882**."
     },
     {
       "id": "units",
-      "ok": false,
-      "ms": 1982,
+      "ok": true,
+      "ms": 1842,
       "tools": [
         "convert_units"
       ],
       "route": "jarvis-worker:latest",
-      "answer": "65 miles per hour is approximately **29.1 meters per second**."
+      "answer": "65 mph = 29.0576 m/s"
     },
     {
       "id": "escape",
       "ok": true,
-      "ms": 13153,
+      "ms": 10634,
       "tools": [
         "calculate"
       ],
       "route": "jarvis-worker:latest",
-      "answer": "The escape velocity from Earth's surface is approximately **11.2 km/s** (more precisely, **11.186 km/s**).\n\n**Calculation summary:**\n*   $v_e = \\sqrt{\\frac{2GM}{R}}$\n*   $v_e = 11185.73 \\, \\text{m/s}$\n*   $v_e \\approx 11.2 \\, \\text{km/s}$ (to 3 significant figures)\n\nThis is the speed needed for an object to escape Earth's gravitational field without further propulsion."
+      "answer": "The escape velocity from Earth's surface is **11.186 km/s** (rounded to 4 significant figures).\n\n**Final answer:** 11.186 km/s"
     },
     {
       "id": "photon",
       "ok": true,
-      "ms": 11564,
+      "ms": 11815,
       "tools": [
         "calculate",
-        "convert_units"
+        "calculate"
       ],
       "route": "jarvis-worker:latest",
-      "answer": "The energy of a photon with a wavelength of 500 nm is approximately **2.48 eV**.\n\nThis falls in the green light region of the visible spectrum (green has wavelengths around 495-570 nm)."
+      "answer": "The energy of a photon with wavelength 500 nm is approximately **2.48 eV** (more precisely, 2.47999 eV)."
     },
     {
       "id": "integral",
       "ok": true,
-      "ms": 3042,
+      "ms": 2731,
       "tools": [
         "integrate"
       ],
       "route": "jarvis-worker:latest",
-      "answer": "The integral of x² × e^(-x) from 0 to infinity equals **2**.\n\nThis is the gamma function Γ(3), which equals (3-1)! = 2! = 2."
+      "answer": "The integral of x² × e^(-x) from 0 to infinity equals **2**.\n\nThis is a standard gamma function result: ∫₀^∞ x² e^(-x) dx = Γ(3) = 2! = 2."
     },
     {
       "id": "deriv",
       "ok": true,
-      "ms": 7353,
+      "ms": 2597,
       "tools": [
         "differentiate"
       ],
       "route": "jarvis-worker:latest",
-      "answer": "The derivative of $x^3 \\cdot \\sin(x)$ at $x = 2$ is approximately **7.58**.\n\n**Reasoning:**\n- The function is $f(x) = x^3 \\cdot \\sin(x)$.\n- Using the product rule: $\\frac{d}{dx}[u \\cdot v] = u'v + uv'$, where $u = x^3$ and $v = \\sin(x)$.\n- Derivatives: $u' = 3x^2$, $v' = \\cos(x)$.\n- So, $\\frac{df}{dx} = 3x^2 \\cdot \\sin(x) + x^3 \\cdot \\cos(x)$.\n- At $x = 2$:\n  - $3(2)^2 \\cdot \\sin(2) + (2)^3 \\cdot \\cos(2)$\n  - $12 \\cdot \\sin(2) + 8 \\cdot \\cos(2)$\n- Calculated value: **7.58** (to 3 significant figures)."
+      "answer": "The derivative of $x^3 \\cdot \\sin(x)$ evaluated at $x = 2$ is **7.58239442953**."
     },
     {
       "id": "stats",
       "ok": true,
-      "ms": 1904,
+      "ms": 2857,
       "tools": [
         "statistics"
       ],
       "route": "jarvis-worker:latest",
-      "answer": "The sample standard deviation is approximately **13.49**."
+      "answer": "The **sample standard deviation** of the data set {4, 8, 15, 16, 23, 42} is:\n\n**13.4907** (rounded to 4 decimal places)\n\nExact value: **13.4907375632...**"
     },
     {
       "id": "dates",
       "ok": true,
-      "ms": 2483,
+      "ms": 2466,
       "tools": [
         "date_calc"
       ],
       "route": "jarvis-worker:latest",
-      "answer": "There are **981 days** between March 3, 2024 and November 9, 2026."
+      "answer": "There are **981 days** between March 3, 2024 and November 9, 2026.\n\nThis equals approximately 140 weeks and 1 day."
     },
     {
       "id": "projectile",
       "ok": true,
-      "ms": 9000,
+      "ms": 6991,
       "tools": [
         "calculate"
       ],
       "route": "jarvis-worker:latest",
-      "answer": "The ball rises to a maximum height of **20.4 meters** (rounded to three significant figures).\n\n**Reasoning:**\n*   Used the kinematic equation $v_f^2 = v_i^2 + 2a\\Delta y$\n*   Set final velocity to zero at the peak\n*   Applied gravity as negative acceleration ($-9.81 \\text{ m/s}^2$)\n*   Result: $\\approx 20.4 \\text{ m}$"
+      "answer": "The ball rises to a maximum height of **20.39 meters**.\n\n**Reasoning:**\n- Initial velocity $v_i = 20$ m/s\n- Final velocity at peak $v_f = 0$ m/s\n- Acceleration $a = -9.81$ m/s² (gravity acts downward)\n- Using $v_f^2 = v_i^2 + 2a\\Delta x$, we solve for $\\Delta x = \\frac{0 - 20^2}{2(-9.81)} = 20.387...$ m"
     },
     {
       "id": "bigint",
       "ok": true,
-      "ms": 2482,
+      "ms": 2220,
       "tools": [
         "calculate"
       ],
       "route": "jarvis-worker:latest",
-      "answer": "**2^100 = 1,267,650,600,228,229,401,496,703,205,376**\n\nThat is the exact value with every digit."
+      "answer": "2^100 = **1,267,650,600,228,229,401,496,703,205,376**\n\nEvery digit is shown above."
     },
     {
       "id": "root",
       "ok": true,
-      "ms": 2410,
+      "ms": 2104,
       "tools": [
         "solve_equation"
       ],
@@ -119,7 +119,7 @@
     {
       "id": "gpu",
       "ok": true,
-      "ms": 1631,
+      "ms": 1331,
       "tools": [
         "jarvis_status"
       ],
