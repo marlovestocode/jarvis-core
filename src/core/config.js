@@ -4,6 +4,7 @@ const path = require('node:path');
 
 const DEFAULTS = Object.freeze({
   provider: 'null',
+  ollama: Object.freeze({ host: 'http://127.0.0.1:11434', model: 'jarvis-worker:latest', think: false }),
   engines: Object.freeze({ stt: 'windows', tts: 'windows', wake: 'windows' }),
   wakeEnabled: false,
   micDeviceId: null,
@@ -12,7 +13,7 @@ const DEFAULTS = Object.freeze({
   port: 47801,
 });
 
-const NESTED = ['engines', 'hotkeys'];
+const NESTED = ['engines', 'hotkeys', 'ollama'];
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 // micDeviceId defaults to null but holds a string: accept string or null.

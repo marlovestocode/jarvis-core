@@ -2,13 +2,27 @@
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 function applyPatch(current, patch = {}, { providers, engines }) {
-  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys } };
+  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama } };
   const errors = [];
   if (!isObj(patch)) return { config, errors: ['bad patch'] };
 
   if ('provider' in patch) {
     if (typeof patch.provider === 'string' && providers.get(patch.provider)) config.provider = patch.provider;
     else errors.push(`Unknown provider "${patch.provider}"`);
+  }
+  if (isObj(patch.ollama)) {
+    const next = { ...config.ollama };
+    if ('model' in patch.ollama) {
+      if (typeof patch.ollama.model === 'string' && patch.ollama.model.trim()) next.model = patch.ollama.model.trim();
+      else errors.push('Empty Ollama model');
+    }
+    if ('host' in patch.ollama) {
+      const h = typeof patch.ollama.host === 'string' ? patch.ollama.host.trim().replace(/\/+$/, '') : '';
+      if (/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(h)) next.host = h;
+      else errors.push('Ollama host must be local (http://127.0.0.1:11434)');
+    }
+    if ('think' in patch.ollama) next.think = !!patch.ollama.think;
+    config.ollama = next;
   }
   if (isObj(patch.engines)) {
     for (const kind of ['stt', 'tts', 'wake']) {
@@ -60,7 +74,16 @@ async function statusSafe(item, timeoutMs) {
 async function describe({ config, providers, engines, hotkeyFailures = [], statusTimeoutMs = 4000 }) {
   const list = async reg => Promise.all(reg.list().map(async ({ id, label }) => ({ id, label, ...(await statusSafe(reg.get(id), statusTimeoutMs)) })));
   const [p, stt, tts, wake] = await Promise.all([list(providers), list(engines.stt), list(engines.tts), list(engines.wake)]);
-  return { config, providers: p, engines: { stt, tts, wake }, hotkeyFailures: [...hotkeyFailures] };
+  let models = [];
+  const ollama = providers.get('ollama');
+  if (ollama?.listModels) {
+    let timer;
+    try { models = await Promise.race([
+      ollama.listModels(),
+      new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('No answer')), statusTimeoutMs); }),
+    ]); } catch { models = []; } finally { clearTimeout(timer); }
+  }
+  return { config, providers: p, engines: { stt, tts, wake }, models, hotkeyFailures: [...hotkeyFailures] };
 }
 
 module.exports = { applyPatch, describe };

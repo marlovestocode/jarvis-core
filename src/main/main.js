@@ -13,6 +13,7 @@ const { loadConfig, saveConfig } = require('../core/config');
 const { createSessionStore } = require('../core/session');
 const { createRegistry } = require('../core/providers/provider');
 const { NullProvider } = require('../core/providers/null-provider');
+const { createOllamaProvider } = require('../core/providers/ollama');
 const { createToolRunner } = require('../core/tools/registry');
 const { timeTool } = require('../core/tools/time');
 const { createSysmonTool } = require('../core/tools/sysmon');
@@ -45,6 +46,7 @@ ctx.bus = createBus({ onError: err => ctx.log('listener error:', err?.message) }
 ctx.sessions = createSessionStore(DATA_DIR);
 ctx.providers = createRegistry();
 ctx.providers.add(NullProvider);
+ctx.providers.add(createOllamaProvider({ getConfig: () => ctx.config }));
 ctx.toolList = [timeTool, createSysmonTool(), createMediaTool()];
 ctx.tools = createToolRunner(ctx.toolList);
 ctx.getConfig = () => ctx.config;

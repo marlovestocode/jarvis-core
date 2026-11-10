@@ -39,7 +39,10 @@ async function run(ctx, outDir) {
       ctx.windows.showChat();
       await wait(600);
       await type('hi');
-      await wait(2500);
+      await wait(300);
+      const tIdle = Date.now();
+      while (ctx.orchestrator.busy && Date.now() - tIdle < 90000) await wait(200);
+      await wait(300);
       step('after hi', await dom());
       await shot('chat-hi');
       await type('/new');
@@ -105,7 +108,8 @@ async function run(ctx, outDir) {
       const sjs = c => sw.webContents.executeJavaScript(c, true);
       const read = () => sjs(`({ provider: [...document.querySelectorAll('#provider option')].map(o => o.textContent), providerDetail: document.getElementById('providerDetail').textContent,
         stt: [...document.querySelectorAll('#stt option')].map(o => o.textContent), tts: document.getElementById('tts').value, wake: document.getElementById('wake').value,
-        mics: document.querySelectorAll('#mic option').length, rate: document.getElementById('rate').value, hkChat: document.getElementById('hkChat').value, hkWarn: document.getElementById('hkWarn').textContent })`);
+        mics: document.querySelectorAll('#mic option').length, rate: document.getElementById('rate').value, hkChat: document.getElementById('hkChat').value, hkWarn: document.getElementById('hkWarn').textContent,
+        modelRowHidden: document.getElementById('modelRow').hidden, model: document.getElementById('model').value, models: [...document.querySelectorAll('#model option')].map(o => o.textContent) })`);
       step('settings open', await read());
       fs.appendFileSync(path.join(outDir, 'progress.txt'), 'read\n');
       fs.writeFileSync(path.join(outDir, 'settings.png'), (await sw.webContents.capturePage()).toPNG());

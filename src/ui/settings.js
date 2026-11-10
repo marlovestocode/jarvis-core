@@ -22,6 +22,16 @@
     opt($('provider'), d.providers, c.provider);
     const p = d.providers.find(x => x.id === c.provider);
     $('providerDetail').textContent = p ? (p.ready ? 'Ready. ' : '') + (p.detail || '') : '';
+    const isOllama = c.provider === 'ollama';
+    $('modelRow').hidden = !isOllama;
+    $('thinkRow').hidden = !isOllama;
+    if (isOllama) {
+      const models = d.models || [];
+      const items = models.some(m => m.id === c.ollama.model) ? models : [{ id: c.ollama.model, label: c.ollama.model + ' (not in Ollama)' }, ...models];
+      opt($('model'), items, c.ollama.model);
+      $('think').checked = !!c.ollama.think;
+      if (!models.length) $('providerDetail').textContent = 'No local models found. Start Ollama and pull a model.';
+    }
     for (const k of ['stt', 'tts', 'wake']) opt($(k), d.engines[k], c.engines[k]);
     $('wakeEnabled').checked = !!c.wakeEnabled;
     $('rate').value = c.voiceRate;
@@ -110,6 +120,8 @@
   }
 
   $('provider').addEventListener('change', e => save({ provider: e.target.value }));
+  $('model').addEventListener('change', e => save({ ollama: { model: e.target.value } }));
+  $('think').addEventListener('change', e => save({ ollama: { think: e.target.checked } }));
   for (const k of ['stt', 'tts', 'wake']) $(k).addEventListener('change', e => save({ engines: { [k]: e.target.value } }));
   $('wakeEnabled').addEventListener('change', e => save({ wakeEnabled: e.target.checked }));
   $('mic').addEventListener('change', e => save({ micDeviceId: e.target.value || null }));
