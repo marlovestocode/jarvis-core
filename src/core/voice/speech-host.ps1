@@ -131,16 +131,20 @@ function Pump-Events {
   }
 }
 
-$stdin = [Console]::In
+# Console.In.ReadLineAsync blocks in .NET Framework; a StreamReader on the raw stream does not,
+# so .NET events (word, speak end, wake) keep flowing while we wait for commands.
+$stdin = New-Object IO.StreamReader([Console]::OpenStandardInput(), (New-Object Text.UTF8Encoding $false))
 $task = $stdin.ReadLineAsync()
 while ($true) {
-  if ($task.Wait(25)) {
+  if ($task.IsCompleted) {
     $line = $task.Result
     if ($null -eq $line) { break }          # parent closed stdin: exit
     if ($line.Trim()) { Handle $line }
     $task = $stdin.ReadLineAsync()
+    continue
   }
   Pump-Events
+  Start-Sleep -Milliseconds 20              # Start-Sleep lets PowerShell queue .NET events; Task.Wait does not
 }
 try { Do-WakeStop | Out-Null } catch { }
 $synth.Dispose()
