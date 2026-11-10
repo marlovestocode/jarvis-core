@@ -1,8 +1,10 @@
 // Settings panel logic: validate a patch from the UI and describe what can be chosen.
+const { feedUrl, SOURCES } = require('./net/policy');
+const { LEAGUES } = require('./knowledge/sports');
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 function applyPatch(current, patch = {}, { providers, engines }) {
-  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama } };
+  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama }, online: { ...current.online }, location: { ...current.location }, news: { feeds: [...current.news.feeds] }, sports: { follow: current.sports.follow.map(x => ({ ...x })) } };
   const errors = [];
   if (!isObj(patch)) return { config, errors: ['bad patch'] };
 
@@ -36,6 +38,32 @@ function applyPatch(current, patch = {}, { providers, engines }) {
       if (typeof id === 'string' && engines[kind].get(id)) config.engines[kind] = id;
       else errors.push(`Unknown ${kind} engine "${id}"`);
     }
+  }
+  if (isObj(patch.online)) {
+    for (const key of ['enabled', ...SOURCES]) {
+      if (!(key in patch.online)) continue;
+      if (typeof patch.online[key] === 'boolean') config.online[key] = patch.online[key];
+      else errors.push(`Bad online switch: ${key}`);
+    }
+  }
+  if (isObj(patch.location)) {
+    const next = { ...config.location, ...patch.location };
+    if (typeof next.city !== 'string' || !next.city.trim() || next.city.length > 200 || typeof next.lat !== 'number' || !Number.isFinite(next.lat) || Math.abs(next.lat) > 90 || typeof next.lon !== 'number' || !Number.isFinite(next.lon) || Math.abs(next.lon) > 180 || !/^[A-Z]{2}$/.test(next.country)) errors.push('Invalid location');
+    else config.location = { city: next.city.trim(), lat: next.lat, lon: next.lon, country: next.country, units: config.location.units };
+    if ('units' in patch.location) {
+      if (['F', 'C'].includes(patch.location.units)) config.location.units = patch.location.units;
+      else errors.push('Units must be F or C');
+    }
+  }
+  if (isObj(patch.news) && 'feeds' in patch.news) {
+    const feeds = patch.news.feeds;
+    if (!Array.isArray(feeds) || feeds.length > 20 || feeds.some(u => !feedUrl(u))) errors.push('News feeds must be public HTTPS URLs without credentials or ports (max 20)');
+    else config.news.feeds = [...new Set(feeds.map(feedUrl))];
+  }
+  if (isObj(patch.sports) && 'follow' in patch.sports) {
+    const follow = patch.sports.follow;
+    if (!Array.isArray(follow) || follow.length > 20 || follow.some(x => !isObj(x) || !Object.hasOwn(LEAGUES, x.league) || typeof x.team !== 'string' || !x.team.trim() || x.team.length > 100)) errors.push('Followed teams need a supported league and team name (max 20)');
+    else config.sports.follow = follow.map(x => ({ league: x.league, team: x.team.trim() }));
   }
   if ('wakeEnabled' in patch) config.wakeEnabled = !!patch.wakeEnabled;
   if ('startAtLogin' in patch) config.startAtLogin = !!patch.startAtLogin;
@@ -77,7 +105,7 @@ async function statusSafe(item, timeoutMs) {
   }
 }
 
-async function describe({ config, providers, engines, hotkeyFailures = [], statusTimeoutMs = 4000 }) {
+async function describe({ config, providers, engines, hotkeyFailures = [], statusTimeoutMs = 4000, library = null }) {
   const list = async reg => Promise.all(reg.list().map(async ({ id, label }) => ({ id, label, ...(await statusSafe(reg.get(id), statusTimeoutMs)) })));
   const [p, stt, tts, wake] = await Promise.all([list(providers), list(engines.stt), list(engines.tts), list(engines.wake)]);
   let models = [];
@@ -89,7 +117,7 @@ async function describe({ config, providers, engines, hotkeyFailures = [], statu
       new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('No answer')), statusTimeoutMs); }),
     ]); } catch { models = []; } finally { clearTimeout(timer); }
   }
-  return { config, providers: p, engines: { stt, tts, wake }, models, hotkeyFailures: [...hotkeyFailures] };
+  return { config, providers: p, engines: { stt, tts, wake }, models, hotkeyFailures: [...hotkeyFailures], library };
 }
 
 module.exports = { applyPatch, describe };

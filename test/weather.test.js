@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { fakeNet } = require('./helpers/fakenet');
-const { resolvePlace } = require('../src/core/knowledge/location');
+const { resolvePlace, searchPlaces, toPlace } = require('../src/core/knowledge/location');
 const { getWeather, getAlerts, formatWeather, formatAlerts, weatherWords } = require('../src/core/knowledge/weather');
 const { describeAge } = require('../src/core/knowledge/age');
 const { DEFAULTS } = require('../src/core/config');
@@ -50,6 +50,22 @@ test('location: unknown place → empty candidates', async () => {
   const n = fakeNet(ROUTES);
   const c = await resolvePlace(n.fetcher, 'Qwxzzyplk', DEFAULTS);
   assert.deepEqual(c.candidates, []);
+});
+
+test('location: settings search returns selectable candidates without choosing for the user', async () => {
+  const n = fakeNet(ROUTES);
+  const choices = (await searchPlaces(n.fetcher, 'Springfield')).map(toPlace);
+  assert.ok(choices.length >= 3);
+  assert.ok(choices.some(p => p.name === 'Springfield, Illinois' && p.country === 'US'));
+  assert.ok(choices.every(p => Number.isFinite(p.lat) && Number.isFinite(p.lon)));
+});
+
+test('location: non-US home retains its country and does not request US alerts', async () => {
+  const n = fakeNet(ROUTES);
+  const p = await resolvePlace(n.fetcher, '', { ...DEFAULTS, location: { city: 'London, UK', lat: 51.5, lon: -0.12, country: 'GB', units: 'C' } });
+  assert.equal(p.country, 'GB');
+  await assert.rejects(getAlerts(n.fetcher, p), /only available for the US/);
+  assert.equal(n.calls.length, 0);
 });
 
 test('weather: code → words', () => {

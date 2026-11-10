@@ -35,7 +35,7 @@ const W = 'https://api.open-meteo.com/v1/forecast?latitude=32.45&longitude=-99.7
 
 test('config: online, location, news, sports defaults', () => {
   assert.deepEqual(DEFAULTS.online, { enabled: true, weather: true, news: true, sports: true, wiki: true });
-  assert.deepEqual(DEFAULTS.location, { city: 'Abilene, TX', lat: 32.4487, lon: -99.7331, units: 'F' });
+  assert.deepEqual(DEFAULTS.location, { city: 'Abilene, TX', lat: 32.4487, lon: -99.7331, country: 'US', units: 'F' });
   assert.equal(DEFAULTS.news.feeds.length, 4);
   assert.ok(DEFAULTS.news.feeds.every(u => u.startsWith('https://')));
   assert.deepEqual(DEFAULTS.sports.follow, []);
@@ -86,6 +86,12 @@ for (const [name, url] of [
     assert.equal(events.at(-1)?.ok, false);
   });
 }
+
+test('policy: configured feeds cannot allowlist IP literals or local hosts', () => {
+  const urls = ['https://127.0.0.1/rss', 'https://[::1]/rss', 'https://news.local/rss', 'https://news.internal/rss', 'https://user:pass@feeds.bbci.co.uk/rss'];
+  const p = createPolicy(() => cfg({ news: { feeds: urls } }));
+  for (const url of urls) assert.equal(p.allowed(url, 'news').ok, false, url);
+});
 
 test('policy: master switch and per-source switch', async () => {
   let c = cfg({ online: { enabled: false } });
@@ -156,6 +162,7 @@ test('fetcher: TTL cache hit (no fetch) and expiry', async () => {
   assert.equal(r.cached, true);
   assert.equal(r.ageMs, 5 * 60000);
   assert.equal(events.filter(e => e.type === 'net').at(-1).cached, true);
+  assert.equal(events.filter(e => e.type === 'net').at(-1).ageMs, 5 * 60000);
   clock.t += 6 * 60000;
   const r2 = await fetcher.getJson('weather', W, { ttlMs: 10 * 60000 });
   assert.equal(fetch.calls.length, 2);
@@ -176,6 +183,7 @@ test('fetcher: network error with disk cache → stale result with its age', asy
   assert.equal(r.ageMs, 2 * 3600000);
   const ev = b.events.filter(e => e.type === 'net').at(-1);
   assert.equal(ev.ok, false); assert.equal(ev.stale, true);
+  assert.equal(ev.ageMs, 2 * 3600000);
 });
 
 test('fetcher: network error with no cache → error', async () => {

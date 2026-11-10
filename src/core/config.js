@@ -21,7 +21,7 @@ const DEFAULTS = Object.freeze({
   port: 47801,
   // knowledge & live data (spec 2026-11-10-knowledge §3): allowlisted lookups only
   online: Object.freeze({ enabled: true, weather: true, news: true, sports: true, wiki: true }),
-  location: Object.freeze({ city: 'Abilene, TX', lat: 32.4487, lon: -99.7331, units: 'F' }),
+  location: Object.freeze({ city: 'Abilene, TX', lat: 32.4487, lon: -99.7331, country: 'US', units: 'F' }),
   news: Object.freeze({ feeds: Object.freeze([
     'https://feeds.bbci.co.uk/news/rss.xml',
     'https://feeds.npr.org/1001/rss.xml',
@@ -43,7 +43,7 @@ function okValue(key, def, v) {
 
 // list values keep only well-formed items
 function cleanList(key, k, list) {
-  if (key === 'news' && k === 'feeds') return list.filter(u => typeof u === 'string' && u.startsWith('https://'));
+  if (key === 'news' && k === 'feeds') return [...new Set(list.map(require('./net/policy').feedUrl).filter(Boolean))].slice(0, 20);
   if (key === 'sports' && k === 'follow') return list.filter(x => isObj(x) && typeof x.league === 'string' && typeof x.team === 'string').map(x => ({ league: x.league, team: x.team }));
   return list;
 }

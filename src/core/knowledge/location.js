@@ -16,7 +16,7 @@ const HOME = /^(?:|here|home|my area|my location|local|nearby|outside|current lo
 
 function home(config) {
   const l = config.location;
-  return { name: l.city, lat: l.lat, lon: l.lon, country: 'US', admin1: '', home: true };
+  return { name: l.city, lat: l.lat, lon: l.lon, country: l.country || 'US', admin1: '', home: true };
 }
 const label = r => `${r.name}, ${r.admin1 || r.country || r.country_code}`;
 const toPlace = r => ({ name: label(r), lat: r.latitude, lon: r.longitude, country: r.country_code, admin1: r.admin1 || '', timezone: r.timezone });
@@ -24,7 +24,16 @@ const toPlace = r => ({ name: label(r), lat: r.latitude, lon: r.longitude, count
 async function resolvePlace(fetcher, text, config) {
   const q = String(text || '').trim().replace(/[.?!]+$/, '');
   if (HOME.test(q) || q.toLowerCase() === String(config.location.city).toLowerCase()) return home(config);
-  const [city, ...rest] = q.split(',').map(s => s.trim()).filter(Boolean);
+  const list = await searchPlaces(fetcher, q);
+  if (!list.length) return { candidates: [] };
+  const [a, b] = list;
+  if (!b || q.includes(',') || (a.population || 0) >= 5 * (b.population || 0)) return toPlace(a);
+  return { candidates: list.slice(0, 5).map(label) };
+}
+
+async function searchPlaces(fetcher, text) {
+  const [city, ...rest] = String(text).trim().split(',').map(s => s.trim()).filter(Boolean);
+  if (!city) return [];
   const region = rest.join(' ').toLowerCase();
   const url = `${GEO}?name=${encodeURIComponent(city)}&count=10&language=en&format=json`;
   const { data } = await fetcher.getJson('weather', url, { ttlMs: TTL });
@@ -33,11 +42,7 @@ async function resolvePlace(fetcher, text, config) {
     const full = (STATES[region.toUpperCase()] || region).toLowerCase();
     list = list.filter(r => [r.admin1, r.country, r.country_code].some(v => String(v || '').toLowerCase() === full || String(v || '').toLowerCase() === region));
   }
-  if (!list.length) return { candidates: [] };
-  const [a, b] = list;
-  // one clear winner: only result, or far bigger than the next one with the same name
-  if (!b || region || (a.population || 0) >= 5 * (b.population || 0)) return toPlace(a);
-  return { candidates: list.slice(0, 5).map(label) };
+  return list;
 }
 
-module.exports = { resolvePlace, STATES };
+module.exports = { resolvePlace, searchPlaces, toPlace, STATES };

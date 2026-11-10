@@ -145,6 +145,86 @@ async function run(ctx, outDir) {
       const h = ctx.engines.tts.get('windows').speak('Rate check.', { rate: ctx.config.voiceRate });
       await Promise.race([h.done, wait(10000)]);
       step('speak rate', { sapiRate: seen });
+    } else if (mode === 'knowledge') {
+      const assert = require('node:assert/strict');
+      await ctx.booted;
+      const original = structuredClone(ctx.config);
+      const sw = ctx.windows.showSettings();
+      if (sw.webContents.isLoading()) await new Promise(r => sw.webContents.once('did-finish-load', r));
+      const sjs = code => sw.webContents.executeJavaScript(code, true);
+      const settled = async () => {
+        const start = Date.now();
+        while (await sjs(`document.querySelector('.body').inert`) && Date.now() - start < 15000) await wait(50);
+        await wait(100);
+      };
+      const change = async (id, value) => {
+        await sjs(`(() => { const e = document.getElementById(${JSON.stringify(id)}); ${typeof value === 'boolean' ? 'e.checked' : 'e.value'} = ${JSON.stringify(value)}; e.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+        await settled();
+      };
+      const submit = async (id, values) => {
+        await sjs(`(() => { for (const [id, value] of Object.entries(${JSON.stringify(values)})) document.getElementById(id).value = value; document.getElementById(${JSON.stringify(id)}).dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); })()`);
+        await settled();
+      };
+      try {
+        await wait(800);
+        await change('onlineEnabled', false);
+        assert.equal(ctx.config.online.enabled, false);
+        assert.equal(await sjs(`document.getElementById('placeSearch').disabled`), true);
+        const blocked = await sjs(`window.jarvis.settings.places('Dallas')`);
+        assert.match(blocked.error, /off/i);
+        await change('onlineEnabled', true);
+        for (const [id, key] of [['onlineWeather', 'weather'], ['onlineNews', 'news'], ['onlineSports', 'sports'], ['onlineWiki', 'wiki']]) {
+          await change(id, false); assert.equal(ctx.config.online[key], false);
+          await change(id, true); assert.equal(ctx.config.online[key], true);
+        }
+        await change('units', 'C'); assert.equal(ctx.config.location.units, 'C');
+        await submit('placeForm', { placeQuery: 'Springfield' });
+        const started = Date.now();
+        while (await sjs(`document.getElementById('placeSearch').disabled`) && Date.now() - started < 15000) await wait(100);
+        const choices = await sjs(`[...document.querySelectorAll('#placePick option')].map(e => ({ value: e.value, text: e.textContent }))`);
+        assert.ok(choices.length > 2, JSON.stringify(choices));
+        await change('placePick', choices.find(e => /Illinois/.test(e.text))?.value || choices[1].value);
+        assert.match(ctx.config.location.city, /Springfield/);
+        step('location and switches', { choices, location: ctx.config.location });
+        await submit('placeForm', { placeQuery: 'Qwxzzyplk' });
+        const unknown = Date.now();
+        while (await sjs(`document.getElementById('placeSearch').disabled`) && Date.now() - unknown < 15000) await wait(100);
+        assert.equal(await sjs(`document.getElementById('placeRow').hidden`), true);
+        const beforeFeeds = ctx.config.news.feeds.length;
+        await submit('feedForm', { feedUrl: 'http://localhost/rss' });
+        assert.equal(ctx.config.news.feeds.length, beforeFeeds);
+        assert.equal(await sjs(`document.getElementById('errors').hidden`), false);
+        await submit('feedForm', { feedUrl: 'https://feeds.bbci.co.uk/news/world/rss.xml' });
+        assert.equal(ctx.config.news.feeds.length, beforeFeeds + 1);
+        await sjs(`document.querySelector('#feeds li:last-child button').click()`); await settled();
+        assert.equal(ctx.config.news.feeds.length, beforeFeeds);
+        const beforeTeams = ctx.config.sports.follow.length;
+        await submit('teamForm', { teamLeague: 'nfl', teamName: 'Cowboys' });
+        assert.equal(ctx.config.sports.follow.length, beforeTeams + 1);
+        await sjs(`document.querySelector('#teams li:last-child button').click()`); await settled();
+        assert.equal(ctx.config.sports.follow.length, beforeTeams);
+        step('feed/team add-remove and invalid feed', { ok: true, library: await ctx.kiwix.info() });
+        await sjs(`document.getElementById('knowledge').scrollIntoView()`);
+        fs.writeFileSync(path.join(outDir, 'knowledge-settings.png'), (await sw.webContents.capturePage()).toPNG());
+      } finally {
+        ctx.saveConfig(original);
+        sw.close();
+      }
+      const seen = [];
+      ctx.bus.on('*', e => { if (['tool', 'net', 'route'].includes(e.type)) seen.push(e); });
+      ctx.windows.showChat();
+      for (const q of ["What's the weather like in Abilene, TX?", 'Any severe weather alerts in Abilene, TX?']) {
+        await js(`window.jarvis.newChat()`);
+        await type(q);
+        await wait(300);
+        const start = Date.now();
+        while (ctx.orchestrator.busy && Date.now() - start < 120000) await wait(100);
+        await wait(500);
+        const current = await js(`window.jarvis.current()`);
+        step('live lookup', { q, answer: current.messages.at(-1), tools: seen.filter(e => e.type === 'tool'), net: seen.filter(e => e.type === 'net'), dom: await dom(), notes: await js(`[...document.querySelectorAll('.lookup-note')].map(e => e.textContent)`) });
+        await shot(/alerts/.test(q) ? 'knowledge-alerts' : 'knowledge-weather');
+        seen.length = 0;
+      }
     } else if (mode === 'wake') {
       // idle mic hears "Jarvis, what time is it?" and then unrelated speech; mic is fed by hand
       const os = require('node:os');

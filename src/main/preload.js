@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('jarvis', {
     get: () => ipcRenderer.invoke('settings:get'),
     set: patch => ipcRenderer.invoke('settings:set', patch),
     capture: on => ipcRenderer.invoke('settings:capture', !!on),
+    places: query => ipcRenderer.invoke('settings:places', String(query)),
     close: () => ipcRenderer.invoke('settings:close'),
   },
   onEvent: fn => {

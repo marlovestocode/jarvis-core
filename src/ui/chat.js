@@ -14,6 +14,7 @@
   let renderQueued = false;
   let micReason = '';
   let routeLabel = '';
+  let lookupEvents = [];
   const statEl = $('stat');
   const levels = new Array(22).fill(0);
 
@@ -51,6 +52,18 @@
     return -1;
   }
 
+  function lookupNote(items) {
+    const names = { 'api.open-meteo.com': 'Open-Meteo', 'air-quality-api.open-meteo.com': 'Open-Meteo AQI', 'geocoding-api.open-meteo.com': 'Open-Meteo location', 'api.weather.gov': 'National Weather Service', 'en.wikipedia.org': 'Wikipedia', 'site.api.espn.com': 'ESPN' };
+    const labels = items.map(x => {
+      if (x.offline) return 'Wikipedia (offline)';
+      const name = names[x.host] || x.host;
+      const age = Math.max(0, (x.ageMs || 0) + Date.now() - (x.at || x.t || Date.now()));
+      if (x.stale) return `${name} — last known ${new Date(Date.now() - age).toLocaleString()}`;
+      return `${name} ${age < 60000 ? 'just now' : Math.floor(age / 60000) < 60 ? Math.floor(age / 60000) + ' min ago' : Math.floor(age / 3600000) + ' h ago'}`;
+    });
+    return el('div', 'lookup-note', 'Looked up: ' + [...new Set(labels)].join(' · '));
+  }
+
   function drawLog() {
     log.replaceChildren();
     const msgs = session?.messages || [];
@@ -63,6 +76,7 @@
       if (!m.content && m.toolCalls && !m.error) return;
       const box = el('div', 'msg assistant');
       box.appendChild(md(m.content || ''));
+      if (m.lookups?.length) box.appendChild(lookupNote(m.lookups));
       if (m.stopped) box.appendChild(el('div', 'note', 'Stopped.'));
       if (m.error) {
         const n = el('div', 'note err', m.error);
@@ -84,6 +98,7 @@
     if (live) {
       live.el = el('div', 'msg assistant live');
       live.el.appendChild(md(live.text));
+      if (lookupEvents.length) live.el.appendChild(lookupNote(lookupEvents));
       log.appendChild(live.el);
     }
     log.scrollTop = log.scrollHeight;
@@ -94,6 +109,7 @@
     if (!live) return;
     if (!live.el || !live.el.isConnected) { drawLog(); return; }
     live.el.replaceChildren(md(live.text));
+    if (lookupEvents.length) live.el.appendChild(lookupNote(lookupEvents));
     log.scrollTop = log.scrollHeight;
   }
 
@@ -172,6 +188,7 @@
         setState(ev);
         if (ev.state === 'thinking') {
           setBusy(true);
+          lookupEvents = [];
           live = { el: null, text: '' };
           session = await window.jarvis.current();
           drawLog();
@@ -188,6 +205,13 @@
         break;
       case 'tool':
         if (ev.phase === 'end') reload();
+        break;
+      case 'net':
+        if (live && (ev.ok || ev.cached)) {
+          lookupEvents = lookupEvents.filter(x => x.host !== ev.host);
+          lookupEvents.push(ev);
+          drawLive();
+        }
         break;
       case 'boot': showBoot(ev); break;
       case 'route':

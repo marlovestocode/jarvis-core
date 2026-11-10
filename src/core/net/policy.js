@@ -5,13 +5,20 @@ const BASE_HOSTS = Object.freeze([
   'api.weather.gov', 'en.wikipedia.org', 'site.api.espn.com',
 ]);
 const SOURCES = ['weather', 'news', 'sports', 'wiki'];
+const { isIP } = require('node:net');
+
+function feedUrl(value) {
+  if (typeof value !== 'string' || value.length > 2048) return null;
+  try {
+    const u = new URL(value);
+    if (u.protocol !== 'https:' || u.username || u.password || u.port || isIP(u.hostname.replace(/^\[|\]$/g, '')) || /(^|\.)(localhost|local|internal)$/.test(u.hostname) || !u.hostname.includes('.')) return null;
+    u.hash = '';
+    return u.href;
+  } catch { return null; }
+}
 
 function feedHosts(config) {
-  const out = [];
-  for (const u of config?.news?.feeds || []) {
-    try { const x = new URL(u); if (x.protocol === 'https:' && !x.username && !x.password && !x.port) out.push(x.hostname); } catch { /* bad feed url */ }
-  }
-  return out;
+  return (config?.news?.feeds || []).map(feedUrl).filter(Boolean).map(u => new URL(u).hostname);
 }
 
 function createPolicy(getConfig) {
@@ -36,4 +43,4 @@ function createPolicy(getConfig) {
   return { allowed, hosts };
 }
 
-module.exports = { createPolicy, BASE_HOSTS, SOURCES };
+module.exports = { createPolicy, BASE_HOSTS, SOURCES, feedUrl };

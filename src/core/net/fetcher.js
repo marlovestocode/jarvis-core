@@ -83,7 +83,7 @@ function createFetcher({ policy, fetch: doFetch = (...a) => globalThis.fetch(...
     const hit = mem.get(url) || readDisk(url);
     if (hit && ttlMs > 0 && t - hit.at < ttlMs) {
       mem.set(url, hit);
-      emit({ source, host, ok: true, ms: 0, cached: true });
+      emit({ source, host, ok: true, ms: 0, cached: true, ageMs: t - hit.at });
       return { data: hit.text, cached: true, ageMs: t - hit.at };
     }
     const t0 = Date.now();
@@ -91,12 +91,12 @@ function createFetcher({ policy, fetch: doFetch = (...a) => globalThis.fetch(...
       const text = await fetchOnce(source, url, headers);
       const entry = { at: now(), text };
       mem.set(url, entry); writeDisk(url, entry);
-      emit({ source, host, ok: true, ms: Date.now() - t0, cached: false });
+      emit({ source, host, ok: true, ms: Date.now() - t0, cached: false, ageMs: 0 });
       return { data: text, cached: false, ageMs: 0 };
     } catch (err) {
       const ms = Date.now() - t0;
       if (err.code !== 'REFUSED' && hit && t - hit.at < STALE_MAX_MS) {
-        emit({ source, host, ok: false, ms, cached: true, stale: true });
+        emit({ source, host, ok: false, ms, cached: true, stale: true, ageMs: t - hit.at });
         return { data: hit.text, cached: true, stale: true, ageMs: t - hit.at, error: err.message };
       }
       emit({ source, host, ok: false, ms, cached: false, error: err.message });

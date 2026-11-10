@@ -34,6 +34,29 @@
       <p class="hint" id="micDetail"></p>
       <label class="row"><span>Voice rate <b id="rateVal"></b></span><input type="range" id="rate" min="0.5" max="2" step="0.05"></label>
     </section>
+    <section id="knowledge">
+      <h2>KNOWLEDGE</h2>
+      <p class="hint">Only lookup terms go to allowlisted sources. Chats stay on this PC.</p>
+      <label class="row"><span>Online lookups</span><input type="checkbox" id="onlineEnabled"></label>
+      <label class="row"><span>Weather and alerts</span><input type="checkbox" id="onlineWeather"></label>
+      <label class="row"><span>News</span><input type="checkbox" id="onlineNews"></label>
+      <label class="row"><span>Sports</span><input type="checkbox" id="onlineSports"></label>
+      <label class="row"><span>Online Wikipedia fallback</span><input type="checkbox" id="onlineWiki"></label>
+      <p class="hint" id="locationDetail"></p>
+      <form id="placeForm" class="editor"><input id="placeQuery" aria-label="Search city" placeholder="City, state or country" maxlength="200"><button type="submit" id="placeSearch">SEARCH</button></form>
+      <label class="row" id="placeRow" hidden><span>Choose location</span><select id="placePick"></select></label>
+      <p class="hint" id="placeDetail" role="status"></p>
+      <label class="row"><span>Weather units</span><select id="units"><option value="F">°F / mph</option><option value="C">°C / km/h</option></select></label>
+      <h2>NEWS FEEDS</h2>
+      <ul id="feeds" class="items"></ul>
+      <form id="feedForm" class="editor"><input id="feedUrl" aria-label="HTTPS news feed" placeholder="HTTPS RSS or Atom feed URL" maxlength="2048"><button type="submit">ADD</button></form>
+      <h2>FOLLOWED TEAMS</h2>
+      <ul id="teams" class="items"></ul>
+      <form id="teamForm" class="editor"><select id="teamLeague" aria-label="League"><option value="nfl">NFL</option><option value="nba">NBA</option><option value="mlb">MLB</option><option value="nhl">NHL</option><option value="cfb">College football</option><option value="mls">MLS</option><option value="epl">EPL</option></select><input id="teamName" aria-label="Team name" placeholder="Team name" maxlength="100"><button type="submit">ADD</button></form>
+      <h2>OFFLINE LIBRARY</h2>
+      <p class="hint" id="libraryDetail"></p>
+      <button class="action" id="libraryRefresh" type="button">REFRESH STATUS</button>
+    </section>
     <section>
       <h2>STARTUP</h2>
       <label class="row"><span>Start with Windows (tray)</span><input type="checkbox" id="startAtLogin"></label>

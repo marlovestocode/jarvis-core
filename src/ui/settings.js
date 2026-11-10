@@ -4,6 +4,7 @@
   const S = window.jarvis.settings;
   let state = null;
   let savedT = 0;
+  let places = [];
 
   function opt(sel, items, value) {
     sel.replaceChildren();
@@ -50,13 +51,43 @@
     $('errors').hidden = !errs.length;
     $('errors').textContent = errs.join(' · ');
     if ($('mic').dataset.loaded) $('mic').value = c.micDeviceId || '';
+    for (const [key, id] of Object.entries({ enabled: 'onlineEnabled', weather: 'onlineWeather', news: 'onlineNews', sports: 'onlineSports', wiki: 'onlineWiki' })) {
+      $(id).checked = !!c.online[key];
+      $(id).disabled = key !== 'enabled' && !c.online.enabled;
+    }
+    $('placeSearch').disabled = !c.online.enabled || !c.online.weather;
+    $('units').value = c.location.units;
+    $('locationDetail').textContent = `Home: ${c.location.city} (${c.location.lat.toFixed(4)}, ${c.location.lon.toFixed(4)})`;
+    drawItems('feeds', c.news.feeds, x => x, i => save({ news: { feeds: c.news.feeds.filter((_, n) => n !== i) } }));
+    drawItems('teams', c.sports.follow, x => `${x.league.toUpperCase()} · ${x.team}`, i => save({ sports: { follow: c.sports.follow.filter((_, n) => n !== i) } }));
+    const lib = d.library;
+    $('libraryDetail').textContent = lib ? `${lib.installed ? 'Wikipedia installed' : 'Not installed — online fallback when enabled'}\n${lib.path}\n${(lib.sizeBytes / 1e9).toFixed(2)} GB · ${lib.articles == null ? 'Article count unavailable' : lib.articles.toLocaleString() + ' articles'} · ${lib.running ? 'Kiwix running' : 'Kiwix stopped'}` : 'Library status unavailable';
+  }
+
+  function drawItems(id, items, label, remove) {
+    $(id).replaceChildren();
+    for (const [i, item] of items.entries()) {
+      const li = document.createElement('li'), span = document.createElement('span'), button = document.createElement('button');
+      span.textContent = label(item); button.textContent = 'REMOVE'; button.type = 'button';
+      button.addEventListener('click', () => remove(i));
+      li.append(span, button); $(id).appendChild(li);
+    }
   }
 
   async function save(patch) {
-    render(await S.set(patch));
-    $('saved').textContent = 'SAVED';
-    clearTimeout(savedT);
-    savedT = setTimeout(() => { $('saved').textContent = ''; }, 1200);
+    const body = document.querySelector('.body');
+    body.inert = true;
+    try {
+      const d = await S.set(patch);
+      render(d);
+      $('saved').textContent = d.errors?.length ? 'NOT SAVED' : 'SAVED';
+      clearTimeout(savedT);
+      savedT = setTimeout(() => { $('saved').textContent = ''; }, 1200);
+      return !d.errors?.length;
+    } catch (err) {
+      $('errors').hidden = false; $('errors').textContent = err.message;
+      return false;
+    } finally { body.inert = false; }
   }
 
   async function loadMics() {
@@ -135,6 +166,28 @@
   $('mic').addEventListener('change', e => save({ micDeviceId: e.target.value || null }));
   $('rate').addEventListener('input', e => { $('rateVal').textContent = Number(e.target.value).toFixed(2) + '×'; });
   $('rate').addEventListener('change', e => save({ voiceRate: Number(e.target.value) }));
+  for (const [key, id] of Object.entries({ enabled: 'onlineEnabled', weather: 'onlineWeather', news: 'onlineNews', sports: 'onlineSports', wiki: 'onlineWiki' })) $(id).addEventListener('change', e => save({ online: { [key]: e.target.checked } }));
+  $('units').addEventListener('change', e => save({ location: { units: e.target.value } }));
+  $('placeForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    $('placeSearch').disabled = true;
+    try {
+      const r = await S.places($('placeQuery').value.trim());
+      places = r.places || [];
+      $('placeRow').hidden = !places.length;
+      opt($('placePick'), [{ id: '', label: 'Choose a city…' }, ...places.map((p, i) => ({ id: String(i), label: `${p.name} (${p.country})` }))], '');
+      $('placeDetail').textContent = r.error || (places.length ? 'Select the matching city to save it.' : 'No matching city. Try a nearby city or region.');
+    } catch (err) { $('placeDetail').textContent = err.message; }
+    finally { $('placeSearch').disabled = !state.config.online.enabled || !state.config.online.weather; }
+  });
+  $('placePick').addEventListener('change', async e => {
+    if (e.target.value === '') return;
+    const p = places[Number(e.target.value)];
+    if (await save({ location: { city: p.name, lat: p.lat, lon: p.lon, country: p.country } })) { $('placeRow').hidden = true; $('placeDetail').textContent = 'Home location saved.'; }
+  });
+  $('feedForm').addEventListener('submit', async e => { e.preventDefault(); if (await save({ news: { feeds: [...state.config.news.feeds, $('feedUrl').value.trim()] } })) $('feedUrl').value = ''; });
+  $('teamForm').addEventListener('submit', async e => { e.preventDefault(); if (await save({ sports: { follow: [...state.config.sports.follow, { league: $('teamLeague').value, team: $('teamName').value.trim() }] } })) $('teamName').value = ''; });
+  $('libraryRefresh').addEventListener('click', async () => { try { render(await S.get()); } catch (err) { $('libraryDetail').textContent = err.message; } });
   capture($('hkChat'), 'chat');
   capture($('hkVoice'), 'voice');
   $('closeBtn').addEventListener('click', () => S.close());

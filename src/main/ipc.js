@@ -1,6 +1,7 @@
 // core ↔ renderer. Every handler is thin; the logic lives in src/core.
 const { ipcMain, clipboard, globalShortcut } = require('electron');
 const { applyPatch, describe } = require('../core/settings');
+const { searchPlaces, toPlace } = require('../core/knowledge/location');
 
 function registerIpc(ctx) {
   const { orchestrator, sessions, windows } = ctx;
@@ -52,7 +53,7 @@ function registerIpc(ctx) {
   h('ai:hide', () => windows.hideChat());
   // Esc: stop a reply, else cut speech, else hide.
   h('ai:escape', () => {
-    if (orchestrator.busy) { orchestrator.stop(); return 'stopped'; }
+    if (orchestrator.busy) { orchestrator.stop(); ctx.voice?.cancel(); return 'stopped'; }
     if (ctx.voice && (ctx.voice.speaking || ctx.voice.active)) { ctx.voice.cancel(); return 'cancelled'; }
     windows.hideChat();
     return 'hidden';
@@ -63,14 +64,19 @@ function registerIpc(ctx) {
   h('ai:status', () => orchestrator.announce());
 
   // ---- settings window ----
-  const describeNow = () => describe({ config: ctx.config, providers: ctx.providers, engines: ctx.engines, hotkeyFailures: ctx.hotkeys.failed });
+  const describeNow = async () => describe({ config: ctx.config, providers: ctx.providers, engines: ctx.engines, hotkeyFailures: ctx.hotkeys.failed, library: await ctx.kiwix.info() });
   h('settings:get', () => describeNow());
+  h('settings:places', async query => {
+    if (typeof query !== 'string' || !query.trim() || query.length > 200) return { places: [], error: 'Enter a city (max 200 characters)' };
+    try { return { places: (await searchPlaces(ctx.fetcher, query)).slice(0, 10).map(toPlace) }; }
+    catch (err) { return { places: [], error: err.message }; }
+  });
   h('settings:set', async patch => {
     const { config, errors } = applyPatch(ctx.config, patch, { providers: ctx.providers, engines: ctx.engines });
     const modelChanged = JSON.stringify(config.ollama) !== JSON.stringify(ctx.config.ollama) || config.provider !== ctx.config.provider;
     ctx.saveConfig(config);
     ctx.applyHotkeys();
-    ctx.applyLogin?.();
+    if ('startAtLogin' in patch) ctx.applyLogin?.();
     if (modelChanged) ctx.providers.get(ctx.config.provider)?.warm?.().catch?.(() => {}); // load the new model now, not on the first question
     ctx.voice?.applyWake();
     ctx.updateMic?.();

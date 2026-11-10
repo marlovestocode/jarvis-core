@@ -108,6 +108,11 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
     if (current) throw busyError();
     const ac = new AbortController();
     current = ac;
+    const lookups = new Map();
+    let inTool = false;
+    const offNet = bus.on('net', ev => {
+      if (inTool && (ev.ok || ev.cached)) lookups.set(`${ev.source}:${ev.host}`, { source: ev.source, host: ev.host, at: ev.t, ageMs: ev.ageMs || 0, stale: !!ev.stale, offline: !!ev.offline });
+    });
     try {
       let s = sessionId ? sessions.load(sessionId) : null;
       if (!s) s = sessions.create();
@@ -178,7 +183,10 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
         s.messages.push({ role: 'assistant', content: reply, toolCalls: round.toolCalls });
         for (const call of round.toolCalls) {
           bus.emit('tool', { id: call.id, name: call.name, phase: 'start' });
-          const res = await tools.run(call.name, call.args, { signal: ac.signal });
+          inTool = true;
+          let res;
+          try { res = await tools.run(call.name, call.args, { signal: ac.signal }); }
+          finally { inTool = false; }
           bus.emit('tool', { id: call.id, name: call.name, phase: 'end', ok: res.ok });
           s.messages.push({ role: 'tool', content: res.text, toolCallId: call.id, name: call.name });
           if (ac.signal.aborted) break;
@@ -187,6 +195,8 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
         if (ac.signal.aborted) { stopped = true; reply = ''; break; }
       }
 
+      const last = s.messages.at(-1);
+      if (last?.role === 'assistant' && lookups.size) last.lookups = [...lookups.values()];
       sessions.save(s);
       if (error) {
         bus.emit('state', { state: 'error', detail: error });
@@ -209,6 +219,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       if (error) out.error = error;
       return out;
     } finally {
+      offNet();
       if (current === ac) current = null;
     }
   }

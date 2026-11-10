@@ -77,6 +77,23 @@ test('tool turn: tool_call → tool start/end events, tool message saved, provid
   assert.ok(Array.isArray(fp.calls[0].tools) && fp.calls[0].tools[0].name === 'get_time');
 });
 
+test('network citations belong to their turn, persist, and are never sent to the model', async () => {
+  let ctx;
+  const tools = createToolRunner([{ name: 'get_weather', params: {}, run: async () => { ctx.bus.emit('net', { source: 'weather', host: 'api.open-meteo.com', ok: true, cached: true, ageMs: 120000 }); return 'weather'; } }]);
+  const fp = createFakeProvider([
+    [{ type: 'tool_call', id: 'w', name: 'get_weather' }, { type: 'done' }],
+    [{ type: 'token', text: 'Fine weather' }, { type: 'done' }],
+    [{ type: 'token', text: 'Hi' }, { type: 'done' }],
+  ]);
+  ctx = setup(fp, { tools });
+  await ctx.orc.send(ctx.s.id, 'weather');
+  const reply = ctx.sessions.load(ctx.s.id).messages.at(-1);
+  assert.equal(reply.lookups[0].host, 'api.open-meteo.com');
+  await ctx.orc.send(ctx.s.id, 'hi');
+  assert.equal(ctx.sessions.load(ctx.s.id).messages.at(-1).lookups, undefined);
+  assert.ok(fp.calls.at(-1).messages.every(m => !('lookups' in m)));
+});
+
 test('tool loop capped at 5 rounds → error Too many tool rounds', async () => {
   const fp = createFakeProvider([{ type: 'tool_call', id: 'c', name: 'get_time', args: {} }, { type: 'done' }]);
   const { events, orc, s, ran, sessions } = setup(fp);

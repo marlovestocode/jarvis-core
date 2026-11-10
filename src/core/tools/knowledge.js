@@ -20,7 +20,7 @@ function wrapSource(label, body) {
 const offText = err => `${err.message[0].toUpperCase()}${err.message.slice(1)}, so I could not check. Answer from what you know and say it is not live data.`;
 const obj = (properties, required) => ({ type: 'object', properties, ...(required ? { required } : {}), additionalProperties: false });
 
-function createKnowledgeTools({ fetcher, kiwix, getConfig }) {
+function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
   let libName = null;
   async function libraryName() {
     if (libName) return libName;
@@ -75,7 +75,10 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig }) {
     const q = String(query || '').trim();
     if (!q) return 'Give a search query.';
     const off = await offlinePassages(q);
-    if (off) return wrapSource(off.label, off.text);
+    if (off) {
+      bus?.emit('net', { source: 'wiki', host: 'offline', offline: true, ok: true, cached: false, ms: 0, library: await libraryName() });
+      return wrapSource(off.label, off.text);
+    }
     const cfg = getConfig();
     if (cfg.online?.enabled === false || cfg.online?.wiki === false) {
       return kiwix?.available()
@@ -107,6 +110,7 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig }) {
       const hit = ps.filter(p => p.section.toLowerCase().includes(s));
       if (hit.length) ps = hit;
     }
+    if (/offline library/.test(label)) bus?.emit('net', { source: 'wiki', host: 'offline', offline: true, ok: true, cached: false, ms: 0, library: await libraryName() });
     return wrapSource(label, formatPassages(ps, BODY_MAX));
   }
 

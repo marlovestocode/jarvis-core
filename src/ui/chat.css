@@ -80,6 +80,7 @@ button:disabled { cursor: not-allowed; opacity: 0.4; }
 .copy { background: none; border: none; font-size: 10px; letter-spacing: 0.15em; color: var(--accent); }
 .note { font-size: 11px; margin-top: 6px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
 .note.err { color: var(--crit); }
+.lookup-note { font-size: 10px; color: var(--muted); margin-top: 7px; border-top: 1px solid rgba(var(--accent-rgb), 0.12); padding-top: 5px; }
 .note button { font-size: 10px; letter-spacing: 0.15em; background: none; border: var(--line) solid currentColor; color: var(--accent); padding: 2px 8px; border-radius: 2px; }
 .empty-log { margin: auto; text-align: center; color: var(--muted); font-size: 12px; letter-spacing: 0.15em; }
 

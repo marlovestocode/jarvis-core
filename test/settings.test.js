@@ -64,6 +64,35 @@ test('describe: a status() that throws or hangs does not break the panel', async
   assert.equal(d.engines.wake.find(e => e.id === 'slow').ready, false);
 });
 
+test('knowledge settings: switches, location, units, HTTPS feeds and followed teams', () => {
+  const r = applyPatch(DEFAULTS, { online: { enabled: false, weather: false }, location: { city: 'London, UK', lat: 51.5, lon: -0.12, country: 'GB', units: 'C' }, news: { feeds: ['https://feeds.bbci.co.uk/news/rss.xml'] }, sports: { follow: [{ league: 'nfl', team: 'Cowboys' }] } }, regs());
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.config.online.enabled, false);
+  assert.equal(r.config.online.news, true);
+  assert.equal(r.config.location.country, 'GB');
+  assert.equal(r.config.location.units, 'C');
+  assert.equal(r.config.location.lat, 51.5);
+  assert.equal(r.config.news.feeds.length, 1);
+  assert.deepEqual(r.config.sports.follow, [{ league: 'nfl', team: 'Cowboys' }]);
+  assert.equal(DEFAULTS.online.enabled, true);
+});
+
+test('knowledge settings: reject malformed switches, coordinates, feeds and teams', () => {
+  const patch = { online: { wiki: 'false' }, location: { city: '', lat: 91, lon: '5', units: 'K' }, news: { feeds: ['http://evil.example/rss', 'https://127.0.0.1/rss', 'https://localhost/rss', 'https://user:pass@feeds.bbci.co.uk/rss'] }, sports: { follow: [{ league: 'bogus', team: '' }] } };
+  const r = applyPatch(DEFAULTS, patch, regs());
+  assert.ok(r.errors.length >= 5);
+  assert.deepEqual(r.config.online, DEFAULTS.online);
+  assert.deepEqual(r.config.location, DEFAULTS.location);
+  assert.deepEqual(r.config.news, DEFAULTS.news);
+  assert.deepEqual(r.config.sports, DEFAULTS.sports);
+});
+
+test('describe: library readiness is returned without requiring an installed library', async () => {
+  const library = { installed: false, path: 'C:\\JarvisData\\library', articles: null, running: false, sizeBytes: 0 };
+  const d = await describeSettings({ config: DEFAULTS, ...regs(), library });
+  assert.deepEqual(d.library, library);
+});
+
 test('applyPatch: routing (auto, fast model) and start with Windows', () => {
   const { providers, engines } = regs();
   const { config, errors } = applyPatch(DEFAULTS, { startAtLogin: false, ollama: { auto: false, fastModel: 'qwen3.5:2b' } }, { providers, engines });
