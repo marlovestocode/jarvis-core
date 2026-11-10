@@ -1,0 +1,26 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+body { font-family: var(--font-sans); color: var(--text); font-size: 13px; user-select: none; }
+button, select, input { font: inherit; color: inherit; }
+.panel { position: absolute; inset: 6px; display: grid; grid-template-rows: auto 1fr; background: rgba(var(--base-rgb), 0.92); border: var(--line) solid rgba(var(--accent-rgb), var(--a-line)); border-radius: 6px; box-shadow: 0 0 var(--glow-r) rgba(var(--accent-rgb), 0.25); overflow: hidden; }
+.head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: var(--line) solid rgba(var(--accent-rgb), 0.2); -webkit-app-region: drag; }
+.head button { -webkit-app-region: no-drag; }
+.brand { letter-spacing: var(--title-spacing); color: var(--accent); flex: 1; }
+.saved { font-size: 10px; letter-spacing: 0.2em; color: var(--muted); }
+.icon-btn { background: none; border: var(--line) solid rgba(var(--accent-rgb), 0.3); width: 24px; height: 24px; border-radius: var(--radius); cursor: pointer; padding: 0; }
+.icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+.body { overflow-y: auto; padding: 6px 16px 16px; }
+h2 { font-size: 10px; font-weight: normal; letter-spacing: var(--title-spacing); color: var(--muted); margin: 14px 0 6px; border-bottom: var(--line) solid rgba(var(--accent-rgb), 0.12); padding-bottom: 4px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 0; }
+.row > span { color: var(--text); }
+.row b { color: var(--accent); font-weight: normal; margin-left: 6px; }
+select, input.key { width: 260px; padding: 5px 8px; background: rgba(var(--accent-rgb), 0.06); border: var(--line) solid rgba(var(--accent-rgb), 0.3); border-radius: var(--radius); outline: none; }
+select:focus, input.key:focus { border-color: var(--accent); }
+select option { background: var(--base); }
+input.key { cursor: pointer; font-family: var(--font-mono); font-size: 12px; }
+input.key.capturing { border-color: var(--gold); color: var(--gold); }
+input[type=range] { width: 260px; accent-color: var(--accent); }
+input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); }
+.hint { margin: 0 0 4px; font-size: 11px; color: var(--muted); }
+.warn { margin: 6px 0 0; font-size: 11px; color: var(--gold); }
+.err { margin: 10px 0 0; font-size: 11px; color: var(--crit); }

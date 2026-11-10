@@ -16,6 +16,12 @@ contextBridge.exposeInMainWorld('jarvis', {
   openSettings: () => ipcRenderer.invoke('ai:settings'),
   voice: () => ipcRenderer.invoke('ai:voice'),
   status: () => ipcRenderer.invoke('ai:status'),
+  settings: {
+    get: () => ipcRenderer.invoke('settings:get'),
+    set: patch => ipcRenderer.invoke('settings:set', patch),
+    capture: on => ipcRenderer.invoke('settings:capture', !!on),
+    close: () => ipcRenderer.invoke('settings:close'),
+  },
   onEvent: fn => {
     const h = (_e, ev) => fn(ev);
     ipcRenderer.on('ai:event', h);

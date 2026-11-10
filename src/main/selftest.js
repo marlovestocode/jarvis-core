@@ -88,7 +88,38 @@ async function run(ctx, outDir) {
       const t1 = Date.now();
       await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
       while (ctx.voice.speaking && Date.now() - t1 < 3000) await wait(20);
-      step('esc while speaking', { stillSpeaking: ctx.voice.speaking, ms: Date.now() - t1, states });
+      step('esc while speaking', { stillSpeaking: ctx.voice.speaking, ms: Date.now() - t1, states: states.slice() });
+      // second turn: let the reply finish on its own
+      states.length = 0;
+      ctx.voice.listen();
+      for (let o = 0; o + 320 <= all.length; o += 320) ctx.voice.feed(all.subarray(o, o + 320), 16000);
+      const t2 = Date.now();
+      while (states.at(-1) !== 'idle' && Date.now() - t2 < 20000) await wait(50);
+      step('natural end', { states, ms: Date.now() - t2 });
+    } else if (mode === 'settings') {
+      const { globalShortcut } = require('electron');
+      const sw = ctx.windows.showSettings();
+      if (sw.webContents.isLoading()) await new Promise(r => sw.webContents.once('did-finish-load', r));
+      await wait(1500);
+      fs.writeFileSync(path.join(outDir, 'progress.txt'), 'loaded\n');
+      const sjs = c => sw.webContents.executeJavaScript(c, true);
+      const read = () => sjs(`({ provider: [...document.querySelectorAll('#provider option')].map(o => o.textContent), providerDetail: document.getElementById('providerDetail').textContent,
+        stt: [...document.querySelectorAll('#stt option')].map(o => o.textContent), tts: document.getElementById('tts').value, wake: document.getElementById('wake').value,
+        mics: document.querySelectorAll('#mic option').length, rate: document.getElementById('rate').value, hkChat: document.getElementById('hkChat').value, hkWarn: document.getElementById('hkWarn').textContent })`);
+      step('settings open', await read());
+      fs.appendFileSync(path.join(outDir, 'progress.txt'), 'read\n');
+      fs.writeFileSync(path.join(outDir, 'settings.png'), (await sw.webContents.capturePage()).toPNG());
+      const res = await sjs(`window.jarvis.settings.set({ voiceRate: 1.6, hotkeys: { chat: 'Control+Alt+J' } })`);
+      step('after set', { errors: res.errors, rate: res.config.voiceRate, hotkeys: res.config.hotkeys,
+        ctrlSpaceRegistered: globalShortcut.isRegistered('Control+Space'), ctrlAltJRegistered: globalShortcut.isRegistered('Control+Alt+J'),
+        file: JSON.parse(fs.readFileSync(path.join(ctx.dataDir, 'config.json'), 'utf8')) });
+      // the next spoken reply uses the new rate
+      const seen = [];
+      const realReq = ctx.speechHost.request;
+      ctx.speechHost.request = (cmd, args) => { if (cmd === 'speak') seen.push(args.rate); return realReq(cmd, args); };
+      const h = ctx.engines.tts.get('windows').speak('Rate check.', { rate: ctx.config.voiceRate });
+      await Promise.race([h.done, wait(10000)]);
+      step('speak rate', { sapiRate: seen });
     } else if (mode === 'mic-bad') {
       ctx.config = { ...ctx.config, micDeviceId: 'no-such-device' };
       ctx.windows.showChat();
