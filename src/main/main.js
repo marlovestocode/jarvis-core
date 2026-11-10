@@ -31,6 +31,9 @@ const { startBridge } = require('../core/bridge');
 const { createEngineRegistries } = require('../core/voice/engines');
 const { createSpeechHost, windowsTts, windowsStt, windowsWake } = require('../core/voice/windows-speech');
 const { createVoiceController } = require('../core/voice/controller');
+const { createWhisperStt } = require('../core/voice/whisper');
+const { createPiperTts } = require('../core/voice/piper');
+const os = require('node:os');
 const { registerHotkeys } = require('./hotkeys');
 const { createMic } = require('./mic');
 const { guardWebContents } = require('./guard');
@@ -109,11 +112,28 @@ ctx.engines = createEngineRegistries();
 ctx.engines.stt.add(windowsStt(ctx.speechHost));
 ctx.engines.tts.add(windowsTts(ctx.speechHost));
 ctx.engines.wake.add(windowsWake(ctx.speechHost));
-const engine = kind => ctx.engines[kind].get(ctx.config.engines[kind]) || ctx.engines[kind].get('none');
+// Local neural engines (downloaded into %LOCALAPPDATA%jarvis-coreengines); Windows speech is the fallback.
+const ENGINES = process.env.JARVIS_ENGINES || path.join(process.env.LOCALAPPDATA || app.getPath('appData'), 'jarvis-core', 'engines');
+ctx.whisper = createWhisperStt({
+  exe: path.join(ENGINES, 'whisper', 'bin', 'Release', 'whisper-server.exe'), model: path.join(ENGINES, 'whisper', 'ggml-base.en.bin'),
+  prompt: 'JARVIS, Ollama, sysmon, Wallpaper Engine, Ryzen, RTX 3050, GPU, CPU, VRAM, Spotify, Discord, Steam.', log: ctx.log,
+});
+ctx.piper = createPiperTts({
+  exe: path.join(ENGINES, 'piper', 'bin', 'piper', 'piper.exe'), model: path.join(ENGINES, 'piper', 'en_GB-alan-medium.onnx'),
+  outDir: path.join(os.tmpdir(), 'jarvis-tts'), play: (pcm, rate, o) => ctx.mic.play(pcm, rate, o), log: ctx.log,
+});
+ctx.engines.stt.add(ctx.whisper);
+ctx.engines.tts.add(ctx.piper);
+const engine = kind => {
+  const e = ctx.engines[kind].get(ctx.config.engines[kind]);
+  if (e && (!e.available || e.available())) return e;
+  return ctx.engines[kind].get('windows') || ctx.engines[kind].get('none');
+};
 ctx.voice = createVoiceController({
   bus: ctx.bus, orchestrator: ctx.orchestrator,
   engines: { stt: () => engine('stt'), tts: () => engine('tts'), wake: () => engine('wake') },
   getConfig: ctx.getConfig, getSessionId: () => ctx.sessionId, setSessionId: id => { ctx.sessionId = id; },
+  vadOptions: { silenceMs: 700 }, // Whisper is fast enough to end a phrase sooner
 });
 ctx.micOk = true;
 ctx.startVoice = () => {
@@ -127,7 +147,7 @@ ctx.bus.on('state', () => {
   if (!ctx.mic) return;
   if (ctx.voice.active) ctx.mic.start(); else ctx.mic.stop();
 });
-ctx.onQuit = [() => ctx.speechHost.close(), () => ctx.mic?.destroy()];
+ctx.onQuit = [() => ctx.speechHost.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close()];
 
 app.on('web-contents-created', (_e, wc) => guardWebContents(wc));
 app.on('second-instance', () => ctx.windows?.showChat());
@@ -208,7 +228,13 @@ app.whenReady().then(async () => {
       const r = await fetch('http://127.0.0.1:47800/health', { signal: AbortSignal.timeout(1000) }).catch(() => null);
       return r?.ok ? 'linked' : { ok: false, detail: 'not running' };
     } },
-    { stage: 'voice', run: async () => { ctx.voice.applyWake(); return ctx.config.wakeEnabled ? 'wake word on' : 'on demand'; } },
+    { stage: 'voice', run: async () => {
+      ctx.voice.applyWake();
+      const stt = engine('stt'), tts = engine('tts');
+      tts.warm?.(ctx.config.voiceRate);
+      if (stt.warm) await stt.warm();
+      return `${stt.label} + ${tts.label}${ctx.config.wakeEnabled ? ' + wake word' : ''}`;
+    } },
   ]).then(r => { ctx.log(`boot ${r.ok ? 'ok' : 'partial'} in ${r.ms} ms`); return r; });
 });
 

@@ -52,7 +52,61 @@ function createMic({ getDeviceId, onFrame, onStatus, log = () => {} }) {
     send({ cmd: 'stop' });
   }
 
-  return { start, stop, ensure, get running() { return running; }, destroy() { if (win && !win.isDestroyed()) win.destroy(); } };
+  // ---- speech playback through the same hidden window; real levels for the orb ----
+  let playSeq = 0;
+  const playing = new Map(); // id → { started(latency), ended(), failed(msg) }
+  ipcMain.on('mic:played', (e, m) => {
+    if (!fromMic(e)) return;
+    const p = playing.get(m.id);
+    if (!p) return;
+    if (m.phase === 'started') p.started(m.latency || 0);
+    else if (m.phase === 'error') p.failed(m.error);
+    else p.ended();
+  });
+  const whenReady = () => new Promise(res => {
+    ensure();
+    const check = () => (ready ? res() : setTimeout(check, 20));
+    check();
+  });
+
+  async function play(pcm, rate, { signal, onLevel } = {}) {
+    if (signal?.aborted) return;
+    await whenReady();
+    const id = ++playSeq;
+    const durMs = pcm.length / rate * 1000;
+    await new Promise((resolve, reject) => {
+      let timer = null, t0 = 0, guard = null;
+      const finish = err => {
+        clearInterval(timer); clearTimeout(guard); playing.delete(id);
+        signal?.removeEventListener?.('abort', onAbort);
+        onLevel?.(0);
+        err ? reject(new Error(err)) : resolve();
+      };
+      const onAbort = () => { send({ cmd: 'stop-play' }); finish(); };
+      playing.set(id, {
+        started: latency => {
+          t0 = Date.now() + latency * 1000;
+          timer = setInterval(() => onLevel?.(levelAt(pcm, rate, (Date.now() - t0) / 1000)), 33);
+        },
+        ended: () => finish(),
+        failed: msg => finish('playback failed: ' + msg),
+      });
+      guard = setTimeout(() => finish(), durMs + 3000); // never hang on a lost 'ended'
+      signal?.addEventListener?.('abort', onAbort, { once: true });
+      send({ cmd: 'play', id, pcm, rate });
+    });
+  }
+
+  return { start, stop, ensure, play, get running() { return running; }, destroy() { if (win && !win.isDestroyed()) win.destroy(); } };
 }
 
-module.exports = { createMic, toInt16 };
+// RMS (0..1, scaled for display) of the ~33 ms of audio playing at time t.
+function levelAt(pcm, rate, t, win = 0.033) {
+  const a = Math.max(0, Math.floor(t * rate)), b = Math.min(pcm.length, a + Math.floor(win * rate));
+  if (b <= a) return 0;
+  let s = 0;
+  for (let i = a; i < b; i++) s += (pcm[i] / 32768) ** 2;
+  return Math.min(1, Math.sqrt(s / (b - a)) * 3);
+}
+
+module.exports = { createMic, toInt16, levelAt };

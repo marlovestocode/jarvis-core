@@ -1,6 +1,7 @@
 // Voice turn (spec §4): listen → VAD → STT → chat turn → TTS, with barge-in.
 // engines.{stt,tts,wake} may be engine objects or functions returning the current engine.
 const { createVad } = require('./vad');
+const { speakable, createSentenceSplitter } = require('./speech-text');
 
 const SPEAKING_GAIN = 3; // speaker echo must not cut TTS off (Review Focus 1)
 const MAX_BUFFER_MS = 31000;
@@ -27,6 +28,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
 
   function listen() {
     abortOp();
+    if (orchestrator.busy) orchestrator.stop(); // talking over JARVIS ends the reply it is writing
     turn++;
     mode = 'listening';
     chunks = []; chunkMs = 0;
@@ -87,10 +89,31 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     if (my !== turn) return;
     if (!text) { mode = 'idle'; setState('idle'); return; }
 
+    // Streaming speech: engines with createStream speak each sentence as soon as the model
+    // finishes writing it, instead of waiting for the whole reply.
+    const tts = pick('tts');
+    const streaming = typeof tts?.createStream === 'function';
+    let stream = null, offTok = null, splitter = null;
+    const feedText = s => {
+      const t = speakable(s);
+      if (!t || my !== turn) return;
+      if (!stream) {
+        op = new AbortController();
+        try { stream = tts.createStream({ rate: getConfig().voiceRate, signal: op.signal }); } catch (err) { logOnce('Text-to-speech', err); return; }
+        beginSpeaking(stream, op.signal);
+      }
+      stream.push(t);
+    };
+    if (streaming) {
+      splitter = createSentenceSplitter();
+      offTok = bus.on('token', ev => { if (my === turn) for (const s of splitter.push(ev.text)) feedText(s); });
+    }
+
     let res;
     try {
       res = await orchestrator.send(getSessionId(), text, { source: 'voice' });
     } catch (err) {
+      offTok?.();
       if (my !== turn) return;
       mode = 'idle';
       if (err?.message === 'BUSY') {
@@ -102,14 +125,31 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       }
       return;
     }
+    offTok?.();
     if (res?.sessionId) setSessionId(res.sessionId);
     if (my !== turn) return;
     if (res.error || res.stopped || !res.reply || !res.reply.trim()) {
+      if (stream) abortOp();
       mode = 'idle';
       if (!res.error && !res.stopped) setState('idle'); // the orchestrator already ended error/stop turns
       return;
     }
-    await speak(res.reply, my);
+    if (!streaming) { await speak(res.reply, my); return; }
+    for (const s of splitter.flush()) feedText(s);
+    if (!stream) { mode = 'idle'; setState('idle'); return; }
+    stream.end();
+    try { await stream.done; } catch (err) { if (!op?.signal.aborted) logOnce('Text-to-speech', err); }
+    if (my === turn && mode === 'speaking') { mode = 'idle'; op = null; setState('idle'); }
+  }
+
+  // Speech is starting: raise the barge-in threshold (echo) and show real voice levels.
+  function beginSpeaking(handle, signal) {
+    mode = 'speaking';
+    vad.reset(); vad.setGain(SPEAKING_GAIN);
+    setState('speaking');
+    (async () => {
+      try { for await (const v of handle.levels || []) { if (signal.aborted) break; bus.emit('level', { source: 'tts', rms: v }); } } catch { /* cosmetic */ }
+    })();
   }
 
   async function speak(text, my) {

@@ -102,7 +102,8 @@ async function run(ctx, outDir) {
       await wait(300);
       for (let o = 0; o + 320 <= all.length; o += 320) ctx.voice.feed(all.subarray(o, o + 320), 16000);
       const t0 = Date.now();
-      while (!ctx.voice.speaking && Date.now() - t0 < 15000) await wait(50);
+      while (!ctx.voice.speaking && Date.now() - t0 < 30000) await wait(10);
+      step('first speech', { msFromEndOfSpeech: Date.now() - t0, stt: ctx.engines.stt.get(ctx.config.engines.stt)?.label, tts: ctx.engines.tts.get(ctx.config.engines.tts)?.label });
       const s = ctx.sessions.load(ctx.sessionId);
       step('voice turn', { speaking: ctx.voice.speaking, ms: Date.now() - t0, lastUser: s?.messages.filter(m => m.role === 'user').at(-1)?.content, reply: s?.messages.at(-1)?.content });
       await wait(1200);
@@ -116,8 +117,9 @@ async function run(ctx, outDir) {
       ctx.voice.listen();
       for (let o = 0; o + 320 <= all.length; o += 320) ctx.voice.feed(all.subarray(o, o + 320), 16000);
       const t2 = Date.now();
-      while (states.at(-1) !== 'idle' && Date.now() - t2 < 20000) await wait(50);
-      step('natural end', { states, ms: Date.now() - t2 });
+      let tSpeak = 0;
+      while (states.at(-1) !== 'idle' && Date.now() - t2 < 20000) { if (!tSpeak && ctx.voice.speaking) tSpeak = Date.now() - t2; await wait(10); }
+      step('natural end', { states, warmFirstSpeechMs: tSpeak, totalMs: Date.now() - t2 });
     } else if (mode === 'settings') {
       const { globalShortcut } = require('electron');
       const sw = ctx.windows.showSettings();

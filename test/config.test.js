@@ -23,7 +23,7 @@ test('config: unknown keys dropped, bad types → default for that key', () => {
   assert.equal(c.voiceRate, 1.0);
   assert.equal('bogus' in c, false);
   assert.equal(c.wakeEnabled, true);
-  assert.deepEqual(c.engines, { stt: 'foo', tts: 'windows', wake: 'windows' });
+  assert.deepEqual(c.engines, { stt: 'foo', tts: 'piper', wake: 'windows' });
   assert.deepEqual(c.hotkeys, DEFAULTS.hotkeys);
   assert.equal(c.micDeviceId, 'abc');
 });
@@ -46,5 +46,5 @@ test('config: corrupt JSON → DEFAULTS and file renamed config.broken.json', ()
 test('config: DEFAULTS is not mutated by callers', () => {
   const c = loadConfig(tmp());
   c.engines.stt = 'zzz';
-  assert.equal(DEFAULTS.engines.stt, 'windows');
+  assert.equal(DEFAULTS.engines.stt, 'whisper');
 });

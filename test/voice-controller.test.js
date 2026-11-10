@@ -225,3 +225,67 @@ test('wake engine: applyWake starts it when enabled; wake → event + listening'
   vc.applyWake();
   assert.equal(stops, 1);
 });
+
+// ---- streaming speech: speak sentence by sentence while the model is still writing ----
+function streamingTts() {
+  const t = { id: 'stream', label: 'S', pushes: [], ended: false, aborted: false, async status() { return { ready: true }; } };
+  t.createStream = ({ signal }) => {
+    let finish;
+    const done = new Promise(r => { finish = r; });
+    signal?.addEventListener('abort', () => { t.aborted = true; finish(); }, { once: true });
+    async function* levels() { yield 0.5; }
+    return { push: s => t.pushes.push({ s, at: Date.now() }), end: () => { t.ended = true; setTimeout(finish, 20); }, levels: levels(), done };
+  };
+  t.speak = () => { throw new Error('should stream'); };
+  return t;
+}
+function streamingOrchestrator(bus, parts, gapMs = 15) {
+  const o = { busy: false, stops: 0, sends: [], doneAt: 0 };
+  o.stop = () => { o.stops++; o.stopped = true; };
+  o.send = async (id, text, opts) => {
+    o.sends.push(text); o.busy = true; o.stopped = false;
+    bus.emit('state', { state: 'thinking' });
+    let reply = '';
+    for (const p of parts) {
+      if (o.stopped) break;
+      await new Promise(r => setTimeout(r, gapMs));
+      reply += p; bus.emit('token', { text: p });
+    }
+    o.busy = false; o.doneAt = Date.now();
+    return { reply, stopped: !!o.stopped, sessionId: 's' };
+  };
+  return o;
+}
+
+test('streaming: first sentence is spoken before the reply finishes; markdown is cleaned', async () => {
+  const bus = createBus(); const events = []; bus.on('*', e => events.push(e));
+  const tts = streamingTts();
+  const orc = streamingOrchestrator(bus, ['The energy is **2.48 eV**.', ' That is green ', 'light.', ' Anything else?']);
+  const vc = createVoiceController({ bus, orchestrator: orc, engines: { stt: fakeStt(), tts, wake: null }, getConfig: () => DEFAULTS, getSessionId: () => 's' });
+  vc.listen();
+  feedAll(vc, [...noise(300), ...tone(600), ...noise(900)]);
+  await tick(200);
+  assert.deepEqual(tts.pushes.map(p => p.s), ['The energy is 2.48 electron volts.', 'That is green light.', 'Anything else?']);
+  assert.ok(tts.pushes[0].at < orc.doneAt, 'speech started before the model finished');
+  assert.equal(tts.ended, true);
+  const st = states(events);
+  assert.ok(st.indexOf('speaking') > st.indexOf('thinking'));
+  assert.equal(st.at(-1), 'idle');
+  assert.ok(events.some(e => e.type === 'level' && e.source === 'tts'));
+});
+
+test('streaming: talking over JARVIS stops the speech and the model', async () => {
+  const bus = createBus();
+  const tts = streamingTts();
+  const orc = streamingOrchestrator(bus, ['First sentence here.', ' Second', ' part', ' keeps', ' going', ' on.'], 40);
+  const vc = createVoiceController({ bus, orchestrator: orc, engines: { stt: fakeStt(), tts, wake: null }, getConfig: () => DEFAULTS, getSessionId: () => 's' });
+  vc.listen();
+  feedAll(vc, [...noise(300), ...tone(600), ...noise(900)]);
+  await tick(90);
+  assert.equal(vc.speaking, true);
+  feedAll(vc, [...noise(300), ...tone(200, 0.4)]);
+  await tick(20);
+  assert.equal(tts.aborted, true);
+  assert.ok(orc.stops >= 1, 'model stopped too');
+  assert.equal(vc.mode, 'listening');
+});

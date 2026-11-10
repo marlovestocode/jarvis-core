@@ -39,9 +39,34 @@
     }
   }
 
+  // ---- speech playback (Piper PCM from main). One output context, one source at a time. ----
+  let out = null, current = null;
+  function play({ id, pcm, rate }) {
+    try {
+      if (!out) out = new AudioContext({ latencyHint: 'interactive' });
+      if (out.state === 'suspended') out.resume();
+      const samples = pcm instanceof Int16Array ? pcm : new Int16Array(pcm.buffer || pcm);
+      const buf = out.createBuffer(1, samples.length, rate);
+      const ch = buf.getChannelData(0);
+      for (let i = 0; i < samples.length; i++) ch[i] = samples[i] / 32768;
+      const src = out.createBufferSource();
+      src.buffer = buf;
+      src.connect(out.destination);
+      src.onended = () => { if (current === src) current = null; window.micBridge.played(id, 'ended'); };
+      current = src;
+      src.start();
+      window.micBridge.played(id, 'started', out.outputLatency || out.baseLatency || 0);
+    } catch (err) {
+      window.micBridge.played(id, 'error', 0, String(err && err.message || err));
+    }
+  }
+  function stopPlay() { if (current) { try { current.stop(); } catch (e) { /* ended */ } current = null; } }
+
   window.micBridge.onCommand(c => {
     if (c.cmd === 'start') start(c.deviceId || null);
     else if (c.cmd === 'stop') stop();
+    else if (c.cmd === 'play') play(c);
+    else if (c.cmd === 'stop-play') stopPlay();
   });
   window.micBridge.ready();
 })();
