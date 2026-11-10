@@ -4,6 +4,7 @@
   const log = $('log'), list = $('list'), search = $('search'), text = $('text');
   const sendBtn = $('sendBtn'), stopBtn = $('stopBtn'), micBtn = $('micBtn'), chip = $('chip'), stateEl = $('state');
   const wave = $('wave').getContext('2d');
+  window.MiniOrbInstance = window.MiniOrb ? window.MiniOrb.create($('orb')) : null;
 
   let session = null;
   let chats = [];

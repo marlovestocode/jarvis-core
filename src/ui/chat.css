@@ -48,7 +48,7 @@ button:disabled { cursor: not-allowed; opacity: 0.4; }
 .msg.user { align-self: flex-end; background: rgba(var(--accent-rgb), 0.12); border: var(--line) solid rgba(var(--accent-rgb), 0.3); white-space: pre-wrap; }
 .msg.assistant { align-self: flex-start; background: rgba(var(--surface-rgb), 0.7); border: var(--line) solid rgba(var(--accent-rgb), 0.15); }
 .msg.tool { align-self: flex-start; font-family: var(--font-mono); font-size: 11px; color: var(--muted); padding: 3px 8px; border-left: 2px solid rgba(var(--accent-rgb), 0.4); }
-.msg.live::after { content: '▍'; color: var(--accent); animation: blink 1s steps(2) infinite; }
+.msg.live > :last-child::after, .msg.live:empty::after { content: '▍'; color: var(--accent); animation: blink 1s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 .msg p { margin: 0 0 6px; } .msg p:last-child { margin-bottom: 0; }
 .msg h1, .msg h2, .msg h3 { margin: 4px 0 6px; font-weight: normal; color: var(--accent-soft); letter-spacing: 0.06em; }

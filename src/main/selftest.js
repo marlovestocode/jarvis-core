@@ -51,6 +51,18 @@ async function run(ctx, outDir) {
       await wait(1000);
       step('list', await dom());
       await shot('chat-list');
+    } else if (mode === 'orb') {
+      ctx.windows.showChat();
+      await wait(600);
+      await type('hello orb');
+      await wait(90);
+      await shot('orb-streaming');
+      await wait(2000);
+      ctx.bus.emit('state', { state: 'error', detail: 'selftest' });
+      await wait(60);
+      await shot('orb-error');
+      ctx.bus.emit('state', { state: 'idle' });
+      step('orb', await dom());
     } else if (mode === 'hotkey') {
       const t0 = Date.now();
       while (!win().isVisible() && Date.now() - t0 < 15000) await wait(100);
