@@ -10,19 +10,22 @@ const EXPLAIN = /\b(explain|why|how does|how do|compare|difference between|analy
 const THINK = /\b(prove|proof|derive|derivation|show that|step by step|puzzle|riddle|logic|paradox|optimi[sz]e|trade-?offs?|catch up|how far|how long until|word problem)\b/i;
 const ASK_THINK = /\b(think (?:hard|carefully|deeply|step by step)|reason carefully)\b/i;
 const CHAT = /^(hi|hey|hello|yo|thanks|thank you|thx|ok|okay|cool|nice|good (?:morning|night|evening|afternoon)|bye|goodbye|who are you|what are you|how are you|tell me a joke|joke)\b/i;
+const LIVE = /\b(weather|forecast|rain|snow|wind|humidity|alerts?|warnings?|advisories|news|headlines?|sports?|scores?|standings|schedule|games?|nfl|nba|mlb|nhl|cowboys|mavericks|rangers|stars|chiefs|lakers|warriors|yankees|tomorrow)\b/i;
+const FACT = /^(?:who|what|when|where|why|how (?:does|do|did)|explain|define)\b|\b(read|article|section)\b/i;
 
 function route(text, { source = 'text' } = {}) {
   const t = String(text || '').trim();
   const words = t.split(/\s+/).filter(Boolean).length;
   const asked = ASK_THINK.test(t);
   const technical = MATH.test(t) || SCIENCE.test(t) || UNITS.test(t) || CODE.test(t) || SYSTEM.test(t) || DATES.test(t);
-  const heavy = technical || EXPLAIN.test(t) || words > 25 || (t.match(/\?/g) || []).length > 1;
+  const knowledge = LIVE.test(t) || (!CHAT.test(t) && FACT.test(t));
+  const heavy = technical || knowledge || EXPLAIN.test(t) || words > 25 || (t.match(/\?/g) || []).length > 1;
   // quick chat: no tools and a short prompt — answers start in well under a second
   if (!heavy && !asked && (CHAT.test(t) || words <= 12)) return { tier: 'fast', think: false, tools: false, reason: 'chat' };
   // reasoning: proofs/derivations/multi-step word problems; long multi-part asks
   const reasoning = THINK.test(t) || (words > 30 && (MATH.test(t) || SCIENCE.test(t)));
   const think = asked || (source !== 'voice' && reasoning);
-  return { tier: 'deep', think, reason: asked ? 'asked to think' : reasoning ? 'reasoning' : technical ? 'technical' : 'long' };
+  return { tier: 'deep', tools: true, think, reason: asked ? 'asked to think' : reasoning ? 'reasoning' : knowledge ? 'knowledge' : technical ? 'technical' : 'long' };
 }
 
 module.exports = { route };

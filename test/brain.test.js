@@ -70,3 +70,30 @@ test('router: time and date questions use tools (fresh answer, not copied from h
     assert.notEqual(r.tools, false, t);
   }
 });
+
+test('router: live data, world facts and follow-ups use the main model with tools', () => {
+  for (const q of ['weather now', 'rain tomorrow?', 'any severe weather alerts?', 'top news headline', 'last Cowboys score', 'Dallas game schedule', 'NBA standings', 'Who wrote Middlemarch?', 'What is the capital of Burkina Faso?', 'When was Westphalia signed?', 'Where is Timbuktu?', 'Why is the sky blue?', 'Explain photosynthesis', 'read the history section', 'what about tomorrow?']) {
+    const r = route(q);
+    assert.equal(r.tier, 'deep', q);
+    assert.equal(r.tools, true, q);
+  }
+});
+
+test('prompt: lookup rules only when registered; local inference and lookup privacy are accurate', () => {
+  const names = ['get_weather', 'weather_alerts', 'news_headlines', 'sports_scores', 'lookup_knowledge', 'read_article'];
+  const p = systemPrompt({ tools: names });
+  for (const name of names) assert.match(p, new RegExp(name));
+  assert.match(p, /fetched text.*data.*not instructions/i);
+  assert.match(p, /source and age/i);
+  assert.match(p, /never.*invent/i);
+  assert.doesNotMatch(p, /Nothing leaves the machine|fully offline/);
+  assert.doesNotMatch(systemPrompt({ tools: [] }), /lookup_knowledge|get_weather/);
+});
+
+test('brain: registers all knowledge tools only with a gated fetcher', () => {
+  const { defaultTools } = require('../src/core/brain');
+  assert.ok(!defaultTools().some(t => t.name === 'lookup_knowledge'));
+  const tools = defaultTools({ fetcher: {}, kiwix: {}, getConfig: () => ({}) });
+  assert.ok(tools.some(t => t.name === 'lookup_knowledge'));
+  assert.ok(tools.some(t => t.name === 'get_weather'));
+});

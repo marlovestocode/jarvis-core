@@ -28,6 +28,9 @@ const brain = require('../core/brain');
 const { createHardwareProbe } = require('../core/brain/hardware');
 const { runBoot } = require('../core/boot');
 const { createOrchestrator } = require('../core/orchestrator');
+const { createPolicy } = require('../core/net/policy');
+const { createFetcher } = require('../core/net/fetcher');
+const { createKiwix } = require('../core/knowledge/kiwix');
 const { startBridge } = require('../core/bridge');
 const { createEngineRegistries } = require('../core/voice/engines');
 const { createSpeechHost, windowsTts, windowsStt, windowsWake } = require('../core/voice/windows-speech');
@@ -91,7 +94,9 @@ async function jarvisStatus() {
     hotkeys: ctx.hotkeys.failed.length ? `taken: ${ctx.hotkeys.failed.join(', ')}` : `chat ${c.hotkeys.chat}, voice ${c.hotkeys.voice}`,
   };
 }
-ctx.toolList = brain.defaultTools({ getStatus: jarvisStatus });
+ctx.fetcher = createFetcher({ policy: createPolicy(ctx.getConfig), bus: ctx.bus, cacheDir: path.join(DATA_DIR, 'cache') });
+ctx.kiwix = createKiwix({ exe: path.join(__dirname, '../../engines/kiwix/kiwix-serve.exe'), zimDir: 'C:\\JarvisData\\library', log: ctx.log });
+ctx.toolList = brain.defaultTools({ getStatus: jarvisStatus, fetcher: ctx.fetcher, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus });
 ctx.tools = createToolRunner(ctx.toolList);
 ctx.orchestrator = createOrchestrator({
   bus: ctx.bus, sessions: ctx.sessions, providers: ctx.providers, tools: ctx.tools, getConfig: ctx.getConfig,
@@ -174,7 +179,7 @@ ctx.bus.on('state', () => {
   // with the wake word on, the mic stays open (local only) so "Jarvis, <command>" keeps its first words
   if (ctx.voice.active || ctx.config.wakeEnabled) ctx.mic.start(); else ctx.mic.stop();
 });
-ctx.onQuit = [() => ctx.speechHost.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close()];
+ctx.onQuit = [() => ctx.speechHost.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close()];
 
 app.on('web-contents-created', (_e, wc) => guardWebContents(wc));
 app.on('second-instance', () => ctx.windows?.showChat());
@@ -240,6 +245,13 @@ app.whenReady().then(async () => {
     { stage: 'core', run: async () => `v${version}` },
     { stage: 'bridge', run: async () => (ctx.bridge ? `127.0.0.1:${ctx.bridge.port}` : { ok: false, detail: 'off' }) },
     { stage: 'hardware', run: async () => { const h = await ctx.hardware.get(); return h.gpu || h.cpu || 'unknown'; } },
+    { stage: 'online', run: async () => `allowlisted lookups ${ctx.config.online.enabled ? 'on' : 'off'}` },
+    { stage: 'library', run: async () => {
+      if (!ctx.kiwix.available()) return { ok: false, detail: 'not installed (online Wikipedia available when allowed)' };
+      if (!await ctx.kiwix.warm()) return { ok: false, detail: 'offline Wikipedia server unavailable' };
+      const info = await ctx.kiwix.info();
+      return `offline Wikipedia${info.articles ? ` (${info.articles.toLocaleString()} articles)` : ''}`;
+    } },
     { stage: 'model', run: async () => {
       const st = await ctx.orchestrator.announce();
       const p = ctx.providers.get(ctx.config.provider);
