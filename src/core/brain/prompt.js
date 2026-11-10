@@ -18,7 +18,8 @@ const TOOL_HINTS = {
   media_control: 'media_control: play/pause, next, previous, volume, mute.',
 };
 
-function systemPrompt({ source = 'text', now = new Date(), tools = [], model, hardware } = {}) {
+function systemPrompt({ source = 'text', now = new Date(), tools = [], model, hardware, brief = false } = {}) {
+  if (brief) return briefPrompt({ source, now, hardware });
   const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${WEEKDAYS[now.getDay()]} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const L = [];
@@ -48,6 +49,16 @@ function systemPrompt({ source = 'text', now = new Date(), tools = [], model, ha
     for (const h of hints) L.push('- ' + h);
     L.push('After a tool answers, use its exact numbers in your reply.');
   }
+  return L.join('\n');
+}
+
+// Quick chat: identity, time, style. Small prompt = fast first token.
+function briefPrompt({ source, now, hardware }) {
+  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${WEEKDAYS[now.getDay()]} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const L = ['You are J.A.R.V.I.S., the personal AI of this Windows PC, running offline on its own GPU. Calm, witty, precise.', `Now: ${date}.`];
+  if (hardware?.gpu) L.push(`This PC: ${[hardware.cpu, hardware.gpu, hardware.ramGB && hardware.ramGB + ' GB RAM'].filter(Boolean).join(', ')}.`);
+  L.push(source === 'voice' ? 'Reply in one or two short spoken sentences, no markdown.' : 'Reply briefly and naturally. No LaTeX.');
+  L.push('If the user needs numbers, facts about the PC, or real work, answer as well as you can; they can ask a follow-up for details.');
   return L.join('\n');
 }
 

@@ -50,3 +50,15 @@ test('router: think only for reasoning-heavy text turns, never by default in voi
   assert.equal(route('Prove that the square root of 2 is irrational.', { source: 'voice' }).think, false);
   assert.equal(route('think hard: what is 2+2', { source: 'voice' }).think, true, 'explicit request wins');
 });
+
+test('router: quick chat turns ask for no tools (small prompt, no silly tool calls)', () => {
+  assert.equal(route('hello jarvis', { source: 'text' }).tools, false);
+  assert.notEqual(route('what gpu do I have?', { source: 'text' }).tools, false);
+});
+
+test('prompt: brief mode for quick chat is much shorter', () => {
+  const full = systemPrompt({ source: 'text', now: new Date(), tools: TOOLS });
+  const brief = systemPrompt({ source: 'text', now: new Date(), tools: [], brief: true });
+  assert.ok(brief.length < full.length * 0.6, `${brief.length} vs ${full.length}`);
+  assert.match(brief, /J\.A\.R\.V\.I\.S/);
+});

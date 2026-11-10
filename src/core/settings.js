@@ -24,8 +24,8 @@ function applyPatch(current, patch = {}, { providers, engines }) {
     if ('think' in patch.ollama) next.think = !!patch.ollama.think;
     if ('auto' in patch.ollama) next.auto = !!patch.ollama.auto;
     if ('fastModel' in patch.ollama) {
-      if (typeof patch.ollama.fastModel === 'string' && patch.ollama.fastModel.trim()) next.fastModel = patch.ollama.fastModel.trim();
-      else errors.push('Empty fast model');
+      if (typeof patch.ollama.fastModel === 'string') next.fastModel = patch.ollama.fastModel.trim(); // '' = use the main model
+      else errors.push('Bad fast model');
     }
     config.ollama = next;
   }

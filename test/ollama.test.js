@@ -295,3 +295,11 @@ test('ollama warm: loads main and fast models with keep_alive, never throws', as
   assert.deepEqual(r2.loaded, []);
   assert.match(r2.error, /not running/);
 });
+
+test('ollama: empty fastModel means quick chat uses the main model; warm loads only it', async () => {
+  const calls = [];
+  const p = createOllamaProvider({ getConfig: () => ({ ollama: { ...AUTO.ollama, fastModel: '' } }), fetch: fakeFetch({ ...routes2(), '/api/generate': jsonRes({}) }, calls) });
+  assert.equal(p.resolveModel({ tier: 'fast' }), 'jarvis-worker:latest');
+  const w = await p.warm();
+  assert.deepEqual(w.loaded, ['jarvis-worker:latest']);
+});

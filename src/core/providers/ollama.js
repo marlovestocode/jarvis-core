@@ -28,7 +28,7 @@ function createOllamaProvider({ getConfig, fetch: fetchImpl, statusTimeoutMs = 4
     return h;
   };
   const model = () => String(cfg().model || '');
-  const fastModel = () => String(cfg().fastModel || 'jarvis-router:latest');
+  const fastModel = () => String(cfg().fastModel || '');  // '' = quick chat on the main model
   const auto = () => cfg().auto !== false;
   const keepAlive = () => String(cfg().keepAlive || '30m');
   const caches = new Map(); // host|model → { at, info }

@@ -262,3 +262,13 @@ test('system prompt counts toward the context window', async () => {
   assert.ok(chars <= 400, `sent ${chars} chars`);
   assert.equal(sent.at(-1).content, 'Q'.repeat(50));
 });
+
+test('hints.tools === false: no tools sent and the prompt lists none', async () => {
+  const fp = createFakeProvider([{ type: 'token', text: 'hi' }, { type: 'done' }]);
+  const seen = [];
+  const { orc, s } = setup(fp, { orc: { systemPrompt: ctx => { seen.push(ctx); return 'S'; }, route: () => ({ tier: 'fast', think: false, tools: false }) } });
+  await orc.send(s.id, 'hello', { source: 'text' });
+  assert.equal(fp.calls[0].tools, undefined);
+  assert.deepEqual(seen[0].tools, []);
+  assert.equal(seen[0].brief, true);
+});

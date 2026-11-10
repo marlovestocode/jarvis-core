@@ -145,3 +145,14 @@ test('binds 127.0.0.1 only', async () => {
   assert.equal(br.address, '127.0.0.1');
   await br.close();
 });
+
+test('bridge: a client that connects soon after boot gets the boot events replayed; clients() counts', async () => {
+  const { bus, br } = await boot();
+  bus.emit('boot', { stage: 'core', ok: true });
+  bus.emit('boot', { stage: 'model', ok: true, detail: 'jarvis-worker' });
+  assert.equal(br.clients(), 0);
+  const got = stream(br.port, evs => evs.filter(e => e.event === 'boot').length >= 2);
+  const { events } = await got;
+  assert.deepEqual(events.filter(e => e.event === 'boot').map(e => e.data.stage), ['core', 'model']);
+  await br.close();
+});

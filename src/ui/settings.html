@@ -19,6 +19,8 @@
       <h2>MODEL</h2>
       <label class="row"><span>Provider</span><select id="provider"></select></label>
       <label class="row" id="modelRow" hidden><span>Model</span><select id="model"></select></label>
+      <label class="row" id="autoRow" hidden><span>Smart routing</span><input type="checkbox" id="auto"></label>
+      <label class="row" id="fastRow" hidden><span>Quick-chat model</span><select id="fastModel"></select></label>
       <label class="row" id="thinkRow" hidden><span>Thinking (slower)</span><input type="checkbox" id="think"></label>
       <p class="hint" id="providerDetail"></p>
     </section>
@@ -31,6 +33,10 @@
       <label class="row"><span>Microphone</span><select id="mic"></select></label>
       <p class="hint" id="micDetail"></p>
       <label class="row"><span>Voice rate <b id="rateVal"></b></span><input type="range" id="rate" min="0.5" max="2" step="0.05"></label>
+    </section>
+    <section>
+      <h2>STARTUP</h2>
+      <label class="row"><span>Start with Windows (tray)</span><input type="checkbox" id="startAtLogin"></label>
     </section>
     <section>
       <h2>HOTKEYS</h2>

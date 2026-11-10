@@ -17,7 +17,8 @@ function route(text, { source = 'text' } = {}) {
   const asked = ASK_THINK.test(t);
   const technical = MATH.test(t) || SCIENCE.test(t) || UNITS.test(t) || CODE.test(t) || SYSTEM.test(t) || DATES.test(t);
   const heavy = technical || EXPLAIN.test(t) || words > 25 || (t.match(/\?/g) || []).length > 1;
-  if (!heavy && !asked && (CHAT.test(t) || words <= 12)) return { tier: 'fast', think: false, reason: 'chat' };
+  // quick chat: no tools and a short prompt — answers start in well under a second
+  if (!heavy && !asked && (CHAT.test(t) || words <= 12)) return { tier: 'fast', think: false, tools: false, reason: 'chat' };
   // reasoning: proofs/derivations/multi-step word problems; long multi-part asks
   const reasoning = THINK.test(t) || (words > 30 && (MATH.test(t) || SCIENCE.test(t)));
   const think = asked || (source !== 'voice' && reasoning);

@@ -54,6 +54,25 @@ async function run(ctx, outDir) {
       await wait(1000);
       step('list', await dom());
       await shot('chat-list');
+    } else if (mode === 'brain') {
+      const seen = [];
+      ctx.bus.on('*', e => { if (['boot', 'route', 'turn', 'tool'].includes(e.type)) seen.push(e); });
+      ctx.windows.showChat();
+      const tb = Date.now();
+      while (!seen.some(e => e.type === 'boot' && e.stage === 'done') && Date.now() - tb < 60000) await wait(100);
+      step('boot', { ms: Date.now() - tb, stages: seen.filter(e => e.type === 'boot').map(e => `${e.stage}:${e.ok ? 'ok' : 'off'}:${e.detail}:${e.ms}ms`) });
+      for (const q of ['hello jarvis', 'What is the energy of a photon with wavelength 500 nm, in electronvolts?']) {
+        seen.length = 0;
+        await type(q);
+        await wait(300);
+        const t0 = Date.now();
+        while (ctx.orchestrator.busy && Date.now() - t0 < 120000) await wait(100);
+        await wait(400);
+        const s = ctx.sessions.load(ctx.sessionId);
+        step('ask', { q, ms: Date.now() - t0, route: seen.find(e => e.type === 'route'), turn: seen.find(e => e.type === 'turn'),
+          tools: seen.filter(e => e.type === 'tool' && e.phase === 'end').map(e => `${e.name}:${e.ok}`), reply: s.messages.at(-1)?.content });
+        await shot('brain-' + (q.length > 20 ? 'physics' : 'hello'));
+      }
     } else if (mode === 'orb') {
       ctx.windows.showChat();
       await wait(600);

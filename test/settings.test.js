@@ -73,7 +73,7 @@ test('applyPatch: routing (auto, fast model) and start with Windows', () => {
   assert.deepEqual(errors, []);
   assert.equal(DEFAULTS.startAtLogin, true);
   assert.equal(DEFAULTS.ollama.auto, true);
-  assert.equal(DEFAULTS.ollama.fastModel, 'jarvis-router:latest');
+  assert.equal(DEFAULTS.ollama.fastModel, '', 'quick chat uses the main model unless set');
   assert.equal(DEFAULTS.ollama.keepAlive, '30m');
-  assert.equal(applyPatch(DEFAULTS, { ollama: { fastModel: '' } }, { providers, engines }).errors.length, 1);
+  assert.equal(applyPatch(DEFAULTS, { ollama: { fastModel: '' } }, { providers, engines }).config.ollama.fastModel, '');
 });

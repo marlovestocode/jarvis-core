@@ -24,16 +24,21 @@
     $('providerDetail').textContent = p ? (p.ready ? 'Ready. ' : '') + (p.detail || '') : '';
     const isOllama = c.provider === 'ollama';
     $('modelRow').hidden = !isOllama;
-    $('thinkRow').hidden = !isOllama;
+    $('autoRow').hidden = !isOllama;
+    $('fastRow').hidden = !isOllama || !c.ollama.auto;
+    $('thinkRow').hidden = !isOllama || !!c.ollama.auto;   // auto decides thinking per question
     if (isOllama) {
       const models = d.models || [];
-      const items = models.some(m => m.id === c.ollama.model) ? models : [{ id: c.ollama.model, label: c.ollama.model + ' (not in Ollama)' }, ...models];
-      opt($('model'), items, c.ollama.model);
+      const withMissing = id => (models.some(m => m.id === id) ? models : [{ id, label: id + ' (not in Ollama)' }, ...models]);
+      opt($('model'), withMissing(c.ollama.model), c.ollama.model);
+      opt($('fastModel'), [{ id: '', label: 'Same as main model (GPU)' }, ...(c.ollama.fastModel ? withMissing(c.ollama.fastModel) : models)], c.ollama.fastModel || '');
+      $('auto').checked = !!c.ollama.auto;
       $('think').checked = !!c.ollama.think;
       if (!models.length) $('providerDetail').textContent = 'No local models found. Start Ollama and pull a model.';
     }
     for (const k of ['stt', 'tts', 'wake']) opt($(k), d.engines[k], c.engines[k]);
     $('wakeEnabled').checked = !!c.wakeEnabled;
+    $('startAtLogin').checked = !!c.startAtLogin;
     $('rate').value = c.voiceRate;
     $('rateVal').textContent = Number(c.voiceRate).toFixed(2) + '×';
     $('hkChat').value = c.hotkeys.chat;
@@ -122,6 +127,9 @@
   $('provider').addEventListener('change', e => save({ provider: e.target.value }));
   $('model').addEventListener('change', e => save({ ollama: { model: e.target.value } }));
   $('think').addEventListener('change', e => save({ ollama: { think: e.target.checked } }));
+  $('auto').addEventListener('change', e => save({ ollama: { auto: e.target.checked } }));
+  $('fastModel').addEventListener('change', e => save({ ollama: { fastModel: e.target.value } }));
+  $('startAtLogin').addEventListener('change', e => save({ startAtLogin: e.target.checked }));
   for (const k of ['stt', 'tts', 'wake']) $(k).addEventListener('change', e => save({ engines: { [k]: e.target.value } }));
   $('wakeEnabled').addEventListener('change', e => save({ wakeEnabled: e.target.checked }));
   $('mic').addEventListener('change', e => save({ micDeviceId: e.target.value || null }));

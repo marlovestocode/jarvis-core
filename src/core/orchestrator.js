@@ -118,10 +118,9 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       const p = pickProvider();
       const st = await providerStatus(p);
       bus.emit('provider', { id: p.id, label: p.label, ready: !!st.ready });
-      const toolSpecs = p.capabilities?.tools && tools ? tools.specs() : undefined;
-      const useTools = toolSpecs && toolSpecs.length ? toolSpecs : undefined;
-
       const hints = route ? route(String(text), { source }) : undefined;
+      const toolSpecs = p.capabilities?.tools && tools && hints?.tools !== false ? tools.specs() : undefined;
+      const useTools = toolSpecs && toolSpecs.length ? toolSpecs : undefined;
       let model = null;
       try { model = p.resolveModel ? p.resolveModel(hints || {}) : null; } catch { model = null; }
       if (hints) bus.emit('route', { tier: hints.tier, think: !!hints.think, reason: hints.reason, model });
@@ -129,7 +128,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       if (systemPrompt) {
         let info = {};
         try { info = promptInfo() || {}; } catch { info = {}; }
-        sys = systemPrompt({ source, now: new Date(), tools: (useTools || []).map(t => t.name), model, ...info });
+        sys = systemPrompt({ source, now: new Date(), tools: (useTools || []).map(t => t.name), model, brief: hints?.tools === false, ...info });
       }
       const t0 = Date.now();
       let firstTokenAt = 0;
