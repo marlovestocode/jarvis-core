@@ -27,6 +27,8 @@ const { createToolRunner } = require('../core/tools/registry');
 const brain = require('../core/brain');
 const { createHardwareProbe } = require('../core/brain/hardware');
 const { runBoot } = require('../core/boot');
+const { createTimerStore } = require('../core/timers/store');
+const { createScheduler } = require('../core/timers/scheduler');
 const { createOrchestrator } = require('../core/orchestrator');
 const { createPolicy } = require('../core/net/policy');
 const { createFetcher } = require('../core/net/fetcher');
@@ -148,7 +150,10 @@ function userInfo() {
     teams: c.sports.follow.map(f => f.team), playlists: ctx.ytPlaylists.count?.() || 0, voiceEnrolled: ctx.speaker.enrolled(),
   };
 }
-ctx.toolList = brain.defaultTools({ memory: ctx.memory, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists });
+// timers, alarms and reminders: <data>/timers.json; firing puts 'timer' on the bus (started in the boot stage)
+ctx.timerStore = createTimerStore({ file: path.join(DATA_DIR, 'timers.json'), log: ctx.log });
+ctx.scheduler = createScheduler({ store: ctx.timerStore, bus: ctx.bus, log: ctx.log });
+ctx.toolList = brain.defaultTools({ memory: ctx.memory, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler });
 ctx.tools = createToolRunner(ctx.toolList);
 ctx.orchestrator = createOrchestrator({
   bus: ctx.bus, sessions: ctx.sessions, providers: ctx.providers, tools: ctx.tools, getConfig: ctx.getConfig,
@@ -247,7 +252,7 @@ ctx.bus.on('state', () => {
   // with the wake word on, the mic stays open (local only) so "Jarvis, <command>" keeps its first words
   if (ctx.voice.active || ctx.config.wakeEnabled) ctx.mic.start(); else ctx.mic.stop();
 });
-ctx.onQuit = [() => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close()];
+ctx.onQuit = [() => ctx.scheduler.stop(), () => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close()];
 
 app.on('web-contents-created', (_e, wc) => guardWebContents(wc));
 app.on('second-instance', () => ctx.windows?.showChat());
@@ -332,6 +337,7 @@ app.whenReady().then(async () => {
       }
       return st.detail;
     } },
+    { stage: 'timers', run: async () => { const r = ctx.scheduler.start(); return `${r.armed} set${r.fired ? `, ${r.fired} missed while off` : ''}`; } },
     { stage: 'sysmon', run: async () => {
       const r = await fetch('http://127.0.0.1:47800/health', { signal: AbortSignal.timeout(1000) }).catch(() => null);
       return r?.ok ? 'linked' : { ok: false, detail: 'not running' };
