@@ -106,6 +106,23 @@ never invent dates, scores, temperatures or quotes.*
 | Unknown place | geocoding returns candidates; tool asks which one |
 | Non-US weather alerts | "alerts are only available for the US" |
 
+## 7a. Speaking safeguards (voice)
+
+While JARVIS is speaking:
+
+| You say / do | JARVIS does |
+|---|---|
+| anything **without** "Jarvis" (talking to someone, game audio, its own echo) | **ignores it**, keeps speaking |
+| "Jarvis, …" + a new question or request | **finishes the sentence it is saying**, drops the rest of the reply, stops writing it, then handles your request |
+| "Jarvis, stop / quiet / enough / cancel / shut up / that's enough" | stops **immediately** (mid-word), back to idle |
+| Esc, the STOP button, the tray | stops immediately (explicit) |
+
+How: during speaking the mic feeds a speaking-mode detector (VAD at ×3 gain → Whisper, ~0.2 s).
+Only utterances that start with "Jarvis" count. A soft interrupt lets the current sentence's audio
+play to its end (Piper sentences are short), then the queue is dropped. The Windows-speech fallback
+has no sentence boundary, so there a soft interrupt waits for the next word boundary at most 1.5 s.
+Barge-in by loudness alone is removed.
+
 ## 8. Testing
 
 - Unit (node --test, fake fetch): policy refuses non-allowlisted hosts/redirects/HTTP; cache TTLs;

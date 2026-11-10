@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans (or superpowers:subagent-driven-development) to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** JARVIS answers weather, news, sports and broad factual questions from real sources — allowlisted live lookups plus a local 49 GB Wikipedia — citing source and time.
+**Goal:** Safer speaking (only "Jarvis" interrupts; sentences finish), then JARVIS answers weather, news, sports and broad factual questions from real sources — allowlisted live lookups plus a local 49 GB Wikipedia — citing source and time.
 
 **Architecture:** One network gate (`src/core/net/`) is the only path to the internet: allowlist, timeouts, cache, `net` events. Source modules in `src/core/knowledge/` parse each feed; `src/core/tools/knowledge.js` exposes them as model tools. Offline Wikipedia is served by `kiwix-serve` on 127.0.0.1 and ranked into short cited passages.
 
@@ -28,7 +28,30 @@
 4. **Context overflow** — passages capped; many tool rounds don't blow the 8k window. Test in Task 7.
 5. **49 GB download** — resumable, verified by size, never blocks app start; app works without it. Test in Task 6.
 
+6. **Interrupt safety** — while speaking, nothing without "Jarvis" may stop or change the reply (echo, other people, game audio); a soft interrupt must never cut a sentence; explicit stop must always be instant. Test in Task 0.
+
 ---
+
+### Task 0: Speaking safeguards (spec §7a)
+
+**Files:** Modify `src/core/voice/controller.js`, `src/core/voice/piper.js`, `src/core/voice/windows-speech.js` · Test `test/voice-controller.test.js`, `test/piper.test.js`
+
+**Interfaces:**
+- TTS stream gains `finishSentence()` → resolves when the sentence now playing ends; queued sentences are dropped; `done` resolves after it. Abort (signal) stays the hard stop.
+- Controller: in `speaking` mode, mic frames go to a speaking detector (VAD gain ×3 → utterance → `stt.transcribe`). Utterance not starting with "Jarvis" → ignored. `STOP_WORDS = /^(?:stop|quiet|enough|cancel|shut up|that'?s enough|be quiet|never ?mind)\b/i` after the wake word → hard stop. Anything else after "Jarvis" → soft interrupt: `orchestrator.stop()`, `stream.finishSentence()`, then run the remainder as a new turn (or listen if it was only "Jarvis").
+- Loudness-only barge-in (`vad 'start'` while speaking) is removed.
+
+- [ ] Tests:
+  - `speaking: speech without "Jarvis" is ignored — no stop, no transcript turn, reply keeps playing`
+  - `speaking: "Jarvis, what about tomorrow" → current sentence finishes, rest dropped, model stopped, new turn "what about tomorrow"`
+  - `speaking: "Jarvis stop" / "Jarvis, that's enough" → immediate abort, idle, no new turn`
+  - `speaking: "Jarvis" alone → current sentence finishes, then listening`
+  - `speaking: echo of JARVIS's own sentence (transcript = its own text) is ignored even if it contains "Jarvis" mid-sentence`
+  - `Esc / stop button while speaking is still immediate`
+  - `piper: finishSentence lets the playing sentence end and drops the queue`
+  - `windows tts: finishSentence stops at the next word boundary within 1.5 s`
+- [ ] FAIL → implement → PASS. Real-app self-test: feed "talking to my friend" + "Jarvis, stop" frames during a reply; check `jarvis.log`.
+- [ ] Commit `feat: speaking safeguards - only "Jarvis" interrupts, sentences finish`.
 
 ### Task 1: Network gate (policy + fetcher + cache)
 
