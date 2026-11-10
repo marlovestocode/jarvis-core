@@ -28,3 +28,20 @@ test('markdown: tags used are from a fixed allow list', () => {
   const walk = ns => ns.forEach(n => { if (n.tag) assert.ok(allowed.has(n.tag), n.tag); if (n.children) walk(n.children); });
   walk(parse('### h\n* x **y** _z_\nline two\n\n```\n<script>\n```'));
 });
+
+const { delatex } = require('../src/ui/markdown');
+
+test('delatex: inline LaTeX the model slips in becomes readable Unicode', () => {
+  assert.equal(delatex(String.raw`The derivative of $x^3 \cdot \sin(x)$ at $x = 2$`), 'The derivative of x³ · sin(x) at x = 2');
+  assert.equal(delatex(String.raw`$\int_{0}^{\infty} x^2 e^{-x} \, dx = 2$`), '∫₀^∞ x² e^(−x) dx = 2');
+  assert.equal(delatex(String.raw`$$E = \frac{hc}{\lambda}$$`), 'E = (hc)/(λ)');
+  assert.equal(delatex(String.raw`\( v = \sqrt{2gh} \approx 19.8 \)`), 'v = √(2gh) ≈ 19.8');
+  assert.equal(delatex('costs $5 and $10'), 'costs $5 and $10', 'money is not math');
+  assert.equal(delatex('`$x^2$` in code'), '`$x^2$` in code', 'code spans untouched');
+});
+
+test('markdown: parse applies delatex outside code blocks only', () => {
+  const t = parse('So $x^2$ here\n\n```\n$x^2$\n```');
+  assert.equal(t[0].children[0].text, 'So x² here');
+  assert.equal(t[1].code, '$x^2$');
+});

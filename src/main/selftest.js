@@ -39,7 +39,10 @@ async function run(ctx, outDir) {
       ctx.windows.showChat();
       await wait(600);
       await type('hi');
-      await wait(2500);
+      await wait(300);
+      const tIdle = Date.now();
+      while (ctx.orchestrator.busy && Date.now() - tIdle < 90000) await wait(200);
+      await wait(300);
       step('after hi', await dom());
       await shot('chat-hi');
       await type('/new');
@@ -51,6 +54,25 @@ async function run(ctx, outDir) {
       await wait(1000);
       step('list', await dom());
       await shot('chat-list');
+    } else if (mode === 'brain') {
+      const seen = [];
+      ctx.bus.on('*', e => { if (['boot', 'route', 'turn', 'tool'].includes(e.type)) seen.push(e); });
+      ctx.windows.showChat();
+      const tb = Date.now();
+      while (!seen.some(e => e.type === 'boot' && e.stage === 'done') && Date.now() - tb < 60000) await wait(100);
+      step('boot', { ms: Date.now() - tb, stages: seen.filter(e => e.type === 'boot').map(e => `${e.stage}:${e.ok ? 'ok' : 'off'}:${e.detail}:${e.ms}ms`) });
+      for (const q of ['hello jarvis', 'What is the energy of a photon with wavelength 500 nm, in electronvolts?']) {
+        seen.length = 0;
+        await type(q);
+        await wait(300);
+        const t0 = Date.now();
+        while (ctx.orchestrator.busy && Date.now() - t0 < 120000) await wait(100);
+        await wait(400);
+        const s = ctx.sessions.load(ctx.sessionId);
+        step('ask', { q, ms: Date.now() - t0, route: seen.find(e => e.type === 'route'), turn: seen.find(e => e.type === 'turn'),
+          tools: seen.filter(e => e.type === 'tool' && e.phase === 'end').map(e => `${e.name}:${e.ok}`), reply: s.messages.at(-1)?.content });
+        await shot('brain-' + (q.length > 20 ? 'physics' : 'hello'));
+      }
     } else if (mode === 'orb') {
       ctx.windows.showChat();
       await wait(600);
@@ -105,7 +127,8 @@ async function run(ctx, outDir) {
       const sjs = c => sw.webContents.executeJavaScript(c, true);
       const read = () => sjs(`({ provider: [...document.querySelectorAll('#provider option')].map(o => o.textContent), providerDetail: document.getElementById('providerDetail').textContent,
         stt: [...document.querySelectorAll('#stt option')].map(o => o.textContent), tts: document.getElementById('tts').value, wake: document.getElementById('wake').value,
-        mics: document.querySelectorAll('#mic option').length, rate: document.getElementById('rate').value, hkChat: document.getElementById('hkChat').value, hkWarn: document.getElementById('hkWarn').textContent })`);
+        mics: document.querySelectorAll('#mic option').length, rate: document.getElementById('rate').value, hkChat: document.getElementById('hkChat').value, hkWarn: document.getElementById('hkWarn').textContent,
+        modelRowHidden: document.getElementById('modelRow').hidden, model: document.getElementById('model').value, models: [...document.querySelectorAll('#model option')].map(o => o.textContent) })`);
       step('settings open', await read());
       fs.appendFileSync(path.join(outDir, 'progress.txt'), 'read\n');
       fs.writeFileSync(path.join(outDir, 'settings.png'), (await sw.webContents.capturePage()).toPNG());

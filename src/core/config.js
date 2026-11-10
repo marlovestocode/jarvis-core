@@ -4,6 +4,15 @@ const path = require('node:path');
 
 const DEFAULTS = Object.freeze({
   provider: 'null',
+  ollama: Object.freeze({
+    host: 'http://127.0.0.1:11434',
+    model: 'jarvis-worker:latest',      // main model: technical and long questions
+    fastModel: '',                      // quick-chat model when auto routing is on ('' = main model)
+    auto: true,                         // route per turn and decide thinking per question
+    think: false,                       // thinking when auto is off
+    keepAlive: '30m',                   // keep models in VRAM between questions
+  }),
+  startAtLogin: true,
   engines: Object.freeze({ stt: 'windows', tts: 'windows', wake: 'windows' }),
   wakeEnabled: false,
   micDeviceId: null,
@@ -12,7 +21,7 @@ const DEFAULTS = Object.freeze({
   port: 47801,
 });
 
-const NESTED = ['engines', 'hotkeys'];
+const NESTED = ['engines', 'hotkeys', 'ollama'];
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 // micDeviceId defaults to null but holds a string: accept string or null.

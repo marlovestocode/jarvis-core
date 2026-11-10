@@ -7,16 +7,25 @@ const DATA_DIR = process.env.JARVIS_DATA_DIR || path.join(app.getPath('appData')
 app.setPath('userData', DATA_DIR);
 
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
+// Own identity (startup entry, notifications) instead of the generic "electron.app.Electron".
+app.setAppUserModelId('jarvis.core');
+
+// The chat is light 2D UI: software rendering skips the GPU process (~100 MB) and keeps
+// the GPU free for the model. JARVIS_GPU=1 turns hardware acceleration back on.
+if (process.env.JARVIS_GPU !== '1') app.disableHardwareAcceleration();
+const HIDDEN = process.argv.includes('--hidden');          // started by Windows at login: tray only
+const DEV_RUN = !!(process.env.JARVIS_DATA_DIR || process.env.JARVIS_SELFTEST);
 
 const { createBus } = require('../core/bus');
 const { loadConfig, saveConfig } = require('../core/config');
 const { createSessionStore } = require('../core/session');
 const { createRegistry } = require('../core/providers/provider');
 const { NullProvider } = require('../core/providers/null-provider');
+const { createOllamaProvider } = require('../core/providers/ollama');
 const { createToolRunner } = require('../core/tools/registry');
-const { timeTool } = require('../core/tools/time');
-const { createSysmonTool } = require('../core/tools/sysmon');
-const { createMediaTool } = require('../core/tools/media');
+const brain = require('../core/brain');
+const { createHardwareProbe } = require('../core/brain/hardware');
+const { runBoot, loginItem } = require('../core/boot');
 const { createOrchestrator } = require('../core/orchestrator');
 const { startBridge } = require('../core/bridge');
 const { createEngineRegistries } = require('../core/voice/engines');
@@ -45,13 +54,42 @@ ctx.bus = createBus({ onError: err => ctx.log('listener error:', err?.message) }
 ctx.sessions = createSessionStore(DATA_DIR);
 ctx.providers = createRegistry();
 ctx.providers.add(NullProvider);
-ctx.toolList = [timeTool, createSysmonTool(), createMediaTool()];
-ctx.tools = createToolRunner(ctx.toolList);
+ctx.providers.add(createOllamaProvider({ getConfig: () => ctx.config }));
+ctx.hardware = createHardwareProbe();
 ctx.getConfig = () => ctx.config;
 ctx.saveConfig = next => { saveConfig(DATA_DIR, next); ctx.config = loadConfig(DATA_DIR); return ctx.config; };
+
+// What jarvis_status reports: this PC plus the live state of every JARVIS part.
+async function jarvisStatus() {
+  const c = ctx.config;
+  const p = ctx.providers.get(c.provider) || ctx.providers.get('null');
+  let model = p.label;
+  if (c.provider === 'ollama') model = `${c.ollama.model}${c.ollama.auto ? ` (quick chat: ${c.ollama.fastModel})` : ''} via Ollama`;
+  let sysmon = 'not running';
+  try { sysmon = (await fetch('http://127.0.0.1:47800/health', { signal: AbortSignal.timeout(800) })).ok ? 'running' : 'not running'; } catch { /* down */ }
+  return {
+    ...(await ctx.hardware.get()),
+    model,
+    sysmon,
+    wallpaper: ctx.bridge ? (ctx.bridge.clients() ? 'linked to the core' : 'not connected') : 'bridge off',
+    voice: `speech-to-text ${c.engines.stt}, text-to-speech ${c.engines.tts}, wake word ${c.wakeEnabled ? 'on' : 'off'}`,
+    hotkeys: ctx.hotkeys.failed.length ? `taken: ${ctx.hotkeys.failed.join(', ')}` : `chat ${c.hotkeys.chat}, voice ${c.hotkeys.voice}`,
+  };
+}
+ctx.toolList = brain.defaultTools({ getStatus: jarvisStatus });
+ctx.tools = createToolRunner(ctx.toolList);
 ctx.orchestrator = createOrchestrator({
   bus: ctx.bus, sessions: ctx.sessions, providers: ctx.providers, tools: ctx.tools, getConfig: ctx.getConfig,
+  systemPrompt: brain.systemPrompt, route: brain.route, promptInfo: () => ({ hardware: ctx.hardware.cached() || undefined }),
+  timeoutMs: 120000, // a cold model load plus thinking can be slow on the first turn
 });
+
+ctx.applyLogin = () => {
+  if (DEV_RUN) return; // tests and self-checks never touch Windows startup
+  try {
+    app.setLoginItemSettings(loginItem({ enabled: ctx.config.startAtLogin, execPath: process.execPath, appPath: path.resolve(app.getAppPath()), packaged: app.isPackaged }));
+  } catch (err) { ctx.log('login item failed:', err.message); }
+};
 
 function applyHotkeys() {
   const { chat, voice } = ctx.config.hotkeys;
@@ -101,6 +139,14 @@ app.on('will-quit', () => {
 });
 
 app.whenReady().then(async () => {
+  // the wallpaper link starts first; windows and tray are built while it binds
+  const ports = [0, 1, 2, 3, 4, 5].map(i => ctx.config.port + i);
+  const bridgeStarting = startBridge({
+    bus: ctx.bus, version, ports,
+    onOpen: mode => { if (mode === 'voice') ctx.startVoice(); else ctx.windows?.showChat(); },
+  });
+  bridgeStarting.catch(() => {});
+
   // only our own pages may use the mic; nothing else gets any permission
   const own = wc => { try { return new URL(wc.getURL()).protocol === 'file:'; } catch { return false; } };
   session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(perm === 'media' && own(wc)));
@@ -119,7 +165,7 @@ app.whenReady().then(async () => {
     },
     log: ctx.log,
   });
-  ctx.mic.ensure(); // load the hidden mic page now so the first capture starts fast
+  // the hidden mic page loads on first voice use, not at startup
   ctx.windows.ensureChat();
   ctx.bus.on('*', ev => ctx.windows.sendAll('ai:event', ev));
   registerIpc(ctx);
@@ -131,21 +177,39 @@ app.whenReady().then(async () => {
   });
   applyHotkeys();
 
-  const ports = [0, 1, 2, 3, 4, 5].map(i => ctx.config.port + i);
   try {
-    ctx.bridge = await startBridge({
-      bus: ctx.bus, version, ports,
-      onOpen: mode => { if (mode === 'voice') ctx.startVoice(); else ctx.windows.showChat(); },
-    });
+    ctx.bridge = await bridgeStarting;
     ctx.log('bridge on 127.0.0.1:' + ctx.bridge.port);
   } catch (err) {
     ctx.log('bridge off:', err.message); // wallpaper link is optional
   }
-
-  ctx.orchestrator.announce();
-  ctx.voice.applyWake();
+  ctx.applyLogin();
+  if (!HIDDEN && !DEV_RUN) ctx.windows.showChat(); // opened by hand: show the boot in the chat
   ctx.onReady?.forEach(fn => fn());
   if (process.env.JARVIS_SELFTEST) require('./selftest').run(ctx, process.env.JARVIS_SELFTEST);
+
+  // Boot: each stage reports what really happened (chat + wallpaper draw it).
+  ctx.booted = runBoot(ctx.bus, [
+    { stage: 'core', run: async () => `v${version}` },
+    { stage: 'bridge', run: async () => (ctx.bridge ? `127.0.0.1:${ctx.bridge.port}` : { ok: false, detail: 'off' }) },
+    { stage: 'hardware', run: async () => { const h = await ctx.hardware.get(); return h.gpu || h.cpu || 'unknown'; } },
+    { stage: 'model', run: async () => {
+      const st = await ctx.orchestrator.announce();
+      const p = ctx.providers.get(ctx.config.provider);
+      if (!st.ready) return { ok: false, detail: st.detail || 'no model' };
+      if (p?.warm) {
+        const w = await p.warm();
+        if (w.error) return { ok: false, detail: w.error };
+        return w.loaded.join(' + ') || st.detail;
+      }
+      return st.detail;
+    } },
+    { stage: 'sysmon', run: async () => {
+      const r = await fetch('http://127.0.0.1:47800/health', { signal: AbortSignal.timeout(1000) }).catch(() => null);
+      return r?.ok ? 'linked' : { ok: false, detail: 'not running' };
+    } },
+    { stage: 'voice', run: async () => { ctx.voice.applyWake(); return ctx.config.wakeEnabled ? 'wake word on' : 'on demand'; } },
+  ]).then(r => { ctx.log(`boot ${r.ok ? 'ok' : 'partial'} in ${r.ms} ms`); return r; });
 });
 
 module.exports = { ctx };

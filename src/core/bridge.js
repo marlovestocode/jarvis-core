@@ -27,6 +27,8 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
   let lastState = { type: 'state', t: Date.now(), state: 'idle' };
   let lastProvider = null;
   const lastLevel = new Map(); // source -> time sent
+  const BOOT_REPLAY_MS = 20000;
+  let bootEvents = [];         // replayed to clients that connect during boot (the wallpaper often starts later)
 
   const okHost = h => h === `${HOST}:${port}` || h === `localhost:${port}`; // blocks DNS rebinding
 
@@ -37,6 +39,7 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
   const offBus = bus.on('*', ev => {
     if (ev.type === 'state') lastState = ev;
     if (ev.type === 'provider') lastProvider = ev;
+    if (ev.type === 'boot') bootEvents.push(ev);
     if (ev.type === 'level') {
       const now = Date.now();
       const src = ev.source || 'mic';
@@ -70,6 +73,8 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
       res.write('retry: 3000\n\n');
       write(res, lastState);
       if (lastProvider) write(res, lastProvider);
+      bootEvents = bootEvents.filter(e => Date.now() - e.t < BOOT_REPLAY_MS);
+      for (const e of bootEvents) write(res, e);
       clients.add(res);
       req.on('close', () => clients.delete(res));
       return;
@@ -107,7 +112,7 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
     return new Promise(r => server.close(() => r()));
   }
 
-  return { port, address: server.address().address, close };
+  return { port, address: server.address().address, close, clients: () => clients.size };
 }
 
 module.exports = { startBridge, okOrigin, DEFAULT_PORTS };

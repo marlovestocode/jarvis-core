@@ -23,11 +23,16 @@
       <div class="head-title">
         <span class="brand">J.A.R.V.I.S</span>
         <span class="state" id="state">IDLE</span>
+        <span class="stat" id="stat"></span>
       </div>
       <button class="chip" id="chip" type="button" title="Model settings">NO MODEL SET</button>
       <button class="icon-btn close" id="closeBtn" type="button" title="Hide (Esc)">×</button>
     </header>
     <section class="log" id="log" aria-live="polite"></section>
+    <div class="boot" id="boot" hidden>
+      <div class="boot-title">J.A.R.V.I.S · CORE SEQUENCE</div>
+      <ul class="boot-list" id="bootList"></ul>
+    </div>
     <footer class="input">
       <button class="mic" id="micBtn" type="button" title="Talk (Ctrl+Shift+Space)">
         <canvas id="wave" width="44" height="28"></canvas>

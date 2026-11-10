@@ -67,8 +67,11 @@ function registerIpc(ctx) {
   h('settings:get', () => describeNow());
   h('settings:set', async patch => {
     const { config, errors } = applyPatch(ctx.config, patch, { providers: ctx.providers, engines: ctx.engines });
+    const modelChanged = JSON.stringify(config.ollama) !== JSON.stringify(ctx.config.ollama) || config.provider !== ctx.config.provider;
     ctx.saveConfig(config);
     ctx.applyHotkeys();
+    ctx.applyLogin?.();
+    if (modelChanged) ctx.providers.get(ctx.config.provider)?.warm?.().catch?.(() => {}); // load the new model now, not on the first question
     ctx.voice?.applyWake();
     orchestrator.announce();
     return { ...(await describeNow()), errors };

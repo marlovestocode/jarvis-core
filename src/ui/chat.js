@@ -13,6 +13,8 @@
   let live = null;        // { el, text } of the reply being streamed
   let renderQueued = false;
   let micReason = '';
+  let routeLabel = '';
+  const statEl = $('stat');
   const levels = new Array(22).fill(0);
 
   const md = s => Markdown.toDom(Markdown.parse(s), document, { onCopy: c => window.jarvis.copy(c) });
@@ -187,6 +189,19 @@
       case 'tool':
         if (ev.phase === 'end') reload();
         break;
+      case 'boot': showBoot(ev); break;
+      case 'route':
+        routeLabel = (ev.model ? String(ev.model).replace(/:latest$/, '').toUpperCase() : ev.tier?.toUpperCase() || '') + (ev.think ? ' · REASONING' : '');
+        stateEl.textContent = (STATE_LABEL[state] || state.toUpperCase()) + (routeLabel ? ' · ' + routeLabel : '');
+        break;
+      case 'turn': {
+        const parts = [];
+        if (ev.tps) parts.push(`${ev.tps} TOK/S`);
+        parts.push(`${(ev.ms / 1000).toFixed(1)} S`);
+        if (ev.toolRounds) parts.push(`${ev.toolRounds} TOOL${ev.toolRounds > 1 ? 'S' : ''}`);
+        statEl.textContent = parts.join(' · ');
+        break;
+      }
       case 'provider':
         providerReady = !!ev.ready;
         chip.textContent = ev.ready ? String(ev.label).toUpperCase() : 'NO MODEL SET';
@@ -201,6 +216,21 @@
         break;
     }
   });
+
+  // ---------- boot sequence: one line per real stage result ----------
+  const bootEl = $('boot'), bootList = $('bootList');
+  let bootHide = 0;
+  function showBoot(ev) {
+    bootEl.hidden = false;
+    bootEl.classList.remove('fade');
+    const li = el('li', ev.stage === 'done' ? 'done' : ev.ok ? '' : 'bad');
+    li.append(el('b', '', String(ev.stage).toUpperCase()), el('span', '', ev.detail || ''), el('i', '', ev.stage === 'done' ? (ev.ok ? 'ONLINE' : 'PARTIAL') : ev.ok ? 'OK' : 'OFF'));
+    bootList.appendChild(li);
+    clearTimeout(bootHide);
+    if (ev.stage === 'done') {
+      bootHide = setTimeout(() => { bootEl.classList.add('fade'); setTimeout(() => { bootEl.hidden = true; bootList.replaceChildren(); }, 650); }, 1400);
+    }
+  }
 
   // ---------- mic waveform ----------
   function drawWave() {
