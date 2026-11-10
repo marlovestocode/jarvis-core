@@ -1,0 +1,496 @@
+{
+ "season": {
+  "type": 2,
+  "year": 2027
+ },
+ "events": [
+  {
+   "id": "401909952",
+   "name": "Los Angeles Lakers at Atlanta Hawks",
+   "date": "2026-11-10T00:00Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "114",
+       "team": {
+        "id": "1",
+        "abbreviation": "ATL",
+        "displayName": "Atlanta Hawks",
+        "shortDisplayName": "Hawks",
+        "name": "Hawks",
+        "location": "Atlanta"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "124",
+       "team": {
+        "id": "13",
+        "abbreviation": "LAL",
+        "displayName": "Los Angeles Lakers",
+        "shortDisplayName": "Lakers",
+        "name": "Lakers",
+        "location": "Los Angeles"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "Spectrum Sports Net",
+        "Spectrum Sports Net +"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401909953",
+   "name": "Cleveland Cavaliers at Charlotte Hornets",
+   "date": "2026-11-10T00:00Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "124",
+       "team": {
+        "id": "30",
+        "abbreviation": "CHA",
+        "displayName": "Charlotte Hornets",
+        "shortDisplayName": "Hornets",
+        "name": "Hornets",
+        "location": "Charlotte"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "112",
+       "team": {
+        "id": "5",
+        "abbreviation": "CLE",
+        "displayName": "Cleveland Cavaliers",
+        "shortDisplayName": "Cavaliers",
+        "name": "Cavaliers",
+        "location": "Cleveland"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "DAZN CLE"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401909954",
+   "name": "Washington Wizards at Detroit Pistons",
+   "date": "2026-11-10T00:00Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "122",
+       "team": {
+        "id": "8",
+        "abbreviation": "DET",
+        "displayName": "Detroit Pistons",
+        "shortDisplayName": "Pistons",
+        "name": "Pistons",
+        "location": "Detroit"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "111",
+       "team": {
+        "id": "27",
+        "abbreviation": "WSH",
+        "displayName": "Washington Wizards",
+        "shortDisplayName": "Wizards",
+        "name": "Wizards",
+        "location": "Washington"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "NBCSN"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401909955",
+   "name": "Memphis Grizzlies at Toronto Raptors",
+   "date": "2026-11-10T00:30Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "102",
+       "team": {
+        "id": "28",
+        "abbreviation": "TOR",
+        "displayName": "Toronto Raptors",
+        "shortDisplayName": "Raptors",
+        "name": "Raptors",
+        "location": "Toronto"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "118",
+       "team": {
+        "id": "29",
+        "abbreviation": "MEM",
+        "displayName": "Memphis Grizzlies",
+        "shortDisplayName": "Grizzlies",
+        "name": "Grizzlies",
+        "location": "Memphis"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "DAZN MEM"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401909956",
+   "name": "Indiana Pacers at Dallas Mavericks",
+   "date": "2026-11-10T01:00Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "125",
+       "team": {
+        "id": "6",
+        "abbreviation": "DAL",
+        "displayName": "Dallas Mavericks",
+        "shortDisplayName": "Mavericks",
+        "name": "Mavericks",
+        "location": "Dallas"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "122",
+       "team": {
+        "id": "11",
+        "abbreviation": "IND",
+        "displayName": "Indiana Pacers",
+        "shortDisplayName": "Pacers",
+        "name": "Pacers",
+        "location": "Indiana"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "KFAA-TV",
+        "MavsTV"
+       ]
+      },
+      {
+       "names": [
+        "DAZN IND"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401909957",
+   "name": "Denver Nuggets at Houston Rockets",
+   "date": "2026-11-10T01:30Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "110",
+       "team": {
+        "id": "10",
+        "abbreviation": "HOU",
+        "displayName": "Houston Rockets",
+        "shortDisplayName": "Rockets",
+        "name": "Rockets",
+        "location": "Houston"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "100",
+       "team": {
+        "id": "7",
+        "abbreviation": "DEN",
+        "displayName": "Denver Nuggets",
+        "shortDisplayName": "Nuggets",
+        "name": "Nuggets",
+        "location": "Denver"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "ALT2/KTVD"
+       ]
+      },
+      {
+       "names": [
+        "KUSA-TV (9NEWS)"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401909958",
+   "name": "San Antonio Spurs at Phoenix Suns",
+   "date": "2026-11-10T02:00Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "96",
+       "team": {
+        "id": "21",
+        "abbreviation": "PHX",
+        "displayName": "Phoenix Suns",
+        "shortDisplayName": "Suns",
+        "name": "Suns",
+        "location": "Phoenix"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "122",
+       "team": {
+        "id": "24",
+        "abbreviation": "SA",
+        "displayName": "San Antonio Spurs",
+        "shortDisplayName": "Spurs",
+        "name": "Spurs",
+        "location": "San Antonio"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "Arizona's Family 3TV",
+        "Suns Live"
+       ]
+      },
+      {
+       "names": [
+        "DAZN SAS"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401909959",
+   "name": "New Orleans Pelicans at Golden State Warriors",
+   "date": "2026-11-10T03:00Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "138",
+       "team": {
+        "id": "9",
+        "abbreviation": "GS",
+        "displayName": "Golden State Warriors",
+        "shortDisplayName": "Warriors",
+        "name": "Warriors",
+        "location": "Golden State"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "87",
+       "team": {
+        "id": "3",
+        "abbreviation": "NO",
+        "displayName": "New Orleans Pelicans",
+        "shortDisplayName": "Pelicans",
+        "name": "Pelicans",
+        "location": "New Orleans"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "NBA TV"
+       ]
+      },
+      {
+       "names": [
+        "GCSEN",
+        "Pelicans.com"
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

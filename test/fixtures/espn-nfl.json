@@ -1,0 +1,879 @@
+{
+ "season": {
+  "type": 2,
+  "year": 2026
+ },
+ "events": [
+  {
+   "id": "401873037",
+   "name": "Jacksonville Jaguars at Baltimore Ravens",
+   "date": "2026-11-06T01:15Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "10",
+       "team": {
+        "id": "33",
+        "abbreviation": "BAL",
+        "displayName": "Baltimore Ravens",
+        "shortDisplayName": "Ravens",
+        "name": "Ravens",
+        "location": "Baltimore"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "33",
+       "team": {
+        "id": "30",
+        "abbreviation": "JAX",
+        "displayName": "Jacksonville Jaguars",
+        "shortDisplayName": "Jaguars",
+        "name": "Jaguars",
+        "location": "Jacksonville"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "Prime Video"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401873038",
+   "name": "Cincinnati Bengals at Atlanta Falcons",
+   "date": "2026-11-08T14:30Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "17",
+       "team": {
+        "id": "1",
+        "abbreviation": "ATL",
+        "displayName": "Atlanta Falcons",
+        "shortDisplayName": "Falcons",
+        "name": "Falcons",
+        "location": "Atlanta"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "34",
+       "team": {
+        "id": "4",
+        "abbreviation": "CIN",
+        "displayName": "Cincinnati Bengals",
+        "shortDisplayName": "Bengals",
+        "name": "Bengals",
+        "location": "Cincinnati"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "NFL Net"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401873040",
+   "name": "Dallas Cowboys at Indianapolis Colts",
+   "date": "2026-11-08T18:00Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "23",
+       "team": {
+        "id": "11",
+        "abbreviation": "IND",
+        "displayName": "Indianapolis Colts",
+        "shortDisplayName": "Colts",
+        "name": "Colts",
+        "location": "Indianapolis"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "27",
+       "team": {
+        "id": "6",
+        "abbreviation": "DAL",
+        "displayName": "Dallas Cowboys",
+        "shortDisplayName": "Cowboys",
+        "name": "Cowboys",
+        "location": "Dallas"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "Fox"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401873045",
+   "name": "New York Jets at Kansas City Chiefs",
+   "date": "2026-11-08T18:00Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "35",
+       "team": {
+        "id": "12",
+        "abbreviation": "KC",
+        "displayName": "Kansas City Chiefs",
+        "shortDisplayName": "Chiefs",
+        "name": "Chiefs",
+        "location": "Kansas City"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "12",
+       "team": {
+        "id": "20",
+        "abbreviation": "NYJ",
+        "displayName": "New York Jets",
+        "shortDisplayName": "Jets",
+        "name": "Jets",
+        "location": "New York"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "CBS"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401873042",
+   "name": "Detroit Lions at Miami Dolphins",
+   "date": "2026-11-08T18:00Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "9",
+       "team": {
+        "id": "15",
+        "abbreviation": "MIA",
+        "displayName": "Miami Dolphins",
+        "shortDisplayName": "Dolphins",
+        "name": "Dolphins",
+        "location": "Miami"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "19",
+       "team": {
+        "id": "8",
+        "abbreviation": "DET",
+        "displayName": "Detroit Lions",
+        "shortDisplayName": "Lions",
+        "name": "Lions",
+        "location": "Detroit"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "CBS"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401873039",
+   "name": "Cleveland Browns at New Orleans Saints",
+   "date": "2026-11-08T18:00Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final/OT",
+     "shortDetail": "Final/OT"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final/OT",
+       "shortDetail": "Final/OT"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "23",
+       "team": {
+        "id": "18",
+        "abbreviation": "NO",
+        "displayName": "New Orleans Saints",
+        "shortDisplayName": "Saints",
+        "name": "Saints",
+        "location": "New Orleans"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "22",
+       "team": {
+        "id": "5",
+        "abbreviation": "CLE",
+        "displayName": "Cleveland Browns",
+        "shortDisplayName": "Browns",
+        "name": "Browns",
+        "location": "Cleveland"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "CBS"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401873044",
+   "name": "New York Giants at Philadelphia Eagles",
+   "date": "2026-11-08T18:00Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "11",
+       "team": {
+        "id": "21",
+        "abbreviation": "PHI",
+        "displayName": "Philadelphia Eagles",
+        "shortDisplayName": "Eagles",
+        "name": "Eagles",
+        "location": "Philadelphia"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "19",
+       "team": {
+        "id": "19",
+        "abbreviation": "NYG",
+        "displayName": "New York Giants",
+        "shortDisplayName": "Giants",
+        "name": "Giants",
+        "location": "New York"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "Fox"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401873043",
+   "name": "Los Angeles Rams at Washington Commanders",
+   "date": "2026-11-08T18:00Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "13",
+       "team": {
+        "id": "28",
+        "abbreviation": "WSH",
+        "displayName": "Washington Commanders",
+        "shortDisplayName": "Commanders",
+        "name": "Commanders",
+        "location": "Washington"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "20",
+       "team": {
+        "id": "14",
+        "abbreviation": "LAR",
+        "displayName": "Los Angeles Rams",
+        "shortDisplayName": "Rams",
+        "name": "Rams",
+        "location": "Los Angeles"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "Fox"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401873041",
+   "name": "Denver Broncos at Carolina Panthers",
+   "date": "2026-11-08T18:00Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "21",
+       "team": {
+        "id": "29",
+        "abbreviation": "CAR",
+        "displayName": "Carolina Panthers",
+        "shortDisplayName": "Panthers",
+        "name": "Panthers",
+        "location": "Carolina"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "26",
+       "team": {
+        "id": "7",
+        "abbreviation": "DEN",
+        "displayName": "Denver Broncos",
+        "shortDisplayName": "Broncos",
+        "name": "Broncos",
+        "location": "Denver"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "CBS"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401873046",
+   "name": "Houston Texans at Los Angeles Chargers",
+   "date": "2026-11-08T21:05Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "22",
+       "team": {
+        "id": "24",
+        "abbreviation": "LAC",
+        "displayName": "Los Angeles Chargers",
+        "shortDisplayName": "Chargers",
+        "name": "Chargers",
+        "location": "Los Angeles"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "44",
+       "team": {
+        "id": "34",
+        "abbreviation": "HOU",
+        "displayName": "Houston Texans",
+        "shortDisplayName": "Texans",
+        "name": "Texans",
+        "location": "Houston"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "CBS"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401873049",
+   "name": "Green Bay Packers at New England Patriots",
+   "date": "2026-11-08T21:25Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "27",
+       "team": {
+        "id": "17",
+        "abbreviation": "NE",
+        "displayName": "New England Patriots",
+        "shortDisplayName": "Patriots",
+        "name": "Patriots",
+        "location": "New England"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "45",
+       "team": {
+        "id": "9",
+        "abbreviation": "GB",
+        "displayName": "Green Bay Packers",
+        "shortDisplayName": "Packers",
+        "name": "Packers",
+        "location": "Green Bay"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "Fox"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401873047",
+   "name": "Las Vegas Raiders at San Francisco 49ers",
+   "date": "2026-11-08T21:25Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "38",
+       "team": {
+        "id": "25",
+        "abbreviation": "SF",
+        "displayName": "San Francisco 49ers",
+        "shortDisplayName": "49ers",
+        "name": "49ers",
+        "location": "San Francisco"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "17",
+       "team": {
+        "id": "13",
+        "abbreviation": "LV",
+        "displayName": "Las Vegas Raiders",
+        "shortDisplayName": "Raiders",
+        "name": "Raiders",
+        "location": "Las Vegas"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "Fox"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401873048",
+   "name": "Arizona Cardinals at Seattle Seahawks",
+   "date": "2026-11-08T21:25Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "17",
+       "team": {
+        "id": "26",
+        "abbreviation": "SEA",
+        "displayName": "Seattle Seahawks",
+        "shortDisplayName": "Seahawks",
+        "name": "Seahawks",
+        "location": "Seattle"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "3",
+       "team": {
+        "id": "22",
+        "abbreviation": "ARI",
+        "displayName": "Arizona Cardinals",
+        "shortDisplayName": "Cardinals",
+        "name": "Cardinals",
+        "location": "Arizona"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "Fox"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401873050",
+   "name": "Tampa Bay Buccaneers at Chicago Bears",
+   "date": "2026-11-09T01:20Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "27",
+       "team": {
+        "id": "3",
+        "abbreviation": "CHI",
+        "displayName": "Chicago Bears",
+        "shortDisplayName": "Bears",
+        "name": "Bears",
+        "location": "Chicago"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "24",
+       "team": {
+        "id": "27",
+        "abbreviation": "TB",
+        "displayName": "Tampa Bay Buccaneers",
+        "shortDisplayName": "Buccaneers",
+        "name": "Buccaneers",
+        "location": "Tampa Bay"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "NBC"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401873051",
+   "name": "Buffalo Bills at Minnesota Vikings",
+   "date": "2026-11-10T01:15Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "6",
+       "team": {
+        "id": "16",
+        "abbreviation": "MIN",
+        "displayName": "Minnesota Vikings",
+        "shortDisplayName": "Vikings",
+        "name": "Vikings",
+        "location": "Minnesota"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "23",
+       "team": {
+        "id": "2",
+        "abbreviation": "BUF",
+        "displayName": "Buffalo Bills",
+        "shortDisplayName": "Bills",
+        "name": "Bills",
+        "location": "Buffalo"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "ESPN",
+        "ABC"
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

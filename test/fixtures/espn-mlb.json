@@ -1,0 +1,66 @@
+{
+ "season": {
+  "type": 3,
+  "year": 2026
+ },
+ "events": [
+  {
+   "id": "401908046",
+   "name": "Milwaukee Brewers at Tampa Bay Rays",
+   "date": "2026-10-29T00:00Z",
+   "status": {
+    "type": {
+     "state": "post",
+     "completed": true,
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "post",
+       "completed": true,
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "1",
+       "team": {
+        "id": "30",
+        "abbreviation": "TB",
+        "displayName": "Tampa Bay Rays",
+        "shortDisplayName": "Rays",
+        "name": "Rays",
+        "location": "Tampa Bay"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "4",
+       "team": {
+        "id": "8",
+        "abbreviation": "MIL",
+        "displayName": "Milwaukee Brewers",
+        "shortDisplayName": "Brewers",
+        "name": "Brewers",
+        "location": "Milwaukee"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "Fox"
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,1170 @@
+{
+ "season": {
+  "type": 2,
+  "year": 2026
+ },
+ "events": [
+  {
+   "id": "401858526",
+   "name": "Illinois Fighting Illini at UCLA Bruins",
+   "date": "2026-11-14T02:00Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Fri, November 13th at 9:00 PM EST",
+     "shortDetail": "11/13 - 9:00 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Fri, November 13th at 9:00 PM EST",
+       "shortDetail": "11/13 - 9:00 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "26",
+        "abbreviation": "UCLA",
+        "displayName": "UCLA Bruins",
+        "shortDisplayName": "UCLA",
+        "name": "Bruins",
+        "location": "UCLA"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "356",
+        "abbreviation": "ILL",
+        "displayName": "Illinois Fighting Illini",
+        "shortDisplayName": "Illinois",
+        "name": "Fighting Illini",
+        "location": "Illinois"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "Fox"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401856860",
+   "name": "Houston Cougars at Colorado Buffaloes",
+   "date": "2026-11-14T03:15Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Fri, November 13th at 10:15 PM EST",
+     "shortDetail": "11/13 - 10:15 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Fri, November 13th at 10:15 PM EST",
+       "shortDetail": "11/13 - 10:15 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "38",
+        "abbreviation": "COLO",
+        "displayName": "Colorado Buffaloes",
+        "shortDisplayName": "Colorado",
+        "name": "Buffaloes",
+        "location": "Colorado"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "248",
+        "abbreviation": "HOU",
+        "displayName": "Houston Cougars",
+        "shortDisplayName": "Houston",
+        "name": "Cougars",
+        "location": "Houston"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "ESPN"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401858296",
+   "name": "Duke Blue Devils at Miami Hurricanes",
+   "date": "2026-11-14T17:00Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Sat, November 14th at 12:00 PM EST",
+     "shortDetail": "11/14 - 12:00 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Sat, November 14th at 12:00 PM EST",
+       "shortDetail": "11/14 - 12:00 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "2390",
+        "abbreviation": "MIA",
+        "displayName": "Miami Hurricanes",
+        "shortDisplayName": "Miami",
+        "name": "Hurricanes",
+        "location": "Miami"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "150",
+        "abbreviation": "DUKE",
+        "displayName": "Duke Blue Devils",
+        "shortDisplayName": "Duke",
+        "name": "Blue Devils",
+        "location": "Duke"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "ABC"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401858522",
+   "name": "Northwestern Wildcats at Ohio State Buckeyes",
+   "date": "2026-11-14T17:00Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Sat, November 14th at 12:00 PM EST",
+     "shortDetail": "11/14 - 12:00 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Sat, November 14th at 12:00 PM EST",
+       "shortDetail": "11/14 - 12:00 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "194",
+        "abbreviation": "OSU",
+        "displayName": "Ohio State Buckeyes",
+        "shortDisplayName": "Ohio State",
+        "name": "Buckeyes",
+        "location": "Ohio State"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "77",
+        "abbreviation": "NU",
+        "displayName": "Northwestern Wildcats",
+        "shortDisplayName": "Northwestern",
+        "name": "Wildcats",
+        "location": "Northwestern"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "Fox"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401858301",
+   "name": "Wake Forest Demon Deacons at SMU Mustangs",
+   "date": "2026-11-14T17:00Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Sat, November 14th at 12:00 PM EST",
+     "shortDetail": "11/14 - 12:00 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Sat, November 14th at 12:00 PM EST",
+       "shortDetail": "11/14 - 12:00 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "2567",
+        "abbreviation": "SMU",
+        "displayName": "SMU Mustangs",
+        "shortDisplayName": "SMU",
+        "name": "Mustangs",
+        "location": "SMU"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "154",
+        "abbreviation": "WAKE",
+        "displayName": "Wake Forest Demon Deacons",
+        "shortDisplayName": "Wake Forest",
+        "name": "Demon Deacons",
+        "location": "Wake Forest"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "ESPN",
+        "Disney+"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401856889",
+   "name": "Alabama Crimson Tide at Vanderbilt Commodores",
+   "date": "2026-11-14T17:45Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Sat, November 14th at 12:45 PM EST",
+     "shortDetail": "11/14 - 12:45 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Sat, November 14th at 12:45 PM EST",
+       "shortDetail": "11/14 - 12:45 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "238",
+        "abbreviation": "VAN",
+        "displayName": "Vanderbilt Commodores",
+        "shortDisplayName": "Vanderbilt",
+        "name": "Commodores",
+        "location": "Vanderbilt"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "333",
+        "abbreviation": "ALA",
+        "displayName": "Alabama Crimson Tide",
+        "shortDisplayName": "Alabama",
+        "name": "Crimson Tide",
+        "location": "Alabama"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "SEC Network"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401856888",
+   "name": "Tennessee Volunteers at Texas A&M Aggies",
+   "date": "2026-11-14T20:00Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Sat, November 14th at 3:00 PM EST",
+     "shortDetail": "11/14 - 3:00 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Sat, November 14th at 3:00 PM EST",
+       "shortDetail": "11/14 - 3:00 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "245",
+        "abbreviation": "TA&M",
+        "displayName": "Texas A&M Aggies",
+        "shortDisplayName": "Texas A&M",
+        "name": "Aggies",
+        "location": "Texas A&M"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "2633",
+        "abbreviation": "TENN",
+        "displayName": "Tennessee Volunteers",
+        "shortDisplayName": "Tennessee",
+        "name": "Volunteers",
+        "location": "Tennessee"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "ESPN"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401856883",
+   "name": "Missouri Tigers at Georgia Bulldogs",
+   "date": "2026-11-14T20:30Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Sat, November 14th at 3:30 PM EST",
+     "shortDetail": "11/14 - 3:30 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Sat, November 14th at 3:30 PM EST",
+       "shortDetail": "11/14 - 3:30 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "61",
+        "abbreviation": "UGA",
+        "displayName": "Georgia Bulldogs",
+        "shortDisplayName": "Georgia",
+        "name": "Bulldogs",
+        "location": "Georgia"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "142",
+        "abbreviation": "MIZ",
+        "displayName": "Missouri Tigers",
+        "shortDisplayName": "Missouri",
+        "name": "Tigers",
+        "location": "Missouri"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "ABC",
+        "Disney+"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401858518",
+   "name": "USC Trojans at Indiana Hoosiers",
+   "date": "2026-11-14T20:30Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Sat, November 14th at 3:30 PM EST",
+     "shortDetail": "11/14 - 3:30 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Sat, November 14th at 3:30 PM EST",
+       "shortDetail": "11/14 - 3:30 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "84",
+        "abbreviation": "IU",
+        "displayName": "Indiana Hoosiers",
+        "shortDisplayName": "Indiana",
+        "name": "Hoosiers",
+        "location": "Indiana"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "30",
+        "abbreviation": "USC",
+        "displayName": "USC Trojans",
+        "shortDisplayName": "USC",
+        "name": "Trojans",
+        "location": "USC"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "CBS"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401856858",
+   "name": "Baylor Bears at BYU Cougars",
+   "date": "2026-11-14T20:30Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Sat, November 14th at 3:30 PM EST",
+     "shortDetail": "11/14 - 3:30 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Sat, November 14th at 3:30 PM EST",
+       "shortDetail": "11/14 - 3:30 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "252",
+        "abbreviation": "BYU",
+        "displayName": "BYU Cougars",
+        "shortDisplayName": "BYU",
+        "name": "Cougars",
+        "location": "BYU"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "239",
+        "abbreviation": "BAY",
+        "displayName": "Baylor Bears",
+        "shortDisplayName": "Baylor",
+        "name": "Bears",
+        "location": "Baylor"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "Fox"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401858294",
+   "name": "Boston College Eagles at Notre Dame Fighting Irish",
+   "date": "2026-11-14T20:30Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Sat, November 14th at 3:30 PM EST",
+     "shortDetail": "11/14 - 3:30 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Sat, November 14th at 3:30 PM EST",
+       "shortDetail": "11/14 - 3:30 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "87",
+        "abbreviation": "ND",
+        "displayName": "Notre Dame Fighting Irish",
+        "shortDisplayName": "Notre Dame",
+        "name": "Fighting Irish",
+        "location": "Notre Dame"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "103",
+        "abbreviation": "BC",
+        "displayName": "Boston College Eagles",
+        "shortDisplayName": "Boston College",
+        "name": "Eagles",
+        "location": "Boston College"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "NBC"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401858523",
+   "name": "Michigan Wolverines at Oregon Ducks",
+   "date": "2026-11-14T20:30Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Sat, November 14th at 3:30 PM EST",
+     "shortDetail": "11/14 - 3:30 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Sat, November 14th at 3:30 PM EST",
+       "shortDetail": "11/14 - 3:30 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "2483",
+        "abbreviation": "ORE",
+        "displayName": "Oregon Ducks",
+        "shortDisplayName": "Oregon",
+        "name": "Ducks",
+        "location": "Oregon"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "130",
+        "abbreviation": "MICH",
+        "displayName": "Michigan Wolverines",
+        "shortDisplayName": "Michigan",
+        "name": "Wolverines",
+        "location": "Michigan"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "FS1"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401856887",
+   "name": "Ole Miss Rebels at Oklahoma Sooners",
+   "date": "2026-11-14T21:15Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Sat, November 14th at 4:15 PM EST",
+     "shortDetail": "11/14 - 4:15 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Sat, November 14th at 4:15 PM EST",
+       "shortDetail": "11/14 - 4:15 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "201",
+        "abbreviation": "OU",
+        "displayName": "Oklahoma Sooners",
+        "shortDisplayName": "Oklahoma",
+        "name": "Sooners",
+        "location": "Oklahoma"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "145",
+        "abbreviation": "MISS",
+        "displayName": "Ole Miss Rebels",
+        "shortDisplayName": "Ole Miss",
+        "name": "Rebels",
+        "location": "Ole Miss"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "SEC Network"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401860914",
+   "name": "Oregon State Beavers at Boise State Broncos",
+   "date": "2026-11-14T23:00Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Sat, November 14th at 6:00 PM EST",
+     "shortDetail": "11/14 - 6:00 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Sat, November 14th at 6:00 PM EST",
+       "shortDetail": "11/14 - 6:00 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "68",
+        "abbreviation": "BOIS",
+        "displayName": "Boise State Broncos",
+        "shortDisplayName": "Boise St",
+        "name": "Broncos",
+        "location": "Boise State"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "204",
+        "abbreviation": "ORST",
+        "displayName": "Oregon State Beavers",
+        "shortDisplayName": "Oregon St",
+        "name": "Beavers",
+        "location": "Oregon State"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "USA Net"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401856884",
+   "name": "Florida Gators at Kentucky Wildcats",
+   "date": "2026-11-14T23:15Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Sat, November 14th at 6:15 PM EST",
+     "shortDetail": "11/14 - 6:15 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Sat, November 14th at 6:15 PM EST",
+       "shortDetail": "11/14 - 6:15 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "96",
+        "abbreviation": "UK",
+        "displayName": "Kentucky Wildcats",
+        "shortDisplayName": "Kentucky",
+        "name": "Wildcats",
+        "location": "Kentucky"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "57",
+        "abbreviation": "FLA",
+        "displayName": "Florida Gators",
+        "shortDisplayName": "Florida",
+        "name": "Gators",
+        "location": "Florida"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "ESPN"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401856864",
+   "name": "Utah Utes at Arizona Wildcats",
+   "date": "2026-11-15T00:30Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Sat, November 14th at 7:30 PM EST",
+     "shortDetail": "11/14 - 7:30 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Sat, November 14th at 7:30 PM EST",
+       "shortDetail": "11/14 - 7:30 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "12",
+        "abbreviation": "ARIZ",
+        "displayName": "Arizona Wildcats",
+        "shortDisplayName": "Arizona",
+        "name": "Wildcats",
+        "location": "Arizona"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "254",
+        "abbreviation": "UTAH",
+        "displayName": "Utah Utes",
+        "shortDisplayName": "Utah",
+        "name": "Utes",
+        "location": "Utah"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "Fox"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401856885",
+   "name": "Texas Longhorns at LSU Tigers",
+   "date": "2026-11-15T00:30Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Sat, November 14th at 7:30 PM EST",
+     "shortDetail": "11/14 - 7:30 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Sat, November 14th at 7:30 PM EST",
+       "shortDetail": "11/14 - 7:30 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "99",
+        "abbreviation": "LSU",
+        "displayName": "LSU Tigers",
+        "shortDisplayName": "LSU",
+        "name": "Tigers",
+        "location": "LSU"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "251",
+        "abbreviation": "TEX",
+        "displayName": "Texas Longhorns",
+        "shortDisplayName": "Texas",
+        "name": "Longhorns",
+        "location": "Texas"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "ABC"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401858519",
+   "name": "Purdue Boilermakers at Iowa Hawkeyes",
+   "date": "2026-11-15T00:30Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Sat, November 14th at 7:30 PM EST",
+     "shortDetail": "11/14 - 7:30 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Sat, November 14th at 7:30 PM EST",
+       "shortDetail": "11/14 - 7:30 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "2294",
+        "abbreviation": "IOWA",
+        "displayName": "Iowa Hawkeyes",
+        "shortDisplayName": "Iowa",
+        "name": "Hawkeyes",
+        "location": "Iowa"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "2509",
+        "abbreviation": "PUR",
+        "displayName": "Purdue Boilermakers",
+        "shortDisplayName": "Purdue",
+        "name": "Boilermakers",
+        "location": "Purdue"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "NBC"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401856882",
+   "name": "South Carolina Gamecocks at Arkansas Razorbacks",
+   "date": "2026-11-15T00:45Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Sat, November 14th at 7:45 PM EST",
+     "shortDetail": "11/14 - 7:45 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Sat, November 14th at 7:45 PM EST",
+       "shortDetail": "11/14 - 7:45 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "8",
+        "abbreviation": "ARK",
+        "displayName": "Arkansas Razorbacks",
+        "shortDisplayName": "Arkansas",
+        "name": "Razorbacks",
+        "location": "Arkansas"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "2579",
+        "abbreviation": "SC",
+        "displayName": "South Carolina Gamecocks",
+        "shortDisplayName": "South Carolina",
+        "name": "Gamecocks",
+        "location": "South Carolina"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "SEC Network"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401856863",
+   "name": "Texas Tech Red Raiders at Oklahoma State Cowboys",
+   "date": "2026-11-15T02:30Z",
+   "status": {
+    "type": {
+     "state": "pre",
+     "completed": false,
+     "detail": "Sat, November 14th at 9:30 PM EST",
+     "shortDetail": "11/14 - 9:30 PM EST"
+    }
+   },
+   "competitions": [
+    {
+     "status": {
+      "type": {
+       "state": "pre",
+       "completed": false,
+       "detail": "Sat, November 14th at 9:30 PM EST",
+       "shortDetail": "11/14 - 9:30 PM EST"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "197",
+        "abbreviation": "OKST",
+        "displayName": "Oklahoma State Cowboys",
+        "shortDisplayName": "Oklahoma St",
+        "name": "Cowboys",
+        "location": "Oklahoma State"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "2641",
+        "abbreviation": "TTU",
+        "displayName": "Texas Tech Red Raiders",
+        "shortDisplayName": "Texas Tech",
+        "name": "Red Raiders",
+        "location": "Texas Tech"
+       }
+      }
+     ],
+     "broadcasts": [
+      {
+       "names": [
+        "ESPN"
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
