@@ -1,0 +1,60 @@
+{
+ "pages": [
+  {
+   "id": 24544,
+   "key": "Photosynthesis",
+   "title": "Photosynthesis",
+   "excerpt": "<span class=\"searchmatch\">Photosynthesis</span> is a system of biological processes by which photopigment-bearing autotrophic organisms, such as most plants, algae and cyanobacteria, convert",
+   "matched_title": null,
+   "anchor": null,
+   "description": "Biological process to convert light into chemical energy",
+   "thumbnail": {
+    "mimetype": "image/svg+xml",
+    "width": 60,
+    "height": 60,
+    "duration": null,
+    "url": "//thumb.wikimedia.org/wikipedia/commons/thumb/5/55/Photosynthesis_en.svg/60px-Photosynthesis_en.svg.png?utm_source=en.wikipedia.org&utm_campaign=rest&utm_content=thumbnail"
+   }
+  },
+  {
+   "id": 83416238,
+   "key": "Photosynthesis_(disambiguation)",
+   "title": "Photosynthesis (disambiguation)",
+   "excerpt": "<span class=\"searchmatch\">Photosynthesis</span> is a biological process to convert light into chemical energy. <span class=\"searchmatch\">Photosynthesis</span> may also refer to: <span class=\"searchmatch\">Photosynthesis</span> (board game), first introduced",
+   "matched_title": null,
+   "anchor": null,
+   "description": "Topics referred to by the same term",
+   "thumbnail": null
+  },
+  {
+   "id": 1430539,
+   "key": "Artificial_photosynthesis",
+   "title": "Artificial photosynthesis",
+   "excerpt": "Artificial <span class=\"searchmatch\">photosynthesis</span> is a chemical process that biomimics the natural process of <span class=\"searchmatch\">photosynthesis</span>. The term artificial <span class=\"searchmatch\">photosynthesis</span> is used loosely",
+   "matched_title": null,
+   "anchor": null,
+   "description": "Artificial process that uses sunlight energy to drive chemical synthesis",
+   "thumbnail": null
+  },
+  {
+   "id": 25269493,
+   "key": "Anoxygenic_photosynthesis",
+   "title": "Anoxygenic photosynthesis",
+   "excerpt": "Anoxygenic <span class=\"searchmatch\">photosynthesis</span> is a special form of <span class=\"searchmatch\">photosynthesis</span> used by some bacteria, which differs from the better known oxygenic <span class=\"searchmatch\">photosynthesis</span> in plants",
+   "matched_title": null,
+   "anchor": null,
+   "description": "Process used by obligate anaerobes",
+   "thumbnail": null
+  },
+  {
+   "id": 4066860,
+   "key": "Photosynthetic_efficiency",
+   "title": "Photosynthetic efficiency",
+   "excerpt": "efficiency (i.e. oxygenic <span class=\"searchmatch\">photosynthesis</span> efficiency) is the fraction of light energy converted into chemical energy during <span class=\"searchmatch\">photosynthesis</span> in green plants and",
+   "matched_title": null,
+   "anchor": null,
+   "description": "Ecological metric",
+   "thumbnail": null
+  }
+ ]
+}

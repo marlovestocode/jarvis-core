@@ -1,0 +1,49 @@
+{
+ "type": "standard",
+ "title": "Photosynthesis",
+ "displaytitle": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Photosynthesis</span></span>",
+ "namespace": {
+  "id": 0,
+  "text": ""
+ },
+ "wikibase_item": "Q11982",
+ "titles": {
+  "canonical": "Photosynthesis",
+  "normalized": "Photosynthesis",
+  "display": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Photosynthesis</span></span>"
+ },
+ "pageid": 24544,
+ "thumbnail": {
+  "source": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/55/Photosynthesis_en.svg/330px-Photosynthesis_en.svg.png?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+  "width": 330,
+  "height": 330
+ },
+ "originalimage": {
+  "source": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/55/Photosynthesis_en.svg/500px-Photosynthesis_en.svg.png?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+  "width": 378,
+  "height": 378
+ },
+ "lang": "en",
+ "dir": "ltr",
+ "revision": "1383248806",
+ "tid": "b9889428-d627-11f1-b346-71cdf7b253c4",
+ "timestamp": "2026-11-01T19:09:13Z",
+ "description": "Biological process to convert light into chemical energy",
+ "description_source": "local",
+ "content_urls": {
+  "desktop": {
+   "page": "https://en.wikipedia.org/wiki/Photosynthesis",
+   "revisions": "https://en.wikipedia.org/wiki/Photosynthesis?action=history",
+   "edit": "https://en.wikipedia.org/wiki/Photosynthesis?action=edit",
+   "talk": "https://en.wikipedia.org/wiki/Talk:Photosynthesis"
+  },
+  "mobile": {
+   "page": "https://en.wikipedia.org/wiki/Photosynthesis",
+   "revisions": "https://en.wikipedia.org/wiki/Special:History/Photosynthesis",
+   "edit": "https://en.wikipedia.org/wiki/Photosynthesis?action=edit",
+   "talk": "https://en.wikipedia.org/wiki/Talk:Photosynthesis"
+  }
+ },
+ "extract": "Photosynthesis is a system of biological processes by which photopigment-bearing autotrophic organisms, such as most plants, algae and cyanobacteria, convert light energy—typically from sunlight—into the chemical energy necessary to fuel their metabolism. The term photosynthesis usually refers to oxygenic photosynthesis, a process that releases oxygen as a byproduct of water splitting. Photosynthetic organisms store the converted chemical energy within the bonds of intracellular organic compounds, typically carbohydrates like sugars, starches, phytoglycogen and cellulose. When needing to use this stored energy, an organism's cells then metabolize the organic compounds through cellular respiration. Photosynthesis plays a critical role in producing and maintaining the oxygen content of the Earth's atmosphere, and it supplies most of the biological energy necessary for complex life on Earth.",
+ "extract_html": "<p><b>Photosynthesis</b> is a system of biological processes by which photopigment-bearing autotrophic organisms, such as most plants, algae and cyanobacteria, convert light energy—typically from sunlight—into the chemical energy necessary to fuel their metabolism. The term <i>photosynthesis</i> usually refers to <b>oxygenic photosynthesis</b>, a process that releases oxygen as a byproduct of water splitting. Photosynthetic organisms store the converted chemical energy within the bonds of intracellular organic compounds, typically carbohydrates like sugars, starches, phytoglycogen and cellulose. When needing to use this stored energy, an organism's cells then metabolize the organic compounds through cellular respiration. Photosynthesis plays a critical role in producing and maintaining the oxygen content of the Earth's atmosphere, and it supplies most of the biological energy necessary for complex life on Earth.</p>"
+}
