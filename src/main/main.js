@@ -1,7 +1,7 @@
 // JARVIS core: Electron shell around src/core. Local only.
 const path = require('node:path');
 const fs = require('node:fs');
-const { app, globalShortcut, session } = require('electron');
+const { app, globalShortcut, session, Notification } = require('electron');
 
 // Data in %APPDATA%\jarvis-core (JARVIS_DATA_DIR overrides it, for self-tests).
 const DATA_DIR = process.env.JARVIS_DATA_DIR || path.join(app.getPath('appData'), 'jarvis-core');
@@ -29,6 +29,7 @@ const { createHardwareProbe } = require('../core/brain/hardware');
 const { runBoot } = require('../core/boot');
 const { createTimerStore } = require('../core/timers/store');
 const { createScheduler } = require('../core/timers/scheduler');
+const { createProactiveEngine } = require('../core/proactive/engine');
 const { createOrchestrator } = require('../core/orchestrator');
 const { createPolicy } = require('../core/net/policy');
 const { createFetcher } = require('../core/net/fetcher');
@@ -242,6 +243,22 @@ ctx.startVoice = () => {
   if (!ctx.micOk) { ctx.mic?.start(); } // retry: the mic may be back
   ctx.voice.listen();
 };
+// JARVIS speaks unasked (timers): waits while you talk, quiet hours / DND give a toast only
+ctx.proactive = createProactiveEngine({
+  bus: ctx.bus, getConfig: ctx.getConfig, log: ctx.log,
+  speak: text => ctx.voice.announce(text),
+  chime: () => { ctx.mic?.play(chime(), 22050).catch(() => {}); },
+  notify: (title, body) => {
+    if (Notification.isSupported()) new Notification({ title, body, silent: true }).show();
+    else ctx.tray?.displayBalloon?.({ title, content: body });
+  },
+  appendHistory: msg => {
+    let s = ctx.sessionId ? ctx.sessions.load(ctx.sessionId) : null;
+    if (!s) { s = ctx.sessions.create(); ctx.sessionId = s.id; }
+    s.messages.push(msg);
+    ctx.sessions.save(s);
+  },
+});
 ctx.bus.on('log', ev => ctx.log(ev.text));
 // "Jarvis" heard: a short chime says it is listening (the orb flares too)
 ctx.bus.on('wake', () => { ctx.log('wake word heard'); ctx.mic?.play(chime(), 22050).catch(() => {}); });

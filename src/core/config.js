@@ -49,10 +49,13 @@ const DEFAULTS = Object.freeze({
     maxBulk: 25,                        // most songs added to a playlist in one go
     logPlays: true,                     // keep a local log of what you listen to (music_stats); off stops logging
   }),
+  // JARVIS speaking unasked (timers): quiet hours and Do-not-disturb give a notification only
+  proactive: Object.freeze({ enabled: true, dnd: false, quietStart: '22:00', quietEnd: '07:00', minGapSec: 10, chime: true }),
 });
 
 const VADS = ['silero', 'energy'];
-const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music'];
+const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive'];
+const HHMM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;   // "22:00"
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 // micDeviceId defaults to null but holds a string: accept string or null.
@@ -87,6 +90,10 @@ function merge(raw) {
         else if (typeof d === 'number') out[key][k] = typeof sv === 'number' && Number.isFinite(sv) ? sv : d;
         else out[key][k] = typeof sv === typeof d ? sv : d;
       }
+      if (key === 'proactive') {
+        for (const k of ['quietStart', 'quietEnd']) if (!HHMM.test(out[key][k])) out[key][k] = def[k];
+        out[key].minGapSec = Math.round(Math.max(3, Math.min(120, out[key].minGapSec)));
+      }
     } else {
       out[key] = v !== undefined && okValue(key, def, v) ? v : def;
       if (key === 'endSilenceMs') out[key] = Math.round(Math.max(300, Math.min(1500, out[key])));
@@ -115,4 +122,4 @@ function saveConfig(dir, config) {
   fs.renameSync(tmp, file);
 }
 
-module.exports = { DEFAULTS, loadConfig, saveConfig };
+module.exports = { DEFAULTS, HHMM, loadConfig, saveConfig };

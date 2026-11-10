@@ -395,6 +395,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     })();
   }
 
+  // → true when the speech played to the end; false when TTS failed or was cut (barge-in, cancel)
   async function speak(text, my) {
     mode = 'speaking';
     resetSpeaking();
@@ -407,7 +408,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     } catch (err) {
       logOnce('Text-to-speech', err);
       if (my === turn) { mode = 'idle'; setState('idle'); }
-      return;
+      return false;
     }
     current = handle;
     trace.mark('first_audio');
@@ -421,13 +422,25 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
         }
       } catch { /* levels are cosmetic */ }
     })();
+    let failed = false;
     try {
       await handle.done;
     } catch (err) {
+      failed = true;
       if (!signal.aborted) logOnce('Text-to-speech', err);
     }
     finished = true;
     if (my === turn && mode === 'speaking') { mode = 'idle'; op = null; setState('idle'); }
+    return !failed && !signal.aborted && my === turn;
+  }
+
+  // Proactive speech (timers): only when idle, through the normal speaking path so "Jarvis, stop"
+  // and Esc cut it like any reply. → true only when it was spoken to the end.
+  async function announce(text) {
+    if (mode !== 'idle' || !String(text || '').trim()) return false;
+    turn++;
+    trace.reset();
+    return speak(String(text), turn);
   }
 
   // Start or stop the wake word engine to match config.wakeEnabled.
@@ -456,7 +469,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
   }
 
   return {
-    listen, feed, cancel, applyWake,
+    listen, feed, cancel, applyWake, announce,
     get speaking() { return mode === 'speaking'; },
     get active() { return mode !== 'idle'; },
     get mode() { return mode; },

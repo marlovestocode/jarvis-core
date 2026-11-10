@@ -656,3 +656,39 @@ test('continuation: off by default (old behaviour)', async () => {
   await tick(10);
   assert.deepEqual(g.orchestrator.sends.map(s => s.text), ['Remind me to call my.']);
 });
+
+test('controller: announce speaks when idle and resolves true when finished', async () => {
+  const { vc, tts, events } = setup();
+  const p = vc.announce('Your pasta timer is done.');
+  await tick();
+  assert.equal(tts.spoken.at(-1).text, 'Your pasta timer is done.');
+  assert.equal(vc.mode, 'speaking');
+  tts.finish();
+  assert.equal(await p, true);
+  assert.equal(vc.mode, 'idle');
+  assert.deepEqual(states(events), ['speaking', 'idle']);
+});
+
+test('controller: announce while listening returns false and says nothing', async () => {
+  const { vc, tts } = setup();
+  vc.listen();
+  assert.equal(await vc.announce('Reminder: call mum.'), false);
+  assert.equal(tts.spoken.length, 0);
+  assert.equal(vc.mode, 'listening');
+});
+
+test('controller: barge-in (cancel) during announce stops TTS and resolves false', async () => {
+  const { vc, tts } = setup();
+  const p = vc.announce('Your pasta timer is done.');
+  await tick();
+  vc.cancel();
+  assert.equal(await p, false);
+  assert.equal(tts.aborted, 1);
+  assert.equal(vc.mode, 'idle');
+});
+
+test('controller: announce without a TTS engine resolves false', async () => {
+  const { vc } = setup({ tts: null });
+  assert.equal(await vc.announce('Your pasta timer is done.'), false);
+  assert.equal(vc.mode, 'idle');
+});

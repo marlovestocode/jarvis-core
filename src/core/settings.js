@@ -1,10 +1,11 @@
 // Settings panel logic: validate a patch from the UI and describe what can be chosen.
 const { feedUrl, SOURCES } = require('./net/policy');
 const { LEAGUES } = require('./knowledge/sports');
+const { HHMM } = require('./config');
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 function applyPatch(current, patch = {}, { providers, engines }) {
-  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama }, online: { ...current.online }, location: { ...current.location }, news: { feeds: [...current.news.feeds] }, sports: { follow: current.sports.follow.map(x => ({ ...x })) }, music: { ...current.music, aliases: (current.music?.aliases || []).map(x => ({ ...x })) } };
+  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama }, online: { ...current.online }, location: { ...current.location }, news: { feeds: [...current.news.feeds] }, sports: { follow: current.sports.follow.map(x => ({ ...x })) }, music: { ...current.music, aliases: (current.music?.aliases || []).map(x => ({ ...x })) }, proactive: { ...current.proactive } };
   const errors = [];
   if (!isObj(patch)) return { config, errors: ['bad patch'] };
 
@@ -78,6 +79,20 @@ function applyPatch(current, patch = {}, { providers, engines }) {
       const n = Number(m[key]);
       if (Number.isFinite(n)) config.music[key] = Math.round(Math.max(min, Math.min(max, n)));
       else errors.push(`Bad music setting: ${key}`);
+    }
+  }
+  if (isObj(patch.proactive)) {
+    const p = patch.proactive;
+    for (const k of ['enabled', 'dnd', 'chime']) if (k in p) config.proactive[k] = !!p[k];
+    for (const k of ['quietStart', 'quietEnd']) {
+      if (!(k in p)) continue;
+      if (typeof p[k] === 'string' && HHMM.test(p[k])) config.proactive[k] = p[k];
+      else errors.push('Quiet hours must be times like 22:00');
+    }
+    if ('minGapSec' in p) {
+      const n = Number(p.minGapSec);
+      if (Number.isFinite(n)) config.proactive.minGapSec = Math.round(Math.max(3, Math.min(120, n)));
+      else errors.push('Bad gap between spoken alerts');
     }
   }
   if (isObj(patch.user)) {

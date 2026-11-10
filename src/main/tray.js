@@ -20,6 +20,8 @@ function createTray({ openChat, talk, openSettings, quit }) {
   tray.setToolTip(tooltipText([]));
   return {
     setFailed(failed) { tray.setToolTip(tooltipText(failed)); },
+    // balloon fallback when Windows toasts are unavailable (proactive alerts)
+    displayBalloon(o) { tray.displayBalloon({ iconType: 'info', ...o }); },
     destroy() { tray.destroy(); },
   };
 }
