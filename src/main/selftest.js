@@ -63,6 +63,53 @@ async function run(ctx, outDir) {
       await shot('orb-error');
       ctx.bus.emit('state', { state: 'idle' });
       step('orb', await dom());
+    } else if (mode === 'voice') {
+      // Real STT/TTS through the speech host; synthesized speech is fed instead of the mic.
+      const os = require('node:os');
+      ctx.mic.start = () => {}; ctx.mic.stop = () => {};
+      step('speech status', await ctx.speechHost.request('status'));
+      const wav = path.join(os.tmpdir(), 'jarvis-selftest-voice.wav');
+      await ctx.speechHost.request('synth', { wav, text: 'What time is it' });
+      const buf = fs.readFileSync(wav); fs.rmSync(wav, { force: true });
+      const speech = new Int16Array(buf.buffer.slice(buf.byteOffset + 44, buf.byteOffset + buf.length - ((buf.length - 44) % 2)));
+      const quiet = ms => { const a = new Int16Array(16 * ms); for (let i = 0; i < a.length; i++) a[i] = (Math.random() - .5) * 200; return a; };
+      const all = new Int16Array([...quiet(300), ...speech, ...quiet(900)]);
+      const states = [];
+      ctx.bus.on('state', e => states.push(e.state + (e.detail ? ':' + e.detail : '')));
+      ctx.startVoice();
+      await wait(300);
+      for (let o = 0; o + 320 <= all.length; o += 320) ctx.voice.feed(all.subarray(o, o + 320), 16000);
+      const t0 = Date.now();
+      while (!ctx.voice.speaking && Date.now() - t0 < 15000) await wait(50);
+      const s = ctx.sessions.load(ctx.sessionId);
+      step('voice turn', { speaking: ctx.voice.speaking, ms: Date.now() - t0, lastUser: s?.messages.filter(m => m.role === 'user').at(-1)?.content, reply: s?.messages.at(-1)?.content });
+      await wait(1200);
+      await shot('voice-speaking');
+      const t1 = Date.now();
+      await js(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))`);
+      while (ctx.voice.speaking && Date.now() - t1 < 3000) await wait(20);
+      step('esc while speaking', { stillSpeaking: ctx.voice.speaking, ms: Date.now() - t1, states });
+    } else if (mode === 'mic-bad') {
+      ctx.config = { ...ctx.config, micDeviceId: 'no-such-device' };
+      ctx.windows.showChat();
+      await wait(500);
+      ctx.startVoice();
+      await wait(2500);
+      step('mic-bad', { voiceActive: ctx.voice.active, ...(await dom()) });
+      await shot('mic-bad');
+    } else if (mode === 'mic') {
+      let frames = 0, rmsMax = 0;
+      const realFeed = ctx.voice.feed;
+      ctx.voice.feed = (pcm, rate) => { frames++; for (const v of pcm) rmsMax = Math.max(rmsMax, Math.abs(v) / 32768); };
+      const st = [];
+      ctx.bus.on('mic', e => st.push(e));
+      ctx.mic.start();
+      await wait(2500);
+      ctx.mic.stop();
+      ctx.voice.feed = realFeed;
+      step('mic', { frames, peak: +rmsMax.toFixed(4), status: st });
+      await wait(300);
+      step('chat', await dom());
     } else if (mode === 'hotkey') {
       const t0 = Date.now();
       while (!win().isVisible() && Date.now() - t0 < 15000) await wait(100);

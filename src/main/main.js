@@ -1,6 +1,6 @@
 // JARVIS core: Electron shell around src/core. Local only.
 const path = require('node:path');
-const { app, globalShortcut } = require('electron');
+const { app, globalShortcut, session } = require('electron');
 
 // Data in %APPDATA%\jarvis-core (JARVIS_DATA_DIR overrides it, for self-tests).
 const DATA_DIR = process.env.JARVIS_DATA_DIR || path.join(app.getPath('appData'), 'jarvis-core');
@@ -17,7 +17,11 @@ const { createToolRunner } = require('../core/tools/registry');
 const { timeTool } = require('../core/tools/time');
 const { createOrchestrator } = require('../core/orchestrator');
 const { startBridge } = require('../core/bridge');
+const { createEngineRegistries } = require('../core/voice/engines');
+const { createSpeechHost, windowsTts, windowsStt, windowsWake } = require('../core/voice/windows-speech');
+const { createVoiceController } = require('../core/voice/controller');
 const { registerHotkeys } = require('./hotkeys');
+const { createMic } = require('./mic');
 const { createWindows } = require('./windows');
 const { createTray } = require('./tray');
 const { registerIpc } = require('./ipc');
@@ -58,8 +62,31 @@ function applyHotkeys() {
 }
 ctx.applyHotkeys = applyHotkeys;
 
-// Voice is wired in by later modules (voice controller); until then a no-op that opens chat.
-ctx.startVoice = () => { ctx.windows.showChat(); ctx.voice?.listen(); };
+// ---- voice: Windows built-in speech (System.Speech) via one PowerShell host ----
+ctx.speechHost = createSpeechHost({ log: ctx.log });
+ctx.engines = createEngineRegistries();
+ctx.engines.stt.add(windowsStt(ctx.speechHost));
+ctx.engines.tts.add(windowsTts(ctx.speechHost));
+ctx.engines.wake.add(windowsWake(ctx.speechHost));
+const engine = kind => ctx.engines[kind].get(ctx.config.engines[kind]) || ctx.engines[kind].get('none');
+ctx.voice = createVoiceController({
+  bus: ctx.bus, orchestrator: ctx.orchestrator,
+  engines: { stt: () => engine('stt'), tts: () => engine('tts'), wake: () => engine('wake') },
+  getConfig: ctx.getConfig, getSessionId: () => ctx.sessionId, setSessionId: id => { ctx.sessionId = id; },
+});
+ctx.micOk = true;
+ctx.startVoice = () => {
+  ctx.windows.showChat();
+  if (!ctx.micOk) { ctx.mic?.start(); } // retry: the mic may be back
+  ctx.voice.listen();
+};
+ctx.bus.on('log', ev => ctx.log(ev.text));
+// mic open only while voice is active
+ctx.bus.on('state', () => {
+  if (!ctx.mic) return;
+  if (ctx.voice.active) ctx.mic.start(); else ctx.mic.stop();
+});
+ctx.onQuit = [() => ctx.speechHost.close(), () => ctx.mic?.destroy()];
 
 app.on('second-instance', () => ctx.windows?.showChat());
 app.on('window-all-closed', () => { /* tray app: stay alive */ });
@@ -70,7 +97,25 @@ app.on('will-quit', () => {
 });
 
 app.whenReady().then(async () => {
+  // only our own pages may use the mic; nothing else gets any permission
+  const own = wc => { try { return new URL(wc.getURL()).protocol === 'file:'; } catch { return false; } };
+  session.defaultSession.setPermissionRequestHandler((wc, perm, cb) => cb(perm === 'media' && own(wc)));
+  session.defaultSession.setPermissionCheckHandler((wc, perm) => perm === 'media' && !!wc && own(wc));
+
   ctx.windows = createWindows({ hideOnBlur: !process.env.JARVIS_SELFTEST });
+  ctx.mic = createMic({
+    getDeviceId: () => ctx.config.micDeviceId,
+    onFrame: (pcm, rate) => ctx.voice.feed(pcm, rate),
+    onStatus: s => {
+      ctx.bus.emit('mic', { ok: s.ok, reason: s.reason });
+      if (s.ok) { ctx.micOk = true; return; }
+      ctx.micOk = false;
+      ctx.voice.cancel();
+      ctx.bus.emit('state', { state: 'idle', detail: `Mic unavailable: ${s.reason}` });
+    },
+    log: ctx.log,
+  });
+  ctx.mic.ensure(); // load the hidden mic page now so the first capture starts fast
   ctx.windows.ensureChat();
   ctx.bus.on('*', ev => ctx.windows.sendAll('ai:event', ev));
   registerIpc(ctx);
@@ -94,6 +139,7 @@ app.whenReady().then(async () => {
   }
 
   ctx.orchestrator.announce();
+  ctx.voice.applyWake();
   ctx.onReady?.forEach(fn => fn());
   if (process.env.JARVIS_SELFTEST) require('./selftest').run(ctx, process.env.JARVIS_SELFTEST);
 });
