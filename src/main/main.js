@@ -15,6 +15,8 @@ const { createRegistry } = require('../core/providers/provider');
 const { NullProvider } = require('../core/providers/null-provider');
 const { createToolRunner } = require('../core/tools/registry');
 const { timeTool } = require('../core/tools/time');
+const { createSysmonTool } = require('../core/tools/sysmon');
+const { createMediaTool } = require('../core/tools/media');
 const { createOrchestrator } = require('../core/orchestrator');
 const { startBridge } = require('../core/bridge');
 const { createEngineRegistries } = require('../core/voice/engines');
@@ -42,7 +44,7 @@ ctx.bus = createBus({ onError: err => ctx.log('listener error:', err?.message) }
 ctx.sessions = createSessionStore(DATA_DIR);
 ctx.providers = createRegistry();
 ctx.providers.add(NullProvider);
-ctx.toolList = [timeTool];
+ctx.toolList = [timeTool, createSysmonTool(), createMediaTool()];
 ctx.tools = createToolRunner(ctx.toolList);
 ctx.getConfig = () => ctx.config;
 ctx.saveConfig = next => { saveConfig(DATA_DIR, next); ctx.config = loadConfig(DATA_DIR); return ctx.config; };
