@@ -128,8 +128,10 @@ function statusOf(host, key) {
   };
 }
 
+const FINISH_MAX_MS = 1500;   // SAPI has no sentence events: a soft stop waits for the next word, at most this long
+
 // TTS levels come from SAPI word-boundary events: 0.7 on each word, then decay.
-function windowsTts(host) {
+function windowsTts(host, { finishMaxMs = FINISH_MAX_MS } = {}) {
   return {
     id: 'windows', label: 'Windows speech',
     status: statusOf(host, 'tts'),
@@ -152,7 +154,18 @@ function windowsTts(host) {
           yield v;
         }
       }
-      return { levels: levels(), done };
+      // soft stop: cut at the next word boundary (never mid-word), at most finishMaxMs from now
+      function finishSentence() {
+        if (finished) return Promise.resolve();
+        return new Promise(resolve => {
+          let t = null, offW = null;
+          const stop = () => { clearTimeout(t); offW?.(); host.request('stop-speak').catch(() => {}); resolve(); };
+          offW = host.on('word', m => { if (m.id === p.id) stop(); });
+          t = setTimeout(stop, finishMaxMs);
+          p.then(() => {}, () => {}).finally(() => { clearTimeout(t); offW?.(); resolve(); });
+        }).then(() => done.catch(() => {}));
+      }
+      return { levels: levels(), done, finishSentence };
     },
   };
 }
@@ -195,4 +208,4 @@ function windowsWake(host) {
   };
 }
 
-module.exports = { createSpeechHost, windowsTts, windowsStt, windowsWake, rateToSapi, wavBytes, SCRIPT };
+module.exports = { FINISH_MAX_MS, createSpeechHost, windowsTts, windowsStt, windowsWake, rateToSapi, wavBytes, SCRIPT };

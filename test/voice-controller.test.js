@@ -80,25 +80,6 @@ test('controller: full voice turn calls stt, send(voice), tts', async () => {
   assert.equal(vc.speaking, false);
 });
 
-test('speech during speaking at normal level is ignored, at ×3 level barges in', async () => {
-  const { events, vc, tts } = setup();
-  vc.listen();
-  feedAll(vc, [...noise(300), ...tone(800), ...noise(900)]);
-  await tick(20);
-  assert.equal(vc.speaking, true);
-  // echo-level speech (rms ≈ 0.035: over the normal threshold, under ×3) is ignored
-  feedAll(vc, [...noise(300), ...tone(600, 0.05)]);
-  await tick(5);
-  assert.equal(vc.speaking, true);
-  assert.equal(tts.aborted, 0);
-  // loud speech barges in: TTS cut, listening again
-  feedAll(vc, tone(200, 0.4));
-  await tick(5);
-  assert.equal(tts.aborted, 1);
-  assert.equal(vc.speaking, false);
-  assert.equal(states(events).at(-1), 'listening');
-});
-
 test('empty transcript → idle, no send', async () => {
   const { events, orchestrator, vc } = setup({ stt: fakeStt('   ') });
   vc.listen();
@@ -274,22 +255,6 @@ test('streaming: first sentence is spoken before the reply finishes; markdown is
   assert.ok(events.some(e => e.type === 'level' && e.source === 'tts'));
 });
 
-test('streaming: talking over JARVIS stops the speech and the model', async () => {
-  const bus = createBus();
-  const tts = streamingTts();
-  const orc = streamingOrchestrator(bus, ['First sentence here.', ' Second', ' part', ' keeps', ' going', ' on.'], 40);
-  const vc = createVoiceController({ bus, orchestrator: orc, engines: { stt: fakeStt(), tts, wake: null }, getConfig: () => DEFAULTS, getSessionId: () => 's' });
-  vc.listen();
-  feedAll(vc, [...noise(300), ...tone(600), ...noise(900)]);
-  await tick(90);
-  assert.equal(vc.speaking, true);
-  feedAll(vc, [...noise(300), ...tone(200, 0.4)]);
-  await tick(20);
-  assert.equal(tts.aborted, true);
-  assert.ok(orc.stops >= 1, 'model stopped too');
-  assert.equal(vc.mode, 'listening');
-});
-
 // ---- wake word with pre-roll: "Jarvis, what time is it" in one breath ----
 function wakeSetup(sttText) {
   const bus = createBus(); const events = []; bus.on('*', e => events.push(e));
@@ -383,4 +348,127 @@ test('listen-wake: idle detection is off when the wake word is disabled', async 
   feedAll(vc2, [...noise(300), ...tone(1200), ...noise(700)]);
   await tick(30);
   assert.equal(w.stt.calls.length, 0);
+});
+
+// ---- speaking safeguards (spec §7a): only "Jarvis" interrupts; sentences finish ----
+// stt answers from a queue: first the user's question, then what is heard while JARVIS speaks.
+function queueStt(texts) {
+  const q = [...texts];
+  return { id: 'q', label: 'Q', calls: 0, async status() { return { ready: true }; }, async transcribe() { this.calls++; return q.shift() ?? ''; } };
+}
+// streaming TTS with finishSentence(): the playing sentence ends 20 ms later, the rest is dropped.
+function safeTts() {
+  const t = { id: 'safe', label: 'S', pushes: [], aborted: false, finished: 0, async status() { return { ready: true }; } };
+  t.createStream = ({ signal }) => {
+    let resolve; const done = new Promise(r => { resolve = r; });
+    let finishing = false;
+    signal?.addEventListener('abort', () => { t.aborted = true; resolve(); }, { once: true });
+    async function* levels() { yield 0.5; }
+    return {
+      push: s => { if (!finishing) t.pushes.push(s); },
+      end: () => {},            // keeps "speaking" until finished/aborted so tests can talk over it
+      finishSentence: () => { finishing = true; t.finished++; setTimeout(resolve, 20); return done; },
+      levels: levels(), done,
+    };
+  };
+  t.speak = () => { throw new Error('should stream'); };
+  return t;
+}
+function safeSetup(sttTexts, parts = ['It is sunny today.', ' Highs near 80.', ' Lows near 60.', ' Winds are light.'], gap = 30) {
+  const bus = createBus(); const events = []; bus.on('*', e => events.push(e));
+  const tts = safeTts();
+  const stt = queueStt(sttTexts);
+  const orc = streamingOrchestrator(bus, parts, gap);
+  const vc = createVoiceController({ bus, orchestrator: orc, engines: { stt, tts, wake: null }, getConfig: () => DEFAULTS, getSessionId: () => 's' });
+  return { bus, events, tts, stt, orc, vc };
+}
+async function startSpeaking(s) {
+  s.vc.listen();
+  feedAll(s.vc, [...noise(300), ...tone(600), ...noise(900)]);
+  for (let i = 0; i < 40 && !s.vc.speaking; i++) await tick(5);
+  assert.equal(s.vc.speaking, true);
+}
+const talk = (vc, ms = 600) => feedAll(vc, [...noise(300), ...tone(ms, 0.4), ...noise(700)]);
+
+test('speaking: speech without "Jarvis" is ignored — no stop, no transcript turn, reply keeps playing', async () => {
+  const s = safeSetup(['what is the weather', 'so I was telling my friend about it']);
+  await startSpeaking(s);
+  talk(s.vc);
+  await tick(30);
+  assert.equal(s.stt.calls, 2, 'the speaking detector did transcribe it');
+  assert.equal(s.vc.speaking, true);
+  assert.equal(s.tts.aborted, false);
+  assert.equal(s.tts.finished, 0);
+  assert.equal(s.orc.stops, 0);
+  assert.deepEqual(s.orc.sends, ['what is the weather']);
+});
+
+test('speaking: loud speech alone no longer barges in', async () => {
+  const s = safeSetup(['what is the weather', '']);
+  await startSpeaking(s);
+  feedAll(s.vc, tone(400, 0.6));
+  await tick(10);
+  assert.equal(s.vc.speaking, true);
+  assert.equal(s.tts.aborted, false);
+});
+
+test('speaking: "Jarvis, what about tomorrow" → current sentence finishes, rest dropped, model stopped, new turn', async () => {
+  const s = safeSetup(['what is the weather', 'Jarvis, what about tomorrow?'], ['It is sunny today.', ' Highs', ' near', ' 80', ' and', ' more', ' words', ' here.'], 40);
+  await startSpeaking(s);
+  talk(s.vc);
+  await tick(150);
+  assert.equal(s.tts.finished, 1, 'finishSentence used');
+  assert.equal(s.tts.aborted, false, 'the sentence was not cut');
+  assert.ok(s.orc.stops >= 1, 'model stopped writing');
+  assert.deepEqual(s.orc.sends, ['what is the weather', 'what about tomorrow?']);
+});
+
+for (const said of ['Jarvis stop', "Jarvis, that's enough.", 'Jarvis, shut up', 'Hey Jarvis, cancel']) {
+  test(`speaking: "${said}" → immediate abort, idle, no new turn`, async () => {
+    const s = safeSetup(['what is the weather', said]);
+    await startSpeaking(s);
+    talk(s.vc);
+    await tick(15);
+    assert.equal(s.tts.aborted, true);
+    assert.equal(s.tts.finished, 0);
+    assert.equal(s.vc.mode, 'idle');
+    assert.equal(states(s.events).at(-1), 'idle');
+    await tick(100);
+    assert.deepEqual(s.orc.sends, ['what is the weather']);
+  });
+}
+
+test('speaking: "Jarvis" alone → current sentence finishes, then listening', async () => {
+  const s = safeSetup(['what is the weather', 'Jarvis.']);
+  await startSpeaking(s);
+  talk(s.vc);
+  await tick(80);
+  assert.equal(s.tts.finished, 1);
+  assert.equal(s.tts.aborted, false);
+  assert.equal(s.vc.mode, 'listening');
+  assert.equal(states(s.events).at(-1), 'listening');
+  assert.deepEqual(s.orc.sends, ['what is the weather']);
+});
+
+test('speaking: echo of JARVIS\'s own sentence is ignored, even one that starts with "Jarvis"', async () => {
+  const s = safeSetup(['who are you', 'Jarvis here, at your service', 'I am called Jarvis by everyone'], ['Jarvis here, at your service.', ' I am called Jarvis by everyone.', ' Ask me anything at all.'], 20);
+  await startSpeaking(s);
+  await tick(60);
+  talk(s.vc);
+  await tick(30);
+  talk(s.vc);
+  await tick(30);
+  assert.equal(s.stt.calls, 3);
+  assert.equal(s.tts.aborted, false);
+  assert.equal(s.tts.finished, 0);
+  assert.deepEqual(s.orc.sends, ['who are you']);
+});
+
+test('Esc / stop button while speaking is still immediate (and stops the model)', async () => {
+  const s = safeSetup(['what is the weather'], ['It is sunny today.', ' More', ' words', ' to', ' come.'], 40);
+  await startSpeaking(s);
+  s.vc.cancel();
+  assert.equal(s.tts.aborted, true);
+  assert.equal(s.vc.mode, 'idle');
+  assert.ok(s.orc.stops >= 1);
 });

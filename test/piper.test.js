@@ -98,6 +98,39 @@ test('piper: text is one line (newlines would split it); empty text is skipped',
   assert.equal(played.length, 1);
 });
 
+test('piper: finishSentence lets the playing sentence end and drops the queue', async () => {
+  const spawn = fakeSpawn();
+  const played = [];
+  let cut = 0;
+  const play = (pcm, rate, { signal } = {}) => new Promise(res => {
+    played.push(pcm.length);
+    const t = setTimeout(res, 30);
+    signal?.addEventListener('abort', () => { cut++; clearTimeout(t); res(); }, { once: true });
+  });
+  const tts = createPiperTts({ exe: 'p', model: 'm', outDir: 'o', spawn, play, exists: () => true, readFile: () => wav(), remove: () => {} });
+  const ac = new AbortController();
+  const s = tts.createStream({ rate: 1, signal: ac.signal });
+  s.push('First sentence.'); s.push('Second.'); s.push('Third.');
+  await new Promise(r => setTimeout(r, 15));     // first sentence is playing
+  assert.equal(played.length, 1);
+  const t0 = Date.now();
+  await s.finishSentence();
+  assert.ok(Date.now() - t0 >= 10, 'waited for the sentence to end');
+  await s.done;
+  assert.equal(played.length, 1, 'queued sentences dropped');
+  assert.equal(cut, 0, 'the playing sentence was not cut');
+  s.push('Late.');
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(played.length, 1, 'no pushes after finishSentence');
+});
+
+test('piper: speak() handle also has finishSentence', () => {
+  const { tts } = setup();
+  const h = tts.speak('Hello there.', { rate: 1 });
+  assert.equal(typeof h.finishSentence, 'function');
+  return h.done;
+});
+
 test('piper: status reports missing files', async () => {
   const t = createPiperTts({ exe: 'x', model: 'y', outDir: 'z', exists: () => false, play: async () => {} });
   assert.equal((await t.status()).ready, false);

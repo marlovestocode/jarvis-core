@@ -74,17 +74,19 @@ function createPiperTts({
     const levels = channel();
     const jobs = [];
     let ended = false, wake = null;
+    let finishing = false, playing = false;   // finishSentence(): end the sentence now playing, drop the rest
     const kick = () => { if (wake) { const w = wake; wake = null; w(); } };
 
     const done = (async () => {
       try {
         for (let i = 0; ; i++) {
-          while (i >= jobs.length && !ended && !signal?.aborted) await new Promise(r => { wake = r; });
-          if (signal?.aborted || i >= jobs.length) break;
+          while (i >= jobs.length && !ended && !finishing && !signal?.aborted) await new Promise(r => { wake = r; });
+          if (signal?.aborted || finishing || i >= jobs.length) break;
           let path;
-          try { path = await jobs[i]; } catch (err) { if (signal?.aborted) break; throw err; }
-          if (signal?.aborted) { remove(path); break; }
-          await play(pcmOf(path), sampleRate, { signal, onLevel: v => levels.put(v) });
+          try { path = await jobs[i]; } catch (err) { if (signal?.aborted || finishing) break; throw err; }
+          if (signal?.aborted || finishing) { remove(path); break; }
+          playing = true;
+          try { await play(pcmOf(path), sampleRate, { signal, onLevel: v => levels.put(v) }); } finally { playing = false; }
         }
       } finally {
         levels.close();
@@ -95,13 +97,15 @@ function createPiperTts({
     return {
       push(text) {
         const t = String(text || '').replace(/\s+/g, ' ').trim();
-        if (!t || ended || signal?.aborted) return;
+        if (!t || ended || finishing || signal?.aborted) return;
         const job = synth(t, rate);
         job.catch(() => {});
         jobs.push(job);
         kick();
       },
       end() { ended = true; kick(); },
+      // soft stop: the sentence now playing ends naturally, queued ones are dropped
+      finishSentence() { finishing = true; kick(); return done.catch(() => {}); },
       levels,
       done,
     };
@@ -113,7 +117,7 @@ function createPiperTts({
     available: () => installed(),
     warm(rate = 1) { if (installed()) start(rate); },
     createStream,
-    speak(text, opts = {}) { const s = createStream(opts); s.push(text); s.end(); return { levels: s.levels, done: s.done }; },
+    speak(text, opts = {}) { const s = createStream(opts); s.push(text); s.end(); return { levels: s.levels, done: s.done, finishSentence: s.finishSentence }; },
     close() { if (proc) { try { proc.kill(); } catch { /* gone */ } proc = null; } },
   };
 }
