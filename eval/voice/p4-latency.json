@@ -1,0 +1,315 @@
+{
+  "generatedAt": "2026-11-10T15:52:20.244Z",
+  "note": "Synthetic Piper speech; LLM excluded (fake reply). ms = actual end of speech → first audio.",
+  "clips": 20,
+  "setups": {
+    "phase0 (energy, 700 ms)": {
+      "p50": 1021,
+      "p95": 1248,
+      "timedOut": 0,
+      "clipped": [
+        "command02/pink: skip the song.",
+        "command08/pink: how much RAM is free?",
+        "command11/pink: what's up?",
+        "long08/pink: Express.",
+        "pause01/pink: Java's Play Some Music by Dafthpunk.",
+        "pause04/pink: tell me."
+      ],
+      "rows": [
+        {
+          "id": "command01",
+          "noise": "none",
+          "ms": 1376,
+          "sent": "Pause the music.",
+          "clipped": false
+        },
+        {
+          "id": "command02",
+          "noise": "pink",
+          "ms": 987,
+          "sent": "skip the song.",
+          "clipped": true
+        },
+        {
+          "id": "command04",
+          "noise": "none",
+          "ms": 1248,
+          "sent": "turn the volume down.",
+          "clipped": false
+        },
+        {
+          "id": "command05",
+          "noise": "pink",
+          "ms": 658,
+          "sent": "play some jazz on Spotify.",
+          "clipped": false
+        },
+        {
+          "id": "command07",
+          "noise": "none",
+          "ms": 1093,
+          "sent": "what's my GPU temperature?",
+          "clipped": false
+        },
+        {
+          "id": "command08",
+          "noise": "pink",
+          "ms": 947,
+          "sent": "how much RAM is free?",
+          "clipped": true
+        },
+        {
+          "id": "command10",
+          "noise": "none",
+          "ms": 1164,
+          "sent": "searched the web for Ryzen benchmarks.",
+          "clipped": false
+        },
+        {
+          "id": "command11",
+          "noise": "pink",
+          "ms": -561,
+          "sent": "what's up?",
+          "clipped": true
+        },
+        {
+          "id": "command13",
+          "noise": "none",
+          "ms": 1057,
+          "sent": "set a timer for 10 minutes.",
+          "clipped": false
+        },
+        {
+          "id": "command14",
+          "noise": "pink",
+          "ms": 907,
+          "sent": "what's the date today?",
+          "clipped": false
+        },
+        {
+          "id": "long01",
+          "noise": "none",
+          "ms": 1143,
+          "sent": "can you tell me what is currently using the most memory on my computer and whether anything looks wrong with it?",
+          "clipped": false
+        },
+        {
+          "id": "long02",
+          "noise": "pink",
+          "ms": 1023,
+          "sent": "I would like you to search for the best way to cool a Ryzen processor in a small case and summarize the top results.",
+          "clipped": false
+        },
+        {
+          "id": "long04",
+          "noise": "none",
+          "ms": 1021,
+          "sent": "look up how long it takes to travel from London to Edinburgh by train and compare it with driving the same route.",
+          "clipped": false
+        },
+        {
+          "id": "long05",
+          "noise": "pink",
+          "ms": 1011,
+          "sent": "I need you to turn the music down a little bit because I am about to take a phone call from my brother.",
+          "clipped": false
+        },
+        {
+          "id": "long07",
+          "noise": "none",
+          "ms": 1179,
+          "sent": "can you find out when the next Formula One race is and what time it starts in my local time zone?",
+          "clipped": false
+        },
+        {
+          "id": "long08",
+          "noise": "pink",
+          "ms": -5875,
+          "sent": "Express.",
+          "clipped": true
+        },
+        {
+          "id": "long10",
+          "noise": "none",
+          "ms": 1167,
+          "sent": "write down a reminder that I need to buy milk and bread and also call the dentist tomorrow morning before work.",
+          "clipped": false
+        },
+        {
+          "id": "pause01",
+          "noise": "pink",
+          "ms": 1020,
+          "sent": "Java's Play Some Music by Dafthpunk.",
+          "clipped": true
+        },
+        {
+          "id": "pause03",
+          "noise": "none",
+          "ms": 1100,
+          "sent": "search the web for the best budget gaming monitors.",
+          "clipped": false
+        },
+        {
+          "id": "pause04",
+          "noise": "pink",
+          "ms": -1356,
+          "sent": "tell me.",
+          "clipped": true
+        }
+      ]
+    },
+    "phase4 (silero, 550 ms, guard)": {
+      "p50": 1169,
+      "p95": 1366,
+      "timedOut": 0,
+      "clipped": [
+        "command02/pink: skip the song.",
+        "command08/pink: how much RAM is free?",
+        "command11/pink: what's the weather today?",
+        "pause01/pink: Java's Play Some Music by Dafthpunk."
+      ],
+      "rows": [
+        {
+          "id": "command01",
+          "noise": "none",
+          "ms": 1066,
+          "sent": "Pause the music.",
+          "clipped": false
+        },
+        {
+          "id": "command02",
+          "noise": "pink",
+          "ms": 1090,
+          "sent": "skip the song.",
+          "clipped": true
+        },
+        {
+          "id": "command04",
+          "noise": "none",
+          "ms": 1082,
+          "sent": "turn the volume down.",
+          "clipped": false
+        },
+        {
+          "id": "command05",
+          "noise": "pink",
+          "ms": 1250,
+          "sent": "play some jazz on Spotify.",
+          "clipped": false
+        },
+        {
+          "id": "command07",
+          "noise": "none",
+          "ms": 1132,
+          "sent": "what's my GPU temperature?",
+          "clipped": false
+        },
+        {
+          "id": "command08",
+          "noise": "pink",
+          "ms": 1193,
+          "sent": "how much RAM is free?",
+          "clipped": true
+        },
+        {
+          "id": "command10",
+          "noise": "none",
+          "ms": 1015,
+          "sent": "searched the web for Ryzen benchmarks.",
+          "clipped": false
+        },
+        {
+          "id": "command11",
+          "noise": "pink",
+          "ms": 1326,
+          "sent": "what's the weather today?",
+          "clipped": true
+        },
+        {
+          "id": "command13",
+          "noise": "none",
+          "ms": 1077,
+          "sent": "set a timer for 10 minutes.",
+          "clipped": false
+        },
+        {
+          "id": "command14",
+          "noise": "pink",
+          "ms": 1336,
+          "sent": "what's the date today?",
+          "clipped": false
+        },
+        {
+          "id": "long01",
+          "noise": "none",
+          "ms": 1143,
+          "sent": "can you tell me what is currently using the most memory on my computer and whether anything looks wrong with it?",
+          "clipped": false
+        },
+        {
+          "id": "long02",
+          "noise": "pink",
+          "ms": 1264,
+          "sent": "I would like you to search for the best way to cool a Ryzen processor in a small case and summarize the top results.",
+          "clipped": false
+        },
+        {
+          "id": "long04",
+          "noise": "none",
+          "ms": 1124,
+          "sent": "look up how long it takes to travel from London to Edinburgh by train and compare it with driving the same route.",
+          "clipped": false
+        },
+        {
+          "id": "long05",
+          "noise": "pink",
+          "ms": 1375,
+          "sent": "I need you to turn the music down a little bit because I am about to take a phone call from my brother.",
+          "clipped": false
+        },
+        {
+          "id": "long07",
+          "noise": "none",
+          "ms": 1169,
+          "sent": "can you find out when the next Formula One race is and what time it starts in my local time zone?",
+          "clipped": false
+        },
+        {
+          "id": "long08",
+          "noise": "pink",
+          "ms": 1366,
+          "sent": "explaining, playing words what a graphics card does and why it matters so much for playing modern video games.",
+          "clipped": false
+        },
+        {
+          "id": "long10",
+          "noise": "none",
+          "ms": 1274,
+          "sent": "write down a reminder that I need to buy milk and bread and also call the dentist tomorrow morning before work.",
+          "clipped": false
+        },
+        {
+          "id": "pause01",
+          "noise": "pink",
+          "ms": 1354,
+          "sent": "Java's Play Some Music by Dafthpunk.",
+          "clipped": true
+        },
+        {
+          "id": "pause03",
+          "noise": "none",
+          "ms": 1109,
+          "sent": "search the web for the best budget gaming monitors.",
+          "clipped": false
+        },
+        {
+          "id": "pause04",
+          "noise": "pink",
+          "ms": 1270,
+          "sent": "tell me what the weather is like tomorrow.",
+          "clipped": false
+        }
+      ]
+    }
+  }
+}

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JARVIS for YouTube Music",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "description": "Lets JARVIS (running on this PC) search, play and queue songs in your YouTube Music tab. Talks only to 127.0.0.1.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAk+6UCU3kPGnINSJP/vzUxqbccJ65CqqIwsKyilImpFyHFr/D15EpMFTvMTkjY/KGcYo5TY0HK9+nEk7PdNS94wsQ2YzALKqcUB+m28Wsse3dBmUebH087NrdEF3/nXeawwM1HvOoQFyAx5RwEP7fwmLobIjtqhLa35BmUz5qcxzj73Hcn6Fnjlm3FxHR9QjhSZdXIXE/1MIVYGKjg3dir9Q4NaaHWLlTKWxkG51UnrZFOZdFlDXbCXRCFhn/CYpFhcyAUAKtySIwx8B6bk7FLsNKdra4OBLE5w32ZKVQ3RFQwSqvPIwBzhDwd33SCepniV9IAvezxUMo2UdhS+dK2QIDAQAB",
   "minimum_chrome_version": "116",
@@ -13,6 +13,19 @@
   ],
   "host_permissions": [
     "https://music.youtube.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://music.youtube.com/*"],
+      "js": ["tracker.js", "logger-main.js"],
+      "world": "MAIN",
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://music.youtube.com/*"],
+      "js": ["logger-relay.js"],
+      "run_at": "document_idle"
+    }
   ],
   "background": {
     "service_worker": "background.js",

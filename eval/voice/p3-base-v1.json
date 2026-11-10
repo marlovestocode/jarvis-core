@@ -1,0 +1,747 @@
+{
+  "generatedAt": "2026-11-10T11:48:46.600Z",
+  "note": "Synthetic Piper speech, not the user's voice. Relative yardstick only.",
+  "clips": 400,
+  "recordedClips": 0,
+  "stack": {
+    "vad": "energy"
+  },
+  "vad": {
+    "silenceMs": 700,
+    "groups": {
+      "all": {
+        "clips": 400,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 41.3,
+        "pauseClips": 50,
+        "pausePrematureCuts": 18,
+        "endLagP50Ms": 500
+      },
+      "clean": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 5,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 680
+      },
+      "snr20": {
+        "clips": 120,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 15,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 680
+      },
+      "white20": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 5,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 680
+      },
+      "snr10": {
+        "clips": 120,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 40,
+        "pauseClips": 15,
+        "pausePrematureCuts": 3,
+        "endLagP50Ms": 420
+      },
+      "white10": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 40,
+        "pauseClips": 5,
+        "pausePrematureCuts": 1,
+        "endLagP50Ms": 420
+      },
+      "snr5": {
+        "clips": 120,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 97.5,
+        "pauseClips": 15,
+        "pausePrematureCuts": 15,
+        "endLagP50Ms": -1440
+      },
+      "white5": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 100,
+        "pauseClips": 5,
+        "pausePrematureCuts": 5,
+        "endLagP50Ms": -1540
+      },
+      "pink20": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 5,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 680
+      },
+      "pink10": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 40,
+        "pauseClips": 5,
+        "pausePrematureCuts": 1,
+        "endLagP50Ms": 420
+      },
+      "pink5": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 95,
+        "pauseClips": 5,
+        "pausePrematureCuts": 5,
+        "endLagP50Ms": -1200
+      },
+      "fan20": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 5,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 680
+      },
+      "fan10": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 40,
+        "pauseClips": 5,
+        "pausePrematureCuts": 1,
+        "endLagP50Ms": 420
+      },
+      "fan5": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 97.5,
+        "pauseClips": 5,
+        "pausePrematureCuts": 5,
+        "endLagP50Ms": -1500
+      }
+    },
+    "noiseOnly": {
+      "white": {
+        "seconds": 60,
+        "falseStarts": 0
+      },
+      "pink": {
+        "seconds": 60,
+        "falseStarts": 0
+      },
+      "fan": {
+        "seconds": 60,
+        "falseStarts": 0
+      }
+    }
+  },
+  "stt": {
+    "model": "ggml-base.en.bin",
+    "promptName": "v1",
+    "prompt": "JARVIS, Ollama, sysmon, Wallpaper Engine, Ryzen, RTX 3050, GPU, CPU, VRAM, RAM, Spotify, Discord, Steam, YouTube Music, Chrome. Play, pause, skip, next song, previous, shuffle, repeat, volume up, volume down, mute, queue, playlist, album. Weather, forecast, rain, news headlines, scores, NFL, NBA, MLB, NHL. Wikipedia, look up, convert, calculate, integrate, derivative, solve, square root.",
+    "wake": {
+      "regex": "/^\\s*(?:(?:hey|ok|okay|hi|yo)[\\s,]+)?jarvis\\b[\\s,.!?:;-]*/i",
+      "groups": {
+        "all": {
+          "wakeClips": 300,
+          "hitPct": 82.7,
+          "nonWakeClips": 100,
+          "falseAcceptPct": 7
+        },
+        "clean": {
+          "wakeClips": 30,
+          "hitPct": 96.7,
+          "nonWakeClips": 10,
+          "falseAcceptPct": 10
+        },
+        "snr20": {
+          "wakeClips": 90,
+          "hitPct": 87.8,
+          "nonWakeClips": 30,
+          "falseAcceptPct": 3.3
+        },
+        "white20": {
+          "wakeClips": 30,
+          "hitPct": 90,
+          "nonWakeClips": 10,
+          "falseAcceptPct": 10
+        },
+        "snr10": {
+          "wakeClips": 90,
+          "hitPct": 84.4,
+          "nonWakeClips": 30,
+          "falseAcceptPct": 10
+        },
+        "white10": {
+          "wakeClips": 30,
+          "hitPct": 90,
+          "nonWakeClips": 10,
+          "falseAcceptPct": 10
+        },
+        "snr5": {
+          "wakeClips": 90,
+          "hitPct": 71.1,
+          "nonWakeClips": 30,
+          "falseAcceptPct": 6.7
+        },
+        "white5": {
+          "wakeClips": 30,
+          "hitPct": 76.7,
+          "nonWakeClips": 10,
+          "falseAcceptPct": 0
+        },
+        "pink20": {
+          "wakeClips": 30,
+          "hitPct": 93.3,
+          "nonWakeClips": 10,
+          "falseAcceptPct": 0
+        },
+        "pink10": {
+          "wakeClips": 30,
+          "hitPct": 80,
+          "nonWakeClips": 10,
+          "falseAcceptPct": 10
+        },
+        "pink5": {
+          "wakeClips": 30,
+          "hitPct": 80,
+          "nonWakeClips": 10,
+          "falseAcceptPct": 10
+        },
+        "fan20": {
+          "wakeClips": 30,
+          "hitPct": 80,
+          "nonWakeClips": 10,
+          "falseAcceptPct": 0
+        },
+        "fan10": {
+          "wakeClips": 30,
+          "hitPct": 83.3,
+          "nonWakeClips": 10,
+          "falseAcceptPct": 10
+        },
+        "fan5": {
+          "wakeClips": 30,
+          "hitPct": 56.7,
+          "nonWakeClips": 10,
+          "falseAcceptPct": 10
+        }
+      },
+      "misses": [
+        {
+          "id": "command01",
+          "noise": "white",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java calls the music."
+        },
+        {
+          "id": "command01",
+          "noise": "fan",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's calls the music."
+        },
+        {
+          "id": "command06",
+          "noise": "white",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's mute my speakers."
+        },
+        {
+          "id": "command06",
+          "noise": "fan",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's new MySpeakers."
+        },
+        {
+          "id": "command07",
+          "noise": "pink",
+          "snr": 10,
+          "wanted": true,
+          "heard": "Java's what's my GPU temperature."
+        },
+        {
+          "id": "command07",
+          "noise": "fan",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's what's my GPU temperature."
+        },
+        {
+          "id": "command08",
+          "noise": "white",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's how much RAM is free."
+        },
+        {
+          "id": "command08",
+          "noise": "pink",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's, how much RAM is free."
+        },
+        {
+          "id": "command08",
+          "noise": "fan",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's, how much RAM is free."
+        },
+        {
+          "id": "command09",
+          "noise": "fan",
+          "snr": 20,
+          "wanted": true,
+          "heard": "Java's open discord."
+        },
+        {
+          "id": "command10",
+          "noise": "white",
+          "snr": 10,
+          "wanted": true,
+          "heard": "Java's search the web for rise in benchmarks."
+        },
+        {
+          "id": "command10",
+          "noise": "white",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's search the web for Ryzen benchmarks."
+        },
+        {
+          "id": "command10",
+          "noise": "pink",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java search the web for rise in benchmarks."
+        },
+        {
+          "id": "command10",
+          "noise": "fan",
+          "snr": 10,
+          "wanted": true,
+          "heard": "Java's search the web for rise and benchmarks."
+        },
+        {
+          "id": "command10",
+          "noise": "fan",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's searched the web for rise and benchmarks."
+        },
+        {
+          "id": "command12",
+          "noise": "fan",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's next track."
+        },
+        {
+          "id": "long01",
+          "noise": "white",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's can you tell me what is currently using the most memory on my computer and whether anything looks wrong with it?"
+        },
+        {
+          "id": "long01",
+          "noise": "pink",
+          "snr": 10,
+          "wanted": true,
+          "heard": "Java's, can you tell me what is currently using the most memory on my computer and whether anything looks wrong with it?"
+        },
+        {
+          "id": "long01",
+          "noise": "pink",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's, can you tell me what is currently using the most memory on my computer and whether anything looks wrong with it?"
+        },
+        {
+          "id": "long01",
+          "noise": "fan",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's, can you tell me what is currently using the most memory on my computer and whether anything looks wrong with it?"
+        },
+        {
+          "id": "long03",
+          "noise": "fan",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's, please open Steam and then tell me which games I have installed that were played during the last two weeks."
+        },
+        {
+          "id": "long04",
+          "noise": "pink",
+          "snr": 10,
+          "wanted": true,
+          "heard": "Java's, look up how long it takes to travel from London to Edinburgh by train and compare it with driving the same route."
+        },
+        {
+          "id": "long04",
+          "noise": "fan",
+          "snr": 20,
+          "wanted": true,
+          "heard": "Java's, look up how long it takes to travel from London to Edinburgh by train and compare it with driving the same route."
+        },
+        {
+          "id": "long06",
+          "noise": "fan",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Jargus, tell me what the weather will be like this weekend and whether I should bring a jacket if I go for old war."
+        },
+        {
+          "id": "long08",
+          "noise": "white",
+          "snr": 10,
+          "wanted": true,
+          "heard": "Java's, explain in plain words what a graphics card does and why it matters so much for playing modern video games."
+        },
+        {
+          "id": "long09",
+          "noise": "white",
+          "snr": 20,
+          "wanted": true,
+          "heard": "Java's check whether the wallpaper engine is running right now and if it is please tell me how much processor it uses."
+        },
+        {
+          "id": "long09",
+          "noise": "pink",
+          "snr": 10,
+          "wanted": true,
+          "heard": "Java's check whether the wallpaper engine is running right now and if it is please tell me how much processor it uses."
+        },
+        {
+          "id": "long09",
+          "noise": "pink",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's check whether the wallpaper engine is running right now and if it is please tell me how much processor it uses."
+        },
+        {
+          "id": "long09",
+          "noise": "fan",
+          "snr": 20,
+          "wanted": true,
+          "heard": "Java's check whether the wallpaper engine is running right now and if it is please tell me how much processor it uses."
+        },
+        {
+          "id": "long09",
+          "noise": "fan",
+          "snr": 10,
+          "wanted": true,
+          "heard": "Java's check whether the wallpaper engine is running right now and if it is please tell me how much processor it uses."
+        },
+        {
+          "id": "long09",
+          "noise": "fan",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's check whether the wallpaper engine is running right now and if it is please tell me how much processor it uses."
+        },
+        {
+          "id": "pause01",
+          "noise": "none",
+          "snr": null,
+          "wanted": true,
+          "heard": "Java's Play Some Music by Daft Punk."
+        },
+        {
+          "id": "pause01",
+          "noise": "white",
+          "snr": 20,
+          "wanted": true,
+          "heard": "Java's Play Some Music by Daft Punk."
+        },
+        {
+          "id": "pause01",
+          "noise": "white",
+          "snr": 10,
+          "wanted": true,
+          "heard": "Java's Play Some Music by Dark Pump."
+        },
+        {
+          "id": "pause01",
+          "noise": "white",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's Play Some Music by Dark House."
+        },
+        {
+          "id": "pause01",
+          "noise": "pink",
+          "snr": 20,
+          "wanted": true,
+          "heard": "Java's Play Some Music by Daft Punk."
+        },
+        {
+          "id": "pause01",
+          "noise": "pink",
+          "snr": 10,
+          "wanted": true,
+          "heard": "Java's Play Some Music by Dafthpunk."
+        },
+        {
+          "id": "pause01",
+          "noise": "pink",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's Play Some Music by Daffd Pump."
+        },
+        {
+          "id": "pause01",
+          "noise": "fan",
+          "snr": 20,
+          "wanted": true,
+          "heard": "Java's Play Some Music by Daft Punk."
+        },
+        {
+          "id": "pause01",
+          "noise": "fan",
+          "snr": 10,
+          "wanted": true,
+          "heard": "Java's Play Some Music by Dafte Pump."
+        },
+        {
+          "id": "pause01",
+          "noise": "fan",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's Play Some Music by Dafte Public."
+        },
+        {
+          "id": "pause02",
+          "noise": "pink",
+          "snr": 20,
+          "wanted": true,
+          "heard": "Java's set a time for 15 minutes."
+        },
+        {
+          "id": "pause02",
+          "noise": "pink",
+          "snr": 10,
+          "wanted": true,
+          "heard": "Java's set a time for 15 minutes."
+        },
+        {
+          "id": "pause02",
+          "noise": "fan",
+          "snr": 20,
+          "wanted": true,
+          "heard": "Java's set a time for 15 minutes."
+        },
+        {
+          "id": "pause02",
+          "noise": "fan",
+          "snr": 10,
+          "wanted": true,
+          "heard": "Java set a timer for 15 minutes."
+        },
+        {
+          "id": "pause02",
+          "noise": "fan",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java set a time for 15 minutes."
+        },
+        {
+          "id": "pause05",
+          "noise": "white",
+          "snr": 20,
+          "wanted": true,
+          "heard": "Java's open Spotify and play my liked songs."
+        },
+        {
+          "id": "pause05",
+          "noise": "white",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's open Spotify and play my light songs."
+        },
+        {
+          "id": "pause05",
+          "noise": "pink",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's open Spotify and play my light songs."
+        },
+        {
+          "id": "pause05",
+          "noise": "fan",
+          "snr": 20,
+          "wanted": true,
+          "heard": "Java's open Spotify and play my liked songs."
+        },
+        {
+          "id": "pause05",
+          "noise": "fan",
+          "snr": 10,
+          "wanted": true,
+          "heard": "Java's open Spotify and play my liked songs."
+        },
+        {
+          "id": "pause05",
+          "noise": "fan",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's open Spotify and play my light songs."
+        },
+        {
+          "id": "nonwake02",
+          "noise": "none",
+          "snr": null,
+          "wanted": false,
+          "heard": "Jarvis's new car is really fast."
+        },
+        {
+          "id": "nonwake02",
+          "noise": "white",
+          "snr": 20,
+          "wanted": false,
+          "heard": "Jarvis' new car is really fast."
+        },
+        {
+          "id": "nonwake02",
+          "noise": "white",
+          "snr": 10,
+          "wanted": false,
+          "heard": "Jarvis's new car is really fast."
+        },
+        {
+          "id": "nonwake02",
+          "noise": "pink",
+          "snr": 10,
+          "wanted": false,
+          "heard": "Jarvis' new car is really fast."
+        },
+        {
+          "id": "nonwake02",
+          "noise": "pink",
+          "snr": 5,
+          "wanted": false,
+          "heard": "Jarvis's new car is really fast."
+        },
+        {
+          "id": "nonwake02",
+          "noise": "fan",
+          "snr": 10,
+          "wanted": false,
+          "heard": "Jarvis' new car is really fast."
+        },
+        {
+          "id": "nonwake02",
+          "noise": "fan",
+          "snr": 5,
+          "wanted": false,
+          "heard": "Jarvis' new car is really fast."
+        }
+      ]
+    },
+    "wer": {
+      "all": {
+        "clips": 400,
+        "werPct": 4.2
+      },
+      "clean": {
+        "clips": 40,
+        "werPct": 1.9
+      },
+      "snr20": {
+        "clips": 120,
+        "werPct": 2.7
+      },
+      "white20": {
+        "clips": 40,
+        "werPct": 2.3
+      },
+      "snr10": {
+        "clips": 120,
+        "werPct": 3.8
+      },
+      "white10": {
+        "clips": 40,
+        "werPct": 3.5
+      },
+      "snr5": {
+        "clips": 120,
+        "werPct": 7
+      },
+      "white5": {
+        "clips": 40,
+        "werPct": 6.5
+      },
+      "pink20": {
+        "clips": 40,
+        "werPct": 2.6
+      },
+      "pink10": {
+        "clips": 40,
+        "werPct": 4.2
+      },
+      "pink5": {
+        "clips": 40,
+        "werPct": 4.4
+      },
+      "fan20": {
+        "clips": 40,
+        "werPct": 3.2
+      },
+      "fan10": {
+        "clips": 40,
+        "werPct": 3.7
+      },
+      "fan5": {
+        "clips": 40,
+        "werPct": 10
+      }
+    },
+    "latencyMs": {
+      "p50": 445,
+      "p95": 672,
+      "byClipLength": {
+        "under5s": {
+          "n": 240,
+          "p50": 430,
+          "p95": 616
+        },
+        "s5to10": {
+          "n": 150,
+          "p50": 467,
+          "p95": 789
+        },
+        "over10s": {
+          "n": 10,
+          "p50": 516,
+          "p95": 754
+        }
+      }
+    },
+    "noiseOnlyTranscripts": {
+      "white": "[static]",
+      "pink": "[sound of rain]",
+      "fan": "(engine revving)"
+    }
+  }
+}

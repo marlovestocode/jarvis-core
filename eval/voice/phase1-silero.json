@@ -1,0 +1,154 @@
+{
+  "generatedAt": "2026-11-10T11:31:08.010Z",
+  "note": "Synthetic Piper speech, not the user's voice. Relative yardstick only.",
+  "clips": 400,
+  "recordedClips": 0,
+  "stack": {
+    "vad": "silero"
+  },
+  "vad": {
+    "silenceMs": 700,
+    "groups": {
+      "all": {
+        "clips": 400,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 50,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 820
+      },
+      "clean": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 5,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 780
+      },
+      "snr20": {
+        "clips": 120,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 15,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 800
+      },
+      "white20": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 5,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 800
+      },
+      "snr10": {
+        "clips": 120,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 15,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 880
+      },
+      "white10": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 5,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 860
+      },
+      "snr5": {
+        "clips": 120,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 15,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 880
+      },
+      "white5": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 5,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 840
+      },
+      "pink20": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 5,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 800
+      },
+      "pink10": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 5,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 920
+      },
+      "pink5": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 5,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 880
+      },
+      "fan20": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 5,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 800
+      },
+      "fan10": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 5,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 860
+      },
+      "fan5": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 5,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 880
+      }
+    },
+    "noiseOnly": {
+      "white": {
+        "seconds": 60,
+        "falseStarts": 0
+      },
+      "pink": {
+        "seconds": 60,
+        "falseStarts": 0
+      },
+      "fan": {
+        "seconds": 60,
+        "falseStarts": 0
+      }
+    }
+  }
+}

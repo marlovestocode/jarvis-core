@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('jarvis', {
     capture: on => ipcRenderer.invoke('settings:capture', !!on),
     places: query => ipcRenderer.invoke('settings:places', String(query)),
     close: () => ipcRenderer.invoke('settings:close'),
+    speakerStatus: () => ipcRenderer.invoke('speaker:status'),
+    speakerEnroll: () => ipcRenderer.invoke('speaker:enroll'),
+    speakerClear: () => ipcRenderer.invoke('speaker:clear'),
   },
   onEvent: fn => {
     const h = (_e, ev) => fn(ev);

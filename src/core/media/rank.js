@@ -68,4 +68,17 @@ function rank(req, candidates, { need = 'play' } = {}) {
     .filter(x => x.score > -Infinity).sort((a, b) => b.score - a.score);
 }
 
-module.exports = { parseRequest, rank, norm };
+// How well a spoken name matches a title (0..1): exact = 1, otherwise token coverage and overlap.
+// Used to find the user's own playlists by name.
+function matchText(query, title) {
+  const q = norm(query), t = norm(title);
+  if (!q || !t) return 0;
+  if (q === t) return 1;
+  const qt = content(query), tt = content(title);
+  const a = qt.length ? qt : tokens(query), b = tt.length ? tt : tokens(title);
+  let s = 0.6 * coverage(a, b) + 0.4 * dice(a, b);
+  if (` ${t} `.includes(` ${q} `)) s = Math.max(s, 0.85);
+  return Math.min(s, 0.99);
+}
+
+module.exports = { parseRequest, rank, norm, matchText };

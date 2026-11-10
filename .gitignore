@@ -2,3 +2,5 @@ node_modules/
 dist/
 engines/
 scripts/*.txt
+eval/voice/out/
+eval/voice/recorded/*.wav

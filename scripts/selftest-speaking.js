@@ -1,7 +1,7 @@
 // Real-engine self-test for the speaking safeguards (spec §7a), not part of npm test.
 // Piper speaks test phrases into memory, Whisper transcribes them as mic input while a fake reply
 // is "speaking". Expect: other talk and JARVIS's own echo ignored; "Jarvis, stop" stops at once;
-// "Jarvis, <question>" finishes the sentence and runs the question.
+// "Jarvis, <question>" cuts the speech and runs the question (wakeInterrupt 'now', the default).
 //   node scripts/selftest-speaking.js
 const path = require('node:path');
 const os = require('node:os');
@@ -72,7 +72,7 @@ const whisper = createWhisperStt({
     'other talk': r => !r.aborted && !r.finished && r.sends.length === 1 && r.vc === 'speaking',
     'echo': r => !r.aborted && !r.finished && r.sends.length === 1 && r.vc === 'speaking',
     'Jarvis stop': r => r.aborted && !r.finished && r.sends.length === 1 && r.vc === 'idle',
-    'Jarvis new question': r => !r.aborted && r.finished && r.sends.length === 2 && /tomorrow/i.test(r.sends[1]),
+    'Jarvis new question': r => r.aborted && !r.finished && r.sends.length === 2 && /tomorrow/i.test(r.sends[1]),   // wakeInterrupt 'now' (default): speech is cut
   };
   let bad = 0;
   for (const r of results) { const ok = expect[r.name](r); if (!ok) bad++; console.log(ok ? 'PASS' : 'FAIL', JSON.stringify(r)); }

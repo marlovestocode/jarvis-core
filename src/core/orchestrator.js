@@ -1,6 +1,10 @@
 // Turn flow (spec §4): input → provider → tools → reply. Speaking is the caller's job.
 const ABORTED = Symbol('aborted');
 const CHARS_PER_TOKEN = 4;
+const MSG_OVERHEAD_CHARS = 32;  // about 8 tokens of chat template per message (measured on the local model)
+const TOOL_CHAR_WEIGHT = 1.3;   // tool JSON is about 3 chars per token, prose about 4
+const REPLY_SHARE = 0.1;        // of the window, kept free for the model's answer (at most REPLY_CHARS)
+const REPLY_CHARS = 4000;
 
 function busyError() { return new Error('BUSY'); }
 
@@ -12,7 +16,8 @@ function fitWindow(messages, contextMax, reserveChars = 0) {
   const out = [];
   let used = 0;
   for (let i = messages.length - 1; i >= 0; i--) {
-    const len = String(messages[i].content || '').length;
+    // content, plus the template tokens around every message and any tool-call JSON the model sees
+    const len = String(messages[i].content || '').length + MSG_OVERHEAD_CHARS + (messages[i].toolCalls ? JSON.stringify(messages[i].toolCalls).length : 0);
     if (out.length && used + len > budget) break;
     out.unshift(messages[i]);
     used += len;
@@ -35,6 +40,8 @@ function forProvider(m) {
 // promptInfo() → { hardware, media } (or a promise of it): facts for the prompt.
 // fastPath(text, { source }) → null | { reply, record?, tool, ok }: a skill that answers without the model
 // (media commands). An empty reply is silent; record is what the chat history keeps.
+const { unbackedClaim, UNBACKED_FIX } = require('./brain/guard');
+
 function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, route, promptInfo = () => ({}), fastPath }) {
   let current = null; // AbortController of the running turn
 
@@ -165,6 +172,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       let error;
       let stopped = false;
       let toolRounds = 0;
+      let okTools = 0;   // tools that ran and did not fail this turn
       let sentChars = 0;
       let usage;
       let completionTokens = 0;
@@ -172,7 +180,10 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
 
       for (;;) {
         reply = '';
-        let window = fitWindow(s.messages, st.contextMax, sys ? sys.length : 0).map(forProvider);
+        // the tool definitions are part of the prompt too; JSON costs more tokens per char than prose.
+        // When they were left out, a full window made Ollama cut the start of the prompt (system prompt and tools), and the model answered nothing.
+        const toolChars = useTools ? Math.ceil(JSON.stringify(useTools).length * TOOL_CHAR_WEIGHT) : 0;
+        let window = fitWindow(s.messages, st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min(REPLY_CHARS, Math.floor((st.contextMax || 0) * CHARS_PER_TOKEN * REPLY_SHARE))).map(forProvider);
         if (sys) window = [{ role: 'system', content: sys }, ...window];
         sentChars = window.reduce((n, m) => n + String(m.content || '').length, 0);
         let round;
@@ -211,6 +222,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           try { res = await tools.run(call.name, call.args, { signal: ac.signal }); }
           finally { inTool = false; }
           bus.emit('tool', { id: call.id, name: call.name, phase: 'end', ok: res.ok });
+          if (res.ok && !/^error/i.test(String(res.text))) okTools++;
           s.messages.push({ role: 'tool', content: res.text, toolCallId: call.id, name: call.name });
           if (ac.signal.aborted) break;
         }
@@ -219,6 +231,12 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       }
 
       const last = s.messages.at(-1);
+      // the model said it DID something but no tool confirmed it: say so instead of leaving a false claim
+      if (!error && !stopped && last?.role === 'assistant' && unbackedClaim(reply, okTools)) {
+        bus.emit('token', { text: UNBACKED_FIX });
+        reply += UNBACKED_FIX; last.content = reply;
+        bus.emit('log', { level: 'warn', text: 'Reply claimed an action no tool confirmed' });
+      }
       if (last?.role === 'assistant' && lookups.size) last.lookups = [...lookups.values()];
       sessions.save(s);
       if (error) {

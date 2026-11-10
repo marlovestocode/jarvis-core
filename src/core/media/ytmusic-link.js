@@ -38,7 +38,7 @@ function createParser(onFrame) {
   };
 }
 
-function startYtMusicLink({ log = () => {}, ports = PORTS, extensionId = EXTENSION_ID, timeoutMs = 15000, onChange = () => {} } = {}) {
+function startYtMusicLink({ log = () => {}, ports = PORTS, extensionId = EXTENSION_ID, timeoutMs = 15000, onChange = () => {}, onPlay = () => {} } = {}) {
   let sock = null;            // the connected extension (one at a time; newest wins)
   let info = null;
   let nextId = 1;
@@ -80,7 +80,10 @@ function startYtMusicLink({ log = () => {}, ports = PORTS, extensionId = EXTENSI
   function onMessage(text) {
     let m;
     try { m = JSON.parse(text); } catch { return; }
-    if (m.type === 'hello') { info = { version: m.version }; return; }
+    if (m.type === 'hello') { info = { version: m.version }; log('ytmusic link: extension version', m.version); return; }
+    // finished plays from the extension's listening tracker (live, or a batch it kept while JARVIS was closed)
+    if (m.type === 'play') { try { onPlay(m.event); } catch (err) { log('ytmusic link: play log:', err.message); } return; }
+    if (m.type === 'plays' && Array.isArray(m.events)) { for (const e of m.events.slice(0, 500)) { try { onPlay(e); } catch (err) { log('ytmusic link: play log:', err.message); } } return; }
     if (m.type === 'ping') { sock?.write(frame(1, Buffer.from(JSON.stringify({ type: 'pong' })))); return; }
     if (!m.id || !pending.has(m.id)) return;
     const p = pending.get(m.id);

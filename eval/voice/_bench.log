@@ -1,0 +1,3 @@
+VAD done {"clips":400,"recallPct":100,"falseStartPct":0,"earlyCutPct":41.3,"pauseClips":50,"pausePrematureCuts":18,"endLagP50Ms":500}
+STT done {"p50":293,"p95":506,"byClipLength":{"under5s":{"n":240,"p50":278,"p95":500},"s5to10":{"n":150,"p50":336,"p95":559},"over10s":{"n":10,"p50":346,"p95":422}}}
+wrote eval\voice\baseline.json

@@ -4,7 +4,7 @@ const { LEAGUES } = require('./knowledge/sports');
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 function applyPatch(current, patch = {}, { providers, engines }) {
-  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama }, online: { ...current.online }, location: { ...current.location }, news: { feeds: [...current.news.feeds] }, sports: { follow: current.sports.follow.map(x => ({ ...x })) } };
+  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama }, online: { ...current.online }, location: { ...current.location }, news: { feeds: [...current.news.feeds] }, sports: { follow: current.sports.follow.map(x => ({ ...x })) }, music: { ...current.music, aliases: (current.music?.aliases || []).map(x => ({ ...x })) } };
   const errors = [];
   if (!isObj(patch)) return { config, errors: ['bad patch'] };
 
@@ -65,7 +65,36 @@ function applyPatch(current, patch = {}, { providers, engines }) {
     if (!Array.isArray(follow) || follow.length > 20 || follow.some(x => !isObj(x) || !Object.hasOwn(LEAGUES, x.league) || typeof x.team !== 'string' || !x.team.trim() || x.team.length > 100)) errors.push('Followed teams need a supported league and team name (max 20)');
     else config.sports.follow = follow.map(x => ({ league: x.league, team: x.team.trim() }));
   }
+  if (isObj(patch.music)) {
+    const m = patch.music;
+    if ('aliases' in m) {
+      const ok = Array.isArray(m.aliases) && m.aliases.length <= 50 && m.aliases.every(x => isObj(x) && typeof x.alias === 'string' && x.alias.trim() && x.alias.length <= 50 && typeof x.playlistId === 'string' && /^[A-Za-z0-9_-]{2,64}$/.test(x.playlistId));
+      if (ok) config.music.aliases = m.aliases.map(x => ({ alias: x.alias.trim(), playlistId: x.playlistId }));
+      else errors.push('Playlist shortcuts need a name and a playlist id (max 50)');
+    }
+    if ('logPlays' in m) config.music.logPlays = !!m.logPlays;
+    for (const [key, min, max] of [['libraryTtlSec', 10, 3600], ['playlistTtlSec', 5, 3600], ['digestSize', 0, 100], ['maxBulk', 1, 50]]) {
+      if (!(key in m)) continue;
+      const n = Number(m[key]);
+      if (Number.isFinite(n)) config.music[key] = Math.round(Math.max(min, Math.min(max, n)));
+      else errors.push(`Bad music setting: ${key}`);
+    }
+  }
+  if (isObj(patch.user)) {
+    for (const [k, max] of [['name', 60], ['about', 500]]) {
+      if (!(k in patch.user)) continue;
+      const v = patch.user[k];
+      if (typeof v === 'string' && v.length <= max) config.user[k] = v.replace(/\s+/g, ' ').trim();
+      else errors.push(`Your ${k} must be text up to ${max} characters`);
+    }
+  }
   if ('wakeEnabled' in patch) config.wakeEnabled = !!patch.wakeEnabled;
+  if ('speakerGate' in patch) config.speakerGate = !!patch.speakerGate;
+  if ('sttGpu' in patch) config.sttGpu = !!patch.sttGpu;
+  if ('vad' in patch) {
+    if (patch.vad === 'silero' || patch.vad === 'energy') config.vad = patch.vad;
+    else errors.push('VAD must be silero or energy');
+  }
   if ('startAtLogin' in patch) config.startAtLogin = !!patch.startAtLogin;
   if ('micDeviceId' in patch) {
     if (patch.micDeviceId === null || typeof patch.micDeviceId === 'string') config.micDeviceId = patch.micDeviceId || null;

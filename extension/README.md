@@ -25,6 +25,16 @@ Sign in to YouTube Music in Chrome as usual. Likes need a signed-in account.
 - "like this song", "thumbs down"
 - Pause, skip, seek, volume and "what's playing" work as before.
 
+## Your playlists (version 1.1.0)
+
+- "what playlists do I have?", "what's in my gym playlist?", "show more" (JARVIS reads them live from your library).
+- Needs the extension reloaded after updating (`chrome://extensions` → reload arrow) and you signed in to YouTube Music.
+- "play my gym playlist", "shuffle my chill playlist", "play stronger from my gym playlist", "play my liked songs".
+- If two playlists fit, JARVIS asks which one ("the second one" works). A loose phrase like "play the rock playlist" tries your library first, then YouTube Music search; "my" means your library only.
+- "add this to gym" (the song that's playing), "add this song" (JARVIS asks which playlist), "add stronger by kanye west to my gym playlist", "undo".
+- JARVIS skips songs already in the playlist, asks when a song name fits two songs, and only says it's done after reading the playlist back. Needs extension version 1.2.0 (reload it).
+- Removing, moving and renaming come next.
+
 ## Good to know
 
 - One tab: JARVIS uses your open YouTube Music tab. It opens one in the background only if none is open.
@@ -37,3 +47,12 @@ Sign in to YouTube Music in Chrome as usual. Likes need a signed-in account.
 - **Not connected**: JARVIS isn't running, or it is an older version. Restart JARVIS, then click **Reconnect** in the popup.
 - **Wrong ID**: don't edit `manifest.json`. The `key` in it sets the ID JARVIS trusts.
 - **Remove it**: `chrome://extensions` → Remove. JARVIS keeps working without it (no song search or queue).
+
+## Listening log (version 1.3.0)
+
+While a YouTube Music tab is open, the extension notes each track you play: title, artist, album, when, how long you actually heard it, how far you got, seeks, whether it ended, was skipped or was replayed, the playlist it came from, and your like state.
+Each finished play goes to JARVIS on this PC (`music-plays.jsonl` in the JARVIS data folder). Plays heard while JARVIS is closed wait in this browser profile (up to 5000) and are sent when JARVIS connects.
+Nothing leaves your computer. Turn it off in JARVIS settings ("Log what I listen to").
+
+After updating: open `chrome://extensions`, click the reload icon on the JARVIS card, then refresh the YouTube Music tab.
+Ask JARVIS: "what are my top artists this month?", "how often do I skip $uicideboy$?", "when do I listen most?", "how has my taste changed?", "what did I replay this week?".

@@ -83,6 +83,11 @@ function registerIpc(ctx) {
     orchestrator.announce();
     return { ...(await describeNow()), errors };
   });
+  // your voice: enrol (about 12 s of speech), forget, status. Only numbers are stored.
+  const voiceStatus = () => ({ available: ctx.speaker.available(), enrolled: ctx.speaker.enrolled(), count: ctx.speaker.count(), enrolling: !!ctx.enrollBuf });
+  h('speaker:status', () => voiceStatus());
+  h('speaker:enroll', async () => { const r = await ctx.enrollVoice(); return { ...r, ...voiceStatus() }; });
+  h('speaker:clear', () => { ctx.speaker.clear(); return voiceStatus(); });
   // while a hotkey field is capturing, release global shortcuts so the keypress reaches the field
   let capturing = false;
   h('settings:capture', on => {

@@ -1,0 +1,487 @@
+{
+  "generatedAt": "2026-11-10T11:39:32.962Z",
+  "note": "Synthetic Piper speech, not the user's voice. Detection = score ≥ threshold for 2 consecutive 80 ms chunks.",
+  "models": "openWakeWord v0.5.1: melspectrogram, embedding_model, hey_jarvis_v0.1",
+  "perChunkMs": 4.1,
+  "noiseMinutes": 10,
+  "sweep": [
+    {
+      "threshold": 0.05,
+      "wakeHitPct": 89.7,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 87.6,
+      "byGroup": {
+        "clean": 40,
+        "snr20": 91.1,
+        "snr10": 95.6,
+        "snr5": 98.9
+      },
+      "nonWakeFalseAccepts": 20,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 2
+    },
+    {
+      "threshold": 0.1,
+      "wakeHitPct": 81.3,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 77.6,
+      "byGroup": {
+        "clean": 30,
+        "snr20": 76.7,
+        "snr10": 90,
+        "snr5": 94.4
+      },
+      "nonWakeFalseAccepts": 16,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 2
+    },
+    {
+      "threshold": 0.15,
+      "wakeHitPct": 74.7,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 69.6,
+      "byGroup": {
+        "clean": 23.3,
+        "snr20": 68.9,
+        "snr10": 84.4,
+        "snr5": 87.8
+      },
+      "nonWakeFalseAccepts": 12,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 2
+    },
+    {
+      "threshold": 0.2,
+      "wakeHitPct": 66.3,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 59.6,
+      "byGroup": {
+        "clean": 20,
+        "snr20": 57.8,
+        "snr10": 76.7,
+        "snr5": 80
+      },
+      "nonWakeFalseAccepts": 9,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 2
+    },
+    {
+      "threshold": 0.25,
+      "wakeHitPct": 61.7,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 54,
+      "byGroup": {
+        "clean": 20,
+        "snr20": 53.3,
+        "snr10": 71.1,
+        "snr5": 74.4
+      },
+      "nonWakeFalseAccepts": 9,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 1
+    },
+    {
+      "threshold": 0.3,
+      "wakeHitPct": 56.7,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 48,
+      "byGroup": {
+        "clean": 16.7,
+        "snr20": 46.7,
+        "snr10": 65.6,
+        "snr5": 71.1
+      },
+      "nonWakeFalseAccepts": 5,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 0
+    },
+    {
+      "threshold": 0.35,
+      "wakeHitPct": 54,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 44.8,
+      "byGroup": {
+        "clean": 16.7,
+        "snr20": 44.4,
+        "snr10": 61.1,
+        "snr5": 68.9
+      },
+      "nonWakeFalseAccepts": 5,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 0
+    },
+    {
+      "threshold": 0.4,
+      "wakeHitPct": 51,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 41.2,
+      "byGroup": {
+        "clean": 16.7,
+        "snr20": 42.2,
+        "snr10": 57.8,
+        "snr5": 64.4
+      },
+      "nonWakeFalseAccepts": 5,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 0
+    },
+    {
+      "threshold": 0.45,
+      "wakeHitPct": 48.3,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 38,
+      "byGroup": {
+        "clean": 16.7,
+        "snr20": 41.1,
+        "snr10": 52.2,
+        "snr5": 62.2
+      },
+      "nonWakeFalseAccepts": 5,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 0
+    },
+    {
+      "threshold": 0.5,
+      "wakeHitPct": 44,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 32.8,
+      "byGroup": {
+        "clean": 16.7,
+        "snr20": 36.7,
+        "snr10": 48.9,
+        "snr5": 55.6
+      },
+      "nonWakeFalseAccepts": 4,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 0
+    },
+    {
+      "threshold": 0.55,
+      "wakeHitPct": 43,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 31.6,
+      "byGroup": {
+        "clean": 16.7,
+        "snr20": 35.6,
+        "snr10": 47.8,
+        "snr5": 54.4
+      },
+      "nonWakeFalseAccepts": 4,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 0
+    },
+    {
+      "threshold": 0.6,
+      "wakeHitPct": 41.3,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 29.6,
+      "byGroup": {
+        "clean": 16.7,
+        "snr20": 33.3,
+        "snr10": 45.6,
+        "snr5": 53.3
+      },
+      "nonWakeFalseAccepts": 4,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 0
+    },
+    {
+      "threshold": 0.65,
+      "wakeHitPct": 39.7,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 27.6,
+      "byGroup": {
+        "clean": 16.7,
+        "snr20": 32.2,
+        "snr10": 43.3,
+        "snr5": 51.1
+      },
+      "nonWakeFalseAccepts": 4,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 0
+    },
+    {
+      "threshold": 0.7,
+      "wakeHitPct": 39,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 26.8,
+      "byGroup": {
+        "clean": 16.7,
+        "snr20": 31.1,
+        "snr10": 42.2,
+        "snr5": 51.1
+      },
+      "nonWakeFalseAccepts": 4,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 0
+    },
+    {
+      "threshold": 0.75,
+      "wakeHitPct": 38,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 25.6,
+      "byGroup": {
+        "clean": 16.7,
+        "snr20": 30,
+        "snr10": 40,
+        "snr5": 51.1
+      },
+      "nonWakeFalseAccepts": 3,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 0
+    },
+    {
+      "threshold": 0.8,
+      "wakeHitPct": 37.3,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 24.8,
+      "byGroup": {
+        "clean": 16.7,
+        "snr20": 30,
+        "snr10": 38.9,
+        "snr5": 50
+      },
+      "nonWakeFalseAccepts": 3,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 0
+    },
+    {
+      "threshold": 0.85,
+      "wakeHitPct": 35,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 22,
+      "byGroup": {
+        "clean": 16.7,
+        "snr20": 28.9,
+        "snr10": 36.7,
+        "snr5": 45.6
+      },
+      "nonWakeFalseAccepts": 2,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 0
+    },
+    {
+      "threshold": 0.9,
+      "wakeHitPct": 33.7,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 20.4,
+      "byGroup": {
+        "clean": 16.7,
+        "snr20": 27.8,
+        "snr10": 34.4,
+        "snr5": 44.4
+      },
+      "nonWakeFalseAccepts": 1,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 0
+    },
+    {
+      "threshold": 0.95,
+      "wakeHitPct": 29.3,
+      "heyJarvisHitPct": 100,
+      "bareJarvisHitPct": 15.2,
+      "byGroup": {
+        "clean": 16.7,
+        "snr20": 25.6,
+        "snr10": 31.1,
+        "snr5": 35.6
+      },
+      "nonWakeFalseAccepts": 1,
+      "nonWakeClips": 100,
+      "noiseFalseAccepts": 0
+    }
+  ],
+  "nonWakeMax": [
+    {
+      "id": "nonwake02",
+      "noise": "white",
+      "snr": 5,
+      "text": "Jarvis's new car is really fast",
+      "max": 0.981
+    },
+    {
+      "id": "nonwake02",
+      "noise": "fan",
+      "snr": 10,
+      "text": "Jarvis's new car is really fast",
+      "max": 0.975
+    },
+    {
+      "id": "nonwake02",
+      "noise": "fan",
+      "snr": 5,
+      "text": "Jarvis's new car is really fast",
+      "max": 0.968
+    },
+    {
+      "id": "nonwake02",
+      "noise": "pink",
+      "snr": 5,
+      "text": "Jarvis's new car is really fast",
+      "max": 0.951
+    },
+    {
+      "id": "nonwake02",
+      "noise": "white",
+      "snr": 10,
+      "text": "Jarvis's new car is really fast",
+      "max": 0.931
+    },
+    {
+      "id": "nonwake03",
+      "noise": "fan",
+      "snr": 5,
+      "text": "Jar of beans is on the top shelf",
+      "max": 0.854
+    },
+    {
+      "id": "nonwake07",
+      "noise": "fan",
+      "snr": 5,
+      "text": "The Jarvis family lives down the street from us",
+      "max": 0.438
+    },
+    {
+      "id": "nonwake03",
+      "noise": "white",
+      "snr": 20,
+      "text": "Jar of beans is on the top shelf",
+      "max": 0.383
+    },
+    {
+      "id": "nonwake03",
+      "noise": "pink",
+      "snr": 20,
+      "text": "Jar of beans is on the top shelf",
+      "max": 0.366
+    },
+    {
+      "id": "nonwake02",
+      "noise": "pink",
+      "snr": 10,
+      "text": "Jarvis's new car is really fast",
+      "max": 0.359
+    }
+  ],
+  "wakeMaxLowest": [
+    {
+      "id": "command15",
+      "noise": "none",
+      "snr": null,
+      "text": "Jarvis, look up the capital of Australia",
+      "max": 0
+    },
+    {
+      "id": "command02",
+      "noise": "none",
+      "snr": null,
+      "text": "Jarvis, skip this song",
+      "max": 0.001
+    },
+    {
+      "id": "command10",
+      "noise": "none",
+      "snr": null,
+      "text": "Jarvis, search the web for Ryzen benchmarks",
+      "max": 0.001
+    },
+    {
+      "id": "long09",
+      "noise": "none",
+      "snr": null,
+      "text": "Jarvis, check whether the Wallpaper Engine is running right now and if it is please tell me how much processor it uses",
+      "max": 0.003
+    },
+    {
+      "id": "long10",
+      "noise": "none",
+      "snr": null,
+      "text": "Jarvis, write down a reminder that I need to buy milk and bread and also call the dentist tomorrow morning before work",
+      "max": 0.004
+    },
+    {
+      "id": "long08",
+      "noise": "none",
+      "snr": null,
+      "text": "Jarvis, explain in plain words what a graphics card does and why it matters so much for playing modern video games",
+      "max": 0.006
+    },
+    {
+      "id": "long03",
+      "noise": "none",
+      "snr": null,
+      "text": "Jarvis, please open Steam and then tell me which games I have installed that were played during the last two weeks",
+      "max": 0.007
+    },
+    {
+      "id": "command01",
+      "noise": "none",
+      "snr": null,
+      "text": "Jarvis, pause the music",
+      "max": 0.008
+    },
+    {
+      "id": "pause04",
+      "noise": "none",
+      "snr": null,
+      "text": "Jarvis, tell me what the weather is like tomorrow",
+      "max": 0.01
+    },
+    {
+      "id": "command14",
+      "noise": "none",
+      "snr": null,
+      "text": "Jarvis, what's the date today",
+      "max": 0.011
+    },
+    {
+      "id": "long04",
+      "noise": "none",
+      "snr": null,
+      "text": "Jarvis, look up how long it takes to travel from London to Edinburgh by train and compare it with driving the same route",
+      "max": 0.013
+    },
+    {
+      "id": "command07",
+      "noise": "white",
+      "snr": 20,
+      "text": "Jarvis, what's my GPU temperature",
+      "max": 0.016
+    },
+    {
+      "id": "command07",
+      "noise": "none",
+      "snr": null,
+      "text": "Jarvis, what's my GPU temperature",
+      "max": 0.017
+    },
+    {
+      "id": "pause01",
+      "noise": "none",
+      "snr": null,
+      "text": "Jarvis, play some music by Daft Punk",
+      "max": 0.019
+    },
+    {
+      "id": "command03",
+      "noise": "none",
+      "snr": null,
+      "text": "Jarvis, what time is it",
+      "max": 0.025
+    }
+  ],
+  "noiseMax": [
+    {
+      "noise": "white",
+      "max": 0.049
+    },
+    {
+      "noise": "pink",
+      "max": 0.298
+    },
+    {
+      "noise": "fan",
+      "max": 0.331
+    }
+  ]
+}

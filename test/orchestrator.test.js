@@ -171,16 +171,16 @@ test('send while busy rejects with Error(BUSY)', async () => {
   assert.deepEqual(sessions.load(s.id).messages.filter(m => m.role === 'user').map(m => m.content), ['one']);
 });
 
-test('contextMax 100: only newest messages fitting 400 chars are sent; session keeps all', async () => {
-  const fp = createFakeProvider([{ type: 'token', text: 'k' }, { type: 'done' }], { contextMax: 100 });
-  const { sessions, orc, s } = setup(fp);
+test('contextMax 130: only the newest messages that fit are sent (content plus per-message overhead); session keeps all', async () => {
+  const fp = createFakeProvider([{ type: 'token', text: 'k' }, { type: 'done' }], { contextMax: 130 });
+  const { sessions, orc, s } = setup(fp, { tools: createToolRunner([]) });   // no tool definitions: only messages count here
   const full = sessions.load(s.id);
   for (let i = 0; i < 10; i++) full.messages.push({ role: i % 2 ? 'assistant' : 'user', content: String(i).repeat(100) });
   sessions.save(full);
   await orc.send(s.id, 'Q'.repeat(150), { source: 'text' });
   const sent = fp.calls[0].messages;
   const chars = sent.reduce((n, m) => n + m.content.length, 0);
-  assert.ok(chars <= 400, 'sent ' + chars + ' chars');
+  assert.ok(chars <= 520, 'sent ' + chars + ' chars');
   assert.equal(sent.at(-1).content, 'Q'.repeat(150));
   assert.deepEqual(sent.map(m => m.content[0]), ['8', '9', 'Q']);
   assert.equal(sessions.load(s.id).messages.length, 12);
@@ -317,4 +317,20 @@ test('promptInfo may be async (media line reaches the system prompt)', async () 
   const { orc, s } = setup(fp, { orc: { systemPrompt: ({ media }) => `SYS ${media}`, promptInfo: async () => ({ media: 'Media: playing X.' }) } });
   await orc.send(s.id, 'hi', { source: 'text' });
   assert.equal(fp.calls[0].messages[0].content, 'SYS Media: playing X.');
+});
+
+test('contextMax: tool definitions and room for the answer are taken out of the history budget', async () => {
+  const fp = createFakeProvider([{ type: 'token', text: 'k' }, { type: 'done' }], { contextMax: 1000 });   // 4000 chars
+  const { sessions, orc, s } = setup(fp);
+  const full = sessions.load(s.id);
+  for (let i = 0; i < 10; i++) full.messages.push({ role: i % 2 ? 'assistant' : 'user', content: String(i).repeat(600) });
+  sessions.save(full);
+  await orc.send(s.id, 'Q'.repeat(100), { source: 'text' });
+  const sent = fp.calls[0].messages;
+  const specChars = JSON.stringify(fp.calls[0].tools).length;
+  assert.ok(specChars > 0);
+  const chars = sent.reduce((n, m) => n + m.content.length, 0);
+  assert.ok(chars + specChars * 1.3 + 400 <= 4000, `history ${chars} + tools ${specChars} must leave room in 4000 chars`);
+  assert.equal(sent.at(-1).content, 'Q'.repeat(100));
+  assert.ok(sent.length < 11);
 });

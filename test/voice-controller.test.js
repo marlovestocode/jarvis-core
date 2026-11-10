@@ -374,12 +374,12 @@ function safeTts() {
   t.speak = () => { throw new Error('should stream'); };
   return t;
 }
-function safeSetup(sttTexts, parts = ['It is sunny today.', ' Highs near 80.', ' Lows near 60.', ' Winds are light.'], gap = 30) {
+function safeSetup(sttTexts, parts = ['It is sunny today.', ' Highs near 80.', ' Lows near 60.', ' Winds are light.'], gap = 30, cfg = {}) {
   const bus = createBus(); const events = []; bus.on('*', e => events.push(e));
   const tts = safeTts();
   const stt = queueStt(sttTexts);
   const orc = streamingOrchestrator(bus, parts, gap);
-  const vc = createVoiceController({ bus, orchestrator: orc, engines: { stt, tts, wake: null }, getConfig: () => DEFAULTS, getSessionId: () => 's' });
+  const vc = createVoiceController({ bus, orchestrator: orc, engines: { stt, tts, wake: null }, getConfig: () => ({ ...DEFAULTS, ...cfg }), getSessionId: () => 's' });
   return { bus, events, tts, stt, orc, vc };
 }
 async function startSpeaking(s) {
@@ -412,8 +412,8 @@ test('speaking: loud speech alone no longer barges in', async () => {
   assert.equal(s.tts.aborted, false);
 });
 
-test('speaking: "Jarvis, what about tomorrow" → current sentence finishes, rest dropped, model stopped, new turn', async () => {
-  const s = safeSetup(['what is the weather', 'Jarvis, what about tomorrow?'], ['It is sunny today.', ' Highs', ' near', ' 80', ' and', ' more', ' words', ' here.'], 40);
+test('speaking (wakeInterrupt sentence): "Jarvis, what about tomorrow" → current sentence finishes, rest dropped, model stopped, new turn', async () => {
+  const s = safeSetup(['what is the weather', 'Jarvis, what about tomorrow?'], ['It is sunny today.', ' Highs', ' near', ' 80', ' and', ' more', ' words', ' here.'], 40, { wakeInterrupt: 'sentence' });
   await startSpeaking(s);
   talk(s.vc);
   await tick(150);
@@ -438,8 +438,8 @@ for (const said of ['Jarvis stop', "Jarvis, that's enough.", 'Jarvis, shut up', 
   });
 }
 
-test('speaking: "Jarvis" alone → current sentence finishes, then listening', async () => {
-  const s = safeSetup(['what is the weather', 'Jarvis.']);
+test('speaking (wakeInterrupt sentence): "Jarvis" alone → current sentence finishes, then listening', async () => {
+  const s = safeSetup(['what is the weather', 'Jarvis.'], undefined, undefined, { wakeInterrupt: 'sentence' });
   await startSpeaking(s);
   talk(s.vc);
   await tick(80);
@@ -471,4 +471,188 @@ test('Esc / stop button while speaking is still immediate (and stops the model)'
   assert.equal(s.tts.aborted, true);
   assert.equal(s.vc.mode, 'idle');
   assert.ok(s.orc.stops >= 1);
+});
+
+test('vadFactory: builds the three VADs with their options; capture lifecycle unchanged', async () => {
+  const { createVad } = require('../src/core/voice/vad');
+  const made = [];
+  const bus = createBus();
+  const events = [];
+  bus.on('*', e => events.push(e));
+  const orchestrator = fakeOrchestrator(undefined, bus);
+  const stt = fakeStt(), tts = fakeTts();
+  const vc = createVoiceController({
+    bus, orchestrator, engines: { stt, tts, wake: null }, vadOptions: { silenceMs: 700 },
+    getConfig: () => ({ ...DEFAULTS }), getSessionId: () => 's',
+    vadFactory: opts => { made.push(opts); return createVad(opts); },
+  });
+  assert.deepEqual(made, [{ silenceMs: 700 }, { silenceMs: 500, maxMs: 8000 }, { silenceMs: 500, maxMs: 3000 }]);
+  vc.listen();
+  feedAll(vc, [...noise(300), ...tone(1000), ...noise(900)]);
+  await tick(20);
+  assert.equal(stt.calls.length, 1);
+  tts.finish();
+  await tick(5);
+  assert.deepEqual(states(events), ['listening', 'thinking', 'speaking', 'idle']);
+});
+
+// Real speakers leak JARVIS's own voice back into the mic: the speaking transcript starts with its words
+// and "Jarvis" lands mid-way, often misheard (measured: "It is sunny and warm today. JAVAS! Stop the south.").
+test('speaking + echo: a wake word mid-transcript still stops ("…today. Javas! Stop the south.")', async () => {
+  const s = safeSetup(['what is the weather', 'It is sunny today. Javas! Stop the south.']);
+  await startSpeaking(s);
+  talk(s.vc);
+  await tick(15);
+  assert.equal(s.tts.aborted, true);
+  assert.equal(s.vc.mode, 'idle');
+});
+
+test('speaking + echo: "…today Jarvis what about tomorrow" → speech stops now, new turn with the command', async () => {
+  const s = safeSetup(['what is the weather', 'It is sunny today Jarvis what about tomorrow'], ['It is sunny today.', ' Highs', ' near', ' 80', ' and', ' more', ' words', ' here.'], 40);
+  await startSpeaking(s);
+  talk(s.vc);
+  await tick(150);
+  assert.equal(s.tts.aborted, true);
+  assert.equal(s.tts.finished, 0);
+  assert.deepEqual(s.orc.sends, ['what is the weather', 'what about tomorrow']);
+});
+
+test('speaking + echo: words after the wake that are JARVIS\'s own echo → just listen, no echo sent as a question', async () => {
+  const s = safeSetup(['what is the weather', 'sunny today Jarvis it is sunny today highs near'], ['It is sunny today.', ' Highs near 80.', ' Lows near 60.'], 20);
+  await startSpeaking(s);
+  await tick(40);
+  talk(s.vc);
+  await tick(120);
+  assert.equal(s.vc.mode, 'listening');
+  assert.deepEqual(s.orc.sends, ['what is the weather']);
+});
+
+test('speaking + echo: JARVIS saying "Jarvis" itself is not a wake, even mid-transcript', async () => {
+  const s = safeSetup(['who are you', 'well I am Jarvis here at your service'], ['I am Jarvis here, at your service.', ' Ask me anything at all.'], 20);
+  await startSpeaking(s);
+  await tick(40);
+  talk(s.vc);
+  await tick(30);
+  assert.equal(s.tts.aborted, false);
+  assert.equal(s.tts.finished, 0);
+});
+
+test('speaking: continuous sound (echo) is checked every ~3 s, not only at the 8 s cap', async () => {
+  const s = safeSetup(['what is the weather', 'It is sunny today Jarvis stop']);
+  await startSpeaking(s);
+  feedAll(s.vc, [...noise(300), ...tone(3600, 0.4)]);   // never quiet: no utterance end
+  await tick(15);
+  assert.equal(s.tts.aborted, true, 'transcribed at the 3 s window');
+});
+
+test('speaking (default: interrupt now): "Jarvis, what about tomorrow" → speech cut at once, model stopped, new turn', async () => {
+  assert.equal(DEFAULTS.wakeInterrupt, 'now');
+  const s = safeSetup(['what is the weather', 'Jarvis, what about tomorrow?'], ['It is sunny today.', ' Highs', ' near', ' 80', ' and', ' more', ' words', ' here.'], 40);
+  await startSpeaking(s);
+  talk(s.vc);
+  await tick(150);
+  assert.equal(s.tts.aborted, true, 'cut, not finished');
+  assert.equal(s.tts.finished, 0);
+  assert.ok(s.orc.stops >= 1);
+  assert.deepEqual(s.orc.sends, ['what is the weather', 'what about tomorrow?']);
+});
+
+test('speaking (default): "Jarvis" alone → speech cut at once, then listening', async () => {
+  const s = safeSetup(['what is the weather', 'Jarvis.']);
+  await startSpeaking(s);
+  talk(s.vc);
+  await tick(40);
+  assert.equal(s.tts.aborted, true);
+  assert.equal(s.vc.mode, 'listening');
+  assert.deepEqual(s.orc.sends, ['what is the weather']);
+});
+
+test('speaking: a window cut mid-phrase ("…Jarvis sto") stops speech, listens with the audio kept, and the full "Jarvis stop" ends it', async () => {
+  const s = safeSetup(['what is the weather', 'It is sunny today Jarvis sto', 'today Jarvis stop']);
+  await startSpeaking(s);
+  feedAll(s.vc, [...noise(300), ...tone(3000, 0.4)]);   // the 3 s window closes while still talking
+  await tick(15);
+  assert.equal(s.tts.aborted, true, 'speech stopped on the wake');
+  assert.equal(s.vc.mode, 'listening');
+  feedAll(s.vc, [...tone(400, 0.4), ...noise(1200)]);   // end of the phrase, then quiet
+  await tick(30);
+  assert.equal(s.vc.mode, 'idle', '"Jarvis stop" heard whole: nothing more');
+  assert.deepEqual(s.orc.sends, ['what is the weather']);
+});
+
+test('speaking: after a cut-window interrupt the command is taken from after the wake word', async () => {
+  const s = safeSetup(['what is the weather', 'It is sunny today Jarvis what', 'sunny today Jarvis what about tomorrow']);
+  await startSpeaking(s);
+  feedAll(s.vc, [...noise(300), ...tone(3000, 0.4)]);
+  await tick(15);
+  feedAll(s.vc, [...tone(400, 0.4), ...noise(1200)]);
+  await tick(60);
+  assert.deepEqual(s.orc.sends, ['what is the weather', 'what about tomorrow']);
+});
+
+// Continuation guard (Phase 4): a turn that ends on a dangling word listens a little longer.
+function guardSetup(texts, cfg = { continuationGuard: true }) {
+  const bus = createBus(); const events = []; bus.on('*', e => events.push(e));
+  const q = [...texts];
+  const stt = { id: 'g', calls: [], async status() { return { ready: true }; }, async transcribe(pcm) { this.calls.push(pcm.length); return q.shift() ?? ''; } };
+  const tts = fakeTts();
+  const orchestrator = fakeOrchestrator('Okay.', bus);
+  const vc = createVoiceController({ bus, orchestrator, engines: { stt, tts, wake: null }, getConfig: () => ({ ...DEFAULTS, ...cfg }), getSessionId: () => 's', continuationMs: 80 });
+  return { bus, events, stt, tts, orchestrator, vc };
+}
+const burst = (vc, ms = 600) => feedAll(vc, [...tone(ms), ...noise(900)]);
+
+test('continuation: "Remind me to call my." → keeps listening, more speech → whole audio re-transcribed and sent', async () => {
+  const g = guardSetup(['Remind me to call my.', 'Remind me to call my mom.']);
+  g.vc.listen();
+  feedAll(g.vc, noise(300)); burst(g.vc);
+  await tick(10);
+  assert.equal(g.vc.mode, 'listening', 'reopened');
+  assert.equal(g.orchestrator.sends.length, 0);
+  burst(g.vc);
+  await tick(20);
+  assert.equal(g.stt.calls.length, 2);
+  assert.ok(g.stt.calls[1] > g.stt.calls[0], 'second pass covers both parts');
+  assert.deepEqual(g.orchestrator.sends.map(s => s.text), ['Remind me to call my mom.']);
+});
+
+test('continuation: a complete sentence or a question goes straight through', async () => {
+  for (const t of ['What time is it?', 'Turn it up.', 'is it the one with the dog and?']) {
+    const g = guardSetup([t]);
+    g.vc.listen();
+    feedAll(g.vc, noise(300)); burst(g.vc);
+    await tick(10);
+    assert.equal(g.stt.calls.length, 1, t);
+    assert.deepEqual(g.orchestrator.sends.map(s => s.text), [t]);
+  }
+});
+
+test('continuation: the user stays quiet → the first transcript is used, Whisper not run again', async () => {
+  const g = guardSetup(['open Steam because']);
+  g.vc.listen();
+  feedAll(g.vc, noise(300)); burst(g.vc);
+  await tick(10);
+  feedAll(g.vc, noise(200));
+  await tick(120);
+  assert.equal(g.stt.calls.length, 1);
+  assert.deepEqual(g.orchestrator.sends.map(s => s.text), ['open Steam because']);
+});
+
+test('continuation: at most 2 extensions per turn', async () => {
+  const g = guardSetup(['play the', 'play the and', 'play the and the']);
+  g.vc.listen();
+  feedAll(g.vc, noise(300)); burst(g.vc);
+  await tick(10); burst(g.vc);
+  await tick(10); burst(g.vc);
+  await tick(20);
+  assert.equal(g.stt.calls.length, 3);
+  assert.deepEqual(g.orchestrator.sends.map(s => s.text), ['play the and the']);
+});
+
+test('continuation: off by default (old behaviour)', async () => {
+  const g = guardSetup(['Remind me to call my.'], {});
+  g.vc.listen();
+  feedAll(g.vc, noise(300)); burst(g.vc);
+  await tick(10);
+  assert.deepEqual(g.orchestrator.sends.map(s => s.text), ['Remind me to call my.']);
 });

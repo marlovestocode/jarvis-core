@@ -6,12 +6,14 @@ import { ytm } from './page.js';
 
 const PORTS = [47830, 47831, 47832];
 const HOME = 'https://music.youtube.com/';
-const NEEDS_TAB = new Set(['search', 'play', 'enqueue']);   // these open YouTube Music if it is closed
+const NEEDS_TAB = new Set(['search', 'play', 'enqueue', 'playlists', 'playlist', 'playlist_edit']);   // these open YouTube Music if it is closed
 const VERSION = chrome.runtime.getManifest().version;
 
 let ws = null;
 let connecting = false;
 let keepalive = null;
+// plays heard while JARVIS is not running wait here (this browser profile only) and are sent when it connects
+const PENDING_MAX = 5000;
 const status = { connected: false, port: null, lastError: null, lastCommand: null, at: null };
 
 function save() { chrome.storage.session.set({ status: { ...status, at: Date.now() } }).catch(() => {}); }
@@ -44,9 +46,28 @@ async function connect() {
     setTimeout(connect, 3000);
   };
   send(sock, { type: 'hello', version: VERSION });
+  flushPending(sock);
   // traffic every 20 s keeps this worker alive while JARVIS is connected (Chrome 116+)
   clearInterval(keepalive);
   keepalive = setInterval(() => send(sock, { type: 'ping' }), 20000);
+}
+
+async function flushPending(sock) {
+  try {
+    const { pending = [] } = await chrome.storage.local.get('pending');
+    if (!pending.length) return;
+    for (let i = 0; i < pending.length; i += 200) send(sock, { type: 'plays', events: pending.slice(i, i + 200) });
+    await chrome.storage.local.set({ pending: [] });
+  } catch { /* storage unavailable: nothing to flush */ }
+}
+
+async function onPlay(event) {
+  if (ws && status.connected) { send(ws, { type: 'play', event }); return; }
+  try {
+    const { pending = [] } = await chrome.storage.local.get('pending');
+    pending.push(event);
+    await chrome.storage.local.set({ pending: pending.slice(-PENDING_MAX) });
+  } catch { /* storage full or unavailable: this play is lost */ }
 }
 
 function send(sock, msg) { try { sock.send(JSON.stringify(msg)); } catch { /* closed */ } }
@@ -126,6 +147,7 @@ chrome.runtime.onStartup.addListener(connect);
 chrome.runtime.onInstalled.addListener(() => { chrome.alarms.create('jarvis-reconnect', { periodInMinutes: 0.5 }); connect(); });
 chrome.alarms.onAlarm.addListener(a => { if (a.name === 'jarvis-reconnect') connect(); });
 chrome.runtime.onMessage.addListener((m, _s, reply) => {
+  if (m?.type === 'play-log') { onPlay(m.event); return false; }
   if (m?.type === 'reconnect') { connect().then(() => reply({ ...status })); return true; }
   if (m?.type === 'status') { reply({ ...status }); return false; }
   return false;

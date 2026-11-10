@@ -15,12 +15,23 @@ const DEFAULTS = Object.freeze({
   startAtLogin: true,
   engines: Object.freeze({ stt: 'whisper', tts: 'piper', wake: 'whisper' }), // Windows speech is the fallback
   wakeEnabled: false,
+  wakeInterrupt: 'now',                // "Jarvis" while JARVIS speaks: 'now' cuts the speech | 'sentence' (old) lets it finish
+  sttModel: 'ggml-small.en-q5_1.bin', // Whisper model file under engines/whisper (bare *.bin name); small.en on the GPU, base.en when sttGpu is off
+  sttGpu: true,                        // Whisper on the GPU (CUDA); falls back to the CPU if it cannot start
+  sttPrompt: 'v0',                     // Whisper vocabulary prompt: v0 (original) | v1 (+ command words) | none
+  vad: 'silero',                       // 'silero' (model, default since Gate 1) | 'energy' (old); silero falls back to energy if it cannot load
+  endSilenceMs: 700,                   // quiet that ends a spoken turn; 550 passes the corpus pause set with Silero (Phase 4)
+  continuationGuard: false,            // a turn ending on "and"/"the"/... listens 1.5 s more before answering (Phase 4)
+  speakerGate: true,                   // once a voice is enrolled, only that voice wakes JARVIS by "Jarvis" (the hotkey always works)
+  speakerThreshold: 0.45,              // cosine match needed (same voice ~0.8-0.9, another voice ~0.1-0.3)
   micDeviceId: null,
   voiceRate: 1.0,
   hotkeys: Object.freeze({ chat: 'Control+Space', voice: 'Control+Shift+Space' }),
   port: 47801,
   // knowledge & live data (spec 2026-11-10-knowledge §3): allowlisted lookups only
   online: Object.freeze({ enabled: true, weather: true, news: true, sports: true, wiki: true }),
+  // who the user is: JARVIS addresses them by name and treats this as known (settings or "call me ...")
+  user: Object.freeze({ name: '', about: '' }),
   location: Object.freeze({ city: 'Abilene, TX', lat: 32.4487, lon: -99.7331, country: 'US', units: 'F' }),
   news: Object.freeze({ feeds: Object.freeze([
     'https://feeds.bbci.co.uk/news/rss.xml',
@@ -29,14 +40,29 @@ const DEFAULTS = Object.freeze({
     'https://www.sciencedaily.com/rss/all.xml',
   ]) }),
   sports: Object.freeze({ follow: Object.freeze([]) }),   // [{ league: 'nfl', team: 'Cowboys' }]
+  // the user's YouTube Music playlists (plan 2026-11-10-ytm-playlists): all data is read live; these are only preferences
+  music: Object.freeze({
+    aliases: Object.freeze([]),         // [{ alias: 'gym', playlistId: 'PL...' }] spoken shortcuts
+    libraryTtlSec: 300,                 // how long the playlist list stays fresh
+    playlistTtlSec: 120,                // how long one playlist's songs stay fresh
+    digestSize: 30,                     // playlists named to the model in its prompt
+    maxBulk: 25,                        // most songs added to a playlist in one go
+    logPlays: true,                     // keep a local log of what you listen to (music_stats); off stops logging
+  }),
 });
 
-const NESTED = ['engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports'];
+const VADS = ['silero', 'energy'];
+const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music'];
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 // micDeviceId defaults to null but holds a string: accept string or null.
 function okValue(key, def, v) {
   if (key === 'micDeviceId') return v === null || typeof v === 'string';
+  if (key === 'vad') return VADS.includes(v);
+  if (key === 'wakeInterrupt') return v === 'now' || v === 'sentence';
+  if (key === 'speakerThreshold') return typeof v === 'number' && v >= 0.2 && v <= 0.9;
+  if (key === 'sttPrompt') return ['v0', 'v1', 'none'].includes(v);
+  if (key === 'sttModel') return typeof v === 'string' && /^[\w-][\w.-]*\.bin$/.test(v);
   if (typeof def === 'number') return typeof v === 'number' && Number.isFinite(v);
   return typeof v === typeof def;
 }
@@ -45,6 +71,7 @@ function okValue(key, def, v) {
 function cleanList(key, k, list) {
   if (key === 'news' && k === 'feeds') return [...new Set(list.map(require('./net/policy').feedUrl).filter(Boolean))].slice(0, 20);
   if (key === 'sports' && k === 'follow') return list.filter(x => isObj(x) && typeof x.league === 'string' && typeof x.team === 'string').map(x => ({ league: x.league, team: x.team }));
+  if (key === 'music' && k === 'aliases') return list.filter(x => isObj(x) && typeof x.alias === 'string' && x.alias.trim() && typeof x.playlistId === 'string' && /^[A-Za-z0-9_-]{2,64}$/.test(x.playlistId)).map(x => ({ alias: x.alias.trim().slice(0, 50), playlistId: x.playlistId })).slice(0, 50);
   return list;
 }
 
@@ -62,6 +89,7 @@ function merge(raw) {
       }
     } else {
       out[key] = v !== undefined && okValue(key, def, v) ? v : def;
+      if (key === 'endSilenceMs') out[key] = Math.round(Math.max(300, Math.min(1500, out[key])));
     }
   }
   return out;

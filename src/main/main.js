@@ -35,8 +35,12 @@ const { startBridge } = require('../core/bridge');
 const { createEngineRegistries } = require('../core/voice/engines');
 const { createSpeechHost, windowsTts, windowsStt, windowsWake } = require('../core/voice/windows-speech');
 const { createVoiceController } = require('../core/voice/controller');
-const { createWhisperStt } = require('../core/voice/whisper');
+const { createWhisperStt, whisperModelPath, pickSttModel } = require('../core/voice/whisper');
+const { sttPrompt, withTerms } = require('../core/voice/stt-prompt');
 const { createPiperTts } = require('../core/voice/piper');
+const { createModelVad } = require('../core/voice/vad-model');
+const { createEnginePick } = require('../core/voice/engine-pick');
+const { createSileroProvider } = require('../core/voice/silero-provider');
 const { chime } = require('../core/voice/chime');
 const { createMediaService } = require('../core/media/service');
 const { createMediaSkill } = require('../core/media/skill');
@@ -44,6 +48,12 @@ const { promptLine: mediaPromptLine } = require('../core/media/say');
 const { pressKey } = require('../core/tools/media');
 const { startYtMusicLink } = require('../core/media/ytmusic-link');
 const { createYtMusic } = require('../core/media/ytmusic');
+const { createYtPlaylists } = require('../core/media/ytplaylists');
+const { createSpeaker } = require('../core/voice/speaker/speaker');
+const { enrollVoice } = require('../core/voice/speaker/enroll');
+const { createPlayLog } = require('../core/music/log');
+const { createMemory } = require('../core/memory/store');
+const { createMemorySkill } = require('../core/memory/skill');
 const os = require('node:os');
 const { registerHotkeys } = require('./hotkeys');
 const { createMic } = require('./mic');
@@ -108,11 +118,37 @@ ctx.kiwix = createKiwix({ exe: path.join(__dirname, '../../engines/kiwix/kiwix-s
 ctx.mediaHost = createSpeechHost({ script: path.join(__dirname, '../core/media/media-host.ps1'), log: ctx.log, name: 'media host' });
 ctx.media = createMediaService({ request: (cmd, args) => ctx.mediaHost.request(cmd, args), keys: key => pressKey(fetch, key), log: ctx.log });
 // YouTube Music: the JARVIS Chrome extension connects here (127.0.0.1:47830, extension origin only)
-ctx.ytmLink = startYtMusicLink({ log: ctx.log });
+// every finished play the extension reports goes into the local listening log (music_stats)
+ctx.playLog = createPlayLog({ file: path.join(DATA_DIR, 'music-plays.jsonl'), getConfig: ctx.getConfig, log: ctx.log });
+ctx.ytmLink = startYtMusicLink({ log: ctx.log, onChange: connected => ctx.ytPlaylists?.onLink(connected), onPlay: e => ctx.playLog.add(e) });
 ctx.ytm = createYtMusic({ link: ctx.ytmLink });
-ctx.mediaSkill = createMediaSkill({ service: ctx.media, ytm: ctx.ytm });
+// the user's own playlists, read live through the extension (library hint kept on disk for the prompt)
+ctx.ytPlaylists = createYtPlaylists({ link: ctx.ytmLink, ytm: ctx.ytm, getConfig: ctx.getConfig, file: path.join(DATA_DIR, 'cache', 'ytm-library.json'), journalFile: path.join(DATA_DIR, 'ytm-undo.json'), log: ctx.log });
+ctx.mediaSkill = createMediaSkill({ service: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists });
 if (!DEV_RUN) ctx.media.state().catch(err => ctx.log('media host:', err.message));   // warm up: the first read compiles Core Audio (~0.8 s)
-ctx.toolList = brain.defaultTools({ getStatus: jarvisStatus, fetcher: ctx.fetcher, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm });
+ctx.memory = createMemory({ file: path.join(DATA_DIR, 'memory.json'), log: ctx.log });
+ctx.memorySkill = createMemorySkill({ memory: ctx.memory, setName: name => ctx.saveConfig({ ...ctx.config, user: { ...ctx.config.user, name } }) });
+// What JARVIS can do right now, from live state: the model must not deny these or claim what is not here.
+function capsLine() {
+  const c = ctx.config, on = v => (v ? 'on' : 'off');
+  return [
+    `wake word "Jarvis" is ${on(c.wakeEnabled)} (also the voice hotkey ${c.hotkeys.voice})`,
+    `recognises the owner's voice: ${ctx.speaker.enrolled() ? (c.speakerGate ? 'enrolled, only they can wake it' : 'enrolled, gate off') : 'not enrolled'}`,
+    `YouTube Music extension: ${ctx.ytmLink.connected ? 'connected' : 'not connected'}`,
+    `listening log: ${c.music.logPlays ? `${ctx.playLog.count()} plays recorded${ctx.playLog.since() ? ` since ${new Date(ctx.playLog.since()).toLocaleDateString('en-US')}` : ''}` : 'off'} (music_stats tool)`,
+    'media control with per-app and system volume, play/pause/skip, queue',
+    'math, unit conversion, time, system stats, weather, news, scores, Wikipedia',
+    `speech-to-text ${c.engines.stt}${c.sttGpu ? ' on GPU' : ''}, saved memory of the user`,
+  ].join('; ') + '.';
+}
+function userInfo() {
+  const c = ctx.config;
+  return {
+    name: c.user.name, about: c.user.about, city: c.location.city, units: c.location.units,
+    teams: c.sports.follow.map(f => f.team), playlists: ctx.ytPlaylists.count?.() || 0, voiceEnrolled: ctx.speaker.enrolled(),
+  };
+}
+ctx.toolList = brain.defaultTools({ memory: ctx.memory, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists });
 ctx.tools = createToolRunner(ctx.toolList);
 ctx.orchestrator = createOrchestrator({
   bus: ctx.bus, sessions: ctx.sessions, providers: ctx.providers, tools: ctx.tools, getConfig: ctx.getConfig,
@@ -121,9 +157,9 @@ ctx.orchestrator = createOrchestrator({
   promptInfo: async () => {
     let media;
     try { media = mediaPromptLine(await Promise.race([ctx.media.state(), new Promise((_, rej) => setTimeout(() => rej(new Error('slow')), 600))])); } catch { media = undefined; }
-    return { hardware: ctx.hardware.cached() || undefined, media };
+    return { hardware: ctx.hardware.cached() || undefined, media, library: ctx.ytPlaylists.digest() || undefined, memory: ctx.memory.digest() || undefined, user: userInfo(), caps: capsLine() };
   },
-  fastPath: (text, o) => ctx.mediaSkill.handle(text, o),
+  fastPath: async (text, o) => (await ctx.memorySkill.handle(text, o)) || ctx.mediaSkill.handle(text, o),
   timeoutMs: 120000, // a cold model load plus thinking can be slow on the first turn
 });
 
@@ -160,8 +196,10 @@ ctx.engines.wake.add(windowsWake(ctx.speechHost));
 const ENGINES = process.env.JARVIS_ENGINES || [path.join(__dirname, '..', '..', 'engines'), path.join(app.getPath('home'), 'AppData', 'Local', 'jarvis-core', 'engines')]
   .find(d => fs.existsSync(path.join(d, 'whisper'))) || path.join(__dirname, '..', '..', 'engines');
 ctx.whisper = createWhisperStt({
-  exe: path.join(ENGINES, 'whisper', 'bin', 'Release', 'whisper-server.exe'), model: path.join(ENGINES, 'whisper', 'ggml-base.en.bin'),
-  prompt: 'JARVIS, Ollama, sysmon, Wallpaper Engine, Ryzen, RTX 3050, GPU, CPU, VRAM, Spotify, Discord, Steam.', log: ctx.log,
+  exe: path.join(ENGINES, 'whisper', 'bin', 'Release', 'whisper-server.exe'), model: whisperModelPath({ dir: path.join(ENGINES, 'whisper'), name: pickSttModel(ctx.config), log: ctx.log }),
+  cpuModel: path.join(ENGINES, 'whisper', 'ggml-base.en.bin'), gpu: ctx.config.sttGpu,
+  // the user's own words (playlists, teams, name) are added each time, so new playlists are heard right
+  prompt: () => withTerms(sttPrompt(ctx.config.sttPrompt), [ctx.config.user.name, ...ctx.ytPlaylists.titles(), ...ctx.config.sports.follow.map(f => f.team)]), log: ctx.log,
 });
 ctx.piper = createPiperTts({
   exe: path.join(ENGINES, 'piper', 'bin', 'piper', 'piper.exe'), model: path.join(ENGINES, 'piper', 'en_GB-alan-medium.onnx'),
@@ -175,16 +213,23 @@ ctx.engines.wake.add({
   available: () => ctx.whisper.available(),
   status: async () => (ctx.whisper.available() ? { ready: true, detail: 'Listens on the selected mic' } : { ready: false, detail: 'Whisper is not installed' }),
 });
-const engine = kind => {
-  const e = ctx.engines[kind].get(ctx.config.engines[kind]);
-  if (e && (!e.available || e.available())) return e;
-  return ctx.engines[kind].get('windows') || ctx.engines[kind].get('none');
-};
+// configured engine → Windows → None; each fallback logs its reason once (it used to be silent)
+const engine = createEnginePick({ registries: ctx.engines, getConfig: ctx.getConfig, log: ctx.log });
+// Silero VAD when config.vad is 'silero': one shared model, own state per VAD; energy VAD otherwise or on failure
+ctx.sileroVad = createSileroProvider({ modelPath: path.join(ENGINES, 'vad', 'silero_vad.onnx'), isOn: () => ctx.config.vad === 'silero', log: ctx.log });
+ctx.sileroVad.getModel();   // start loading now so the first capture already has it
+// who is speaking: the enrolled voice print, kept in the data folder (never leaves this PC)
+ctx.speaker = createSpeaker({
+  ort: require('onnxruntime-node'), modelPath: path.join(ENGINES, 'speaker', 'wespeaker_en_voxceleb_resnet34_LM.onnx'),
+  profileFile: path.join(DATA_DIR, 'voiceprint.json'), getConfig: ctx.getConfig, log: ctx.log,
+});
 ctx.voice = createVoiceController({
-  bus: ctx.bus, orchestrator: ctx.orchestrator,
+  bus: ctx.bus, orchestrator: ctx.orchestrator, speaker: ctx.speaker,
   engines: { stt: () => engine('stt'), tts: () => engine('tts'), wake: () => engine('wake') },
   getConfig: ctx.getConfig, getSessionId: () => ctx.sessionId, setSessionId: id => { ctx.sessionId = id; },
-  vadOptions: { silenceMs: 700 }, // Whisper is fast enough to end a phrase sooner
+  vadOptions: { silenceMs: ctx.config.endSilenceMs }, // config.endSilenceMs; read at start
+  vadFactory: opts => createModelVad({ ...opts, getModel: ctx.sileroVad.getModel, onError: ctx.sileroVad.onError }),
+  writeTrace: sum => fs.appendFile(path.join(app.getPath('userData'), 'voice-trace.jsonl'), JSON.stringify({ at: new Date().toISOString(), ...sum }) + '\n', () => {}),
 });
 ctx.micOk = true;
 ctx.startVoice = () => {
@@ -230,7 +275,7 @@ app.whenReady().then(async () => {
   ctx.windows = createWindows({ hideOnBlur: !process.env.JARVIS_SELFTEST });
   ctx.mic = createMic({
     getDeviceId: () => ctx.config.micDeviceId,
-    onFrame: (pcm, rate) => ctx.voice.feed(pcm, rate),
+    onFrame: (pcm, rate) => { if (ctx.enrollBuf) ctx.enrollBuf.push({ pcm: Int16Array.from(pcm), rate }); else ctx.voice.feed(pcm, rate); },
     onStatus: s => {
       ctx.bus.emit('mic', { ok: s.ok, reason: s.reason });
       if (s.ok) { ctx.micOk = true; return; }
@@ -243,6 +288,7 @@ app.whenReady().then(async () => {
   // the hidden mic page loads on first voice use, not at startup
   ctx.windows.ensureChat();
   ctx.bus.on('*', ev => ctx.windows.sendAll('ai:event', ev));
+  ctx.enrollVoice = () => enrollVoice(ctx);
   registerIpc(ctx);
   ctx.tray = createTray({
     openChat: () => ctx.windows.showChat(),

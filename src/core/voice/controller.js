@@ -4,6 +4,7 @@
 // JARVIS's own echo) is ignored. Loudness alone never interrupts.
 // engines.{stt,tts,wake} may be engine objects or functions returning the current engine.
 const { createVad } = require('./vad');
+const { createTrace } = require('./trace');
 const { speakable, createSentenceSplitter } = require('./speech-text');
 
 const SPEAKING_GAIN = 3; // speaker echo is mostly under the ×3 threshold, so Whisper is not run on it
@@ -12,12 +13,28 @@ const RING_MS = 2500;          // while the wake word is on: the last 2.5 s of m
 const IDLE_MAX_MS = 8000;      // Whisper wake: longest idle utterance checked for "Jarvis"
 const WAKE_PREFIX = /^\s*(?:(?:hey|ok|okay|hi|yo)[\s,]+)?jarvis\b[\s,.!?:;-]*/i;
 const STOP_WORDS = /^(?:stop|quiet|enough|cancel|shut up|that'?s enough|be quiet|never ?mind)\b/i;
-const SPEAK_MAX_MS = 8000;     // longest utterance checked while speaking
+const SPEAK_MAX_MS = 3000;     // while speaking, audio is checked in 3 s windows: JARVIS's own echo keeps an
+const SPEAK_OVERLAP_MS = 1000; // "utterance" open, so waiting for silence delayed a wake by up to 8 s; 1 s overlap keeps a split "Jarvis"
+// While speaking the wake word can be anywhere: the echo of JARVIS's reply comes first in the transcript.
+// Speaking-only, because only speech is stopped: also the mishearings Whisper gave over echo ("Javas", "Java's").
+const WAKE_ANY = /\b(?:(?:hey|ok|okay|hi|yo)[\s,]+)?(?:jarvis|jarvas|jervis|javis|javas|javus|java's)\b[\s,.!?:;-]*/gi;
 
 const norm = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
-function createVoiceController({ bus, orchestrator, engines, getConfig, getSessionId, setSessionId = () => {}, vadOptions }) {
-  const vad = createVad(vadOptions);
+// Continuation guard: a turn that ends on one of these words was probably cut by a pause, not finished.
+// Whisper usually adds a period anyway ("Remind me to call my."), so a trailing "."/"…" does not count
+// as finished; "?" and "!" do.
+const DANGLING = new Set(['and', 'but', 'or', 'so', 'because', 'then', 'the', 'a', 'an', 'to', 'of', 'with', 'for', 'like', 'um', 'uh', 'my', 'your', 'that', 'if']);
+const CONT_MAX_EXT = 2, CONT_MAX_MS = 20000;
+function dangling(text) {
+  const t = String(text || '').trim();
+  if (!t || /[?!]$/.test(t)) return false;
+  return DANGLING.has(norm(t).split(' ').pop());
+}
+
+function createVoiceController({ bus, orchestrator, engines, getConfig, getSessionId, setSessionId = () => {}, vadOptions, vadFactory = createVad, writeTrace = () => {}, continuationMs = 1500, speaker = null }) {
+  const vad = vadFactory(vadOptions);
+  const trace = createTrace();   // per-turn timing; summary goes to the log + writeTrace at turn end
   const pick = k => (typeof engines[k] === 'function' ? engines[k]() : engines[k]);
   let mode = 'idle';           // idle | listening | working | speaking
   let chunks = [];
@@ -28,15 +45,29 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
   const logged = new Set();
   let wakeOn = null;
   let ring = [], ringMs = 0;
-  const idleVad = createVad({ silenceMs: 500, maxMs: IDLE_MAX_MS });
+  const idleVad = vadFactory({ silenceMs: 500, maxMs: IDLE_MAX_MS });
   let idleChunks = [], idleMs = 0, idleBusy = false;
-  const speakVad = createVad({ silenceMs: 500, maxMs: SPEAK_MAX_MS });
+  const speakVad = vadFactory({ silenceMs: 500, maxMs: SPEAK_MAX_MS });
   let spChunks = [], spMs = 0, spBusy = false;
+  let stripWake = false;       // the current capture began with a spoken interrupt
+  let ext = 0, held = null, contTimer = null, during = null;   // continuation guard: extensions, first transcript, wait timer, frames heard while transcribing
   let current = null;          // the TTS stream/handle now speaking
   let spoken = '';             // what JARVIS has said this turn (echo check)
   let lastSend = Promise.resolve();
 
-  function setState(state, detail) { bus.emit('state', detail ? { state, detail } : { state }); }
+  function setState(state, detail) {
+    if (state === 'idle') endTrace();
+    bus.emit('state', detail ? { state, detail } : { state });
+  }
+  function endTrace() {
+    if (trace.empty) return;
+    trace.mark('turn_end');
+    const sum = trace.summary();
+    trace.reset();
+    if (sum.marks.first_audio === undefined) return;   // no audio was produced: nothing to time
+    bus.emit('log', { level: 'debug', text: 'voice-timing ' + JSON.stringify(sum) });
+    try { writeTrace(sum); } catch { /* tracing must never break a turn */ }
+  }
   function logOnce(kind, err) {
     if (logged.has(kind)) return;
     logged.add(kind);
@@ -45,9 +76,12 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
   function abortOp() { if (op) { op.abort(); op = null; } }
 
   function listen() {
+    stripWake = false;
+    ext = 0; held = null; during = null; clearTimeout(contTimer);
     abortOp();
     if (orchestrator.busy) orchestrator.stop(); // talking over JARVIS ends the reply it is writing
     turn++;
+    trace.reset();
     mode = 'listening';
     chunks = []; chunkMs = 0;
     vad.reset(); vad.setGain(1);
@@ -56,6 +90,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
 
   function cancel() {
     const was = mode;
+    held = null; during = null; clearTimeout(contTimer);
     turn++;
     abortOp();
     if ((was === 'working' || was === 'speaking') && orchestrator.busy) orchestrator.stop();
@@ -72,8 +107,11 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       return;
     }
     if (mode === 'speaking') { speakingFeed(pcm, sampleRate); return; }
+    if (mode === 'working' && during) { during.push(pcm); return; }   // speech that goes on while the guard's transcript is pending
     if (mode !== 'listening') return;
     const r = vad.push(pcm, sampleRate);
+    if (r === 'start') trace.mark('speech_start');
+    if (r === 'end' || r === 'max') trace.mark('speech_end');
     bus.emit('level', { source: 'mic', rms: vad.rms });
     rate = sampleRate;
     chunks.push(pcm);
@@ -89,13 +127,31 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     for (const c of list) { out.set(c, o); o += c.length; }
     return out;
   }
+  function lastMs(list, ms, sampleRate) {   // the frames covering the last `ms` of a chunk list
+    const out = [];
+    for (let i = list.length - 1, t = 0; i >= 0 && t < ms; i--) { out.unshift(list[i]); t += list[i].length / sampleRate * 1000; }
+    return out;
+  }
+
+  // Only the enrolled voice may wake JARVIS (config.speakerGate, and only once a voice is enrolled).
+  // The hotkey is never gated: pressing it is already the user. A broken model never blocks (verify fails open).
+  async function speakerOk(audio, sampleRate, lenient) {
+    if (!speaker || !getConfig().speakerGate || !speaker.enrolled()) return true;
+    const r = await speaker.verify(audio, sampleRate, { lenient });
+    if (r.ok) return true;
+    bus.emit('log', { level: 'info', text: `Ignored "Jarvis" from a voice that is not yours (match ${r.score}, needs ${r.threshold})` });
+    bus.emit('speaker', { ok: false, score: r.score });
+    return false;
+  }
 
   async function finishCapture(heard) {
     const my = ++turn;
     mode = 'working';
     if (!heard) { mode = 'idle'; setState('idle'); return; }
+    const parts = chunks, partsMs = chunkMs;
     const pcm = concat(chunks);
     chunks = []; chunkMs = 0;
+    if (getConfig().continuationGuard) during = [];
     op = new AbortController();
     let text = '';
     try {
@@ -107,7 +163,40 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       return;
     }
     if (my !== turn) return;
+    trace.mark('stt_done');
+    if (getConfig().continuationGuard && ext < CONT_MAX_EXT && partsMs < CONT_MAX_MS && dangling(text)) {
+      extend(parts, partsMs, text);
+      return;
+    }
+    during = null; held = null;
+    if (stripWake) {                   // capture opened by a spoken interrupt: keep only what follows the wake word
+      stripWake = false;
+      const hits = [...text.matchAll(WAKE_ANY)];
+      if (hits.length) { const h = hits.at(-1); text = text.slice(h.index + h[0].length).trim(); }
+      if (STOP_WORDS.test(text)) { mode = 'idle'; setState('idle'); return; }
+    }
     await runText(text, my);
+  }
+
+  // Reopen the capture (audio kept) for up to continuationMs. New speech → the whole audio is transcribed
+  // again when it ends; none → the transcript we already have is used, without running Whisper again.
+  function extend(parts, partsMs, text) {
+    ext++; held = text;
+    const late = during || []; during = null;
+    chunks = parts; chunkMs = partsMs;
+    mode = 'listening';
+    vad.reset(); vad.setGain(1);
+    bus.emit('state', { state: 'listening' });
+    const my = turn;
+    clearTimeout(contTimer);
+    contTimer = setTimeout(() => {
+      if (my !== turn || mode !== 'listening' || vad.heard || held === null) return;
+      const t = held; held = null;
+      const now = ++turn;
+      mode = 'working';
+      runText(t, now);
+    }, continuationMs);
+    for (const c of late) feed(c, rate);
   }
 
   // Wake word heard by Whisper on the user's own mic: while idle, each short utterance is
@@ -118,6 +207,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     while (idleMs > IDLE_MAX_MS + RING_MS && idleChunks.length > 1) { const c = idleChunks.shift(); idleMs -= c.length / sampleRate * 1000; }
     if (r !== 'end' && r !== 'max') return;
     const heard = idleVad.heard;
+    const endedAt = trace.now();
     const audio = concat(idleChunks);
     idleChunks = []; idleMs = 0; idleVad.reset();
     if (!heard || idleBusy) return;
@@ -126,7 +216,9 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       idleBusy = false;
       const said = String(t || '').trim();
       if (mode !== 'idle' || !WAKE_PREFIX.test(said)) return;   // not for JARVIS: forget it
+      if (!(await speakerOk(audio, sampleRate, false)) || mode !== 'idle') return;   // someone else said it
       bus.emit('wake', { text: said });
+      trace.reset(); trace.mark('speech_end', endedAt); trace.mark('wake_heard'); trace.mark('stt_done');
       const my = ++turn;
       mode = 'working';
       rate = sampleRate;
@@ -143,25 +235,70 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     if (r !== 'end' && r !== 'max') return;
     const heard = speakVad.heard;
     const audio = concat(spChunks);
+    const tail = r === 'max' ? lastMs(spChunks, SPEAK_OVERLAP_MS, sampleRate) : [];
     resetSpeaking();
+    for (const c of tail) { spChunks.push(c); spMs += c.length / sampleRate * 1000; }   // a window cut mid-"Jarvis" is seen whole next time
     if (!heard || spBusy) return;
     spBusy = true;
-    pick('stt').transcribe(audio, sampleRate).then(t => { spBusy = false; onSpeakingUtterance(String(t || '').trim()); }, () => { spBusy = false; });
+    const cut = r === 'max';   // the window closed while sound went on: the phrase may be split
+    pick('stt').transcribe(audio, sampleRate).then(async t => {
+      const said = String(t || '').trim();
+      // JARVIS's own voice is mixed into this audio, so the bar is a little lower than for the idle wake
+      if (speaker && [...said.matchAll(WAKE_ANY)].length && !(await speakerOk(audio, sampleRate, true))) { spBusy = false; return; }
+      spBusy = false; onSpeakingUtterance(said, cut);
+    }, () => { spBusy = false; });
   }
   function resetSpeaking() { spChunks = []; spMs = 0; speakVad.reset(); speakVad.setGain(SPEAKING_GAIN); }
+  // After a "Jarvis", the rest of the transcript may be more echo: keep it only if most of its words
+  // are not JARVIS's own (else '' → just listen). Stop words are checked before this.
+  function dropEcho(rest, own) {
+    if (STOP_WORDS.test(rest)) return rest;
+    const words = norm(rest).split(' ').filter(Boolean);
+    const mine = new Set(own.split(' '));
+    return words.filter(w => !mine.has(w)).length * 2 >= words.length ? rest : '';
+  }
 
-  function onSpeakingUtterance(said) {
-    if (mode !== 'speaking' || !WAKE_PREFIX.test(said)) return;    // not for JARVIS: keep speaking
-    const n = norm(said);
-    if (n && norm(spoken).includes(n)) return;                     // its own voice through the speakers
-    const rest = said.replace(WAKE_PREFIX, '').trim();
+  function onSpeakingUtterance(said, cut = false) {
+    if (mode !== 'speaking') return;
+    const n = norm(said), own = norm(spoken);
+    if (!n || own.includes(n)) return;                              // its own voice through the speakers
+    const hits = [...said.matchAll(WAKE_ANY)];
+    const ownWakes = (own.match(/\bjarvis\b/g) || []).length;       // JARVIS saying "Jarvis" is echo, not a wake
+    if (hits.length <= ownWakes) return;                            // not for JARVIS: keep speaking
+    const hit = hits[ownWakes];
+    const rest = dropEcho(said.slice(hit.index + hit[0].length).trim(), own);
     bus.emit('wake', { text: said });
     if (STOP_WORDS.test(rest)) {                                    // "Jarvis, stop": now, mid-word
       bus.emit('log', { level: 'info', text: 'Stopped by voice: "' + said + '"' });
       cancel();
       return;
     }
-    softInterrupt(rest);
+    if (getConfig().wakeInterrupt === 'sentence') { softInterrupt(rest); return; }   // old: finish the sentence first
+    if (rest && !cut) { interruptNow(rest); return; }
+    interruptListen();
+  }
+
+  // "Jarvis, <command>" heard whole while speaking: cut the speech and run the command.
+  async function interruptNow(rest) {
+    const my = ++turn;
+    abortOp();
+    if (orchestrator.busy) orchestrator.stop();
+    current = null;
+    mode = 'working';
+    await lastSend;                    // let the stopped reply settle before the next turn
+    if (my !== turn) return;
+    await runText(rest, my);
+  }
+  // "Jarvis" heard but the command is missing or was cut by the window: stop speaking, listen, and replay
+  // the audio held since the window (≥ 1 s overlap) so the words already said are transcribed whole,
+  // now without JARVIS talking over them. The wake word is stripped from that transcript.
+  function interruptListen() {
+    const held = spChunks;
+    resetSpeaking();
+    current = null;
+    listen();
+    stripWake = true;
+    for (const c of held) feed(c, rate);
   }
 
   // "Jarvis, <request>": the model stops writing, the sentence being spoken ends, then the request runs.
@@ -194,6 +331,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     const tts = pick('tts');
     const streaming = typeof tts?.createStream === 'function';
     let stream = null, offTok = null, splitter = null;
+    const offTrace = bus.on('token', () => { if (my === turn) trace.mark('first_token'); });  // timing only; works for non-streaming TTS too
     const feedText = s => {
       const t = speakable(s);
       if (!t || my !== turn) return;
@@ -216,7 +354,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       lastSend = sending.then(() => {}, () => {});
       res = await sending;
     } catch (err) {
-      offTok?.();
+      offTok?.(); offTrace();
       if (my !== turn) return;
       mode = 'idle';
       if (err?.message === 'BUSY') {
@@ -228,7 +366,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       }
       return;
     }
-    offTok?.();
+    offTok?.(); offTrace();
     if (res?.sessionId) setSessionId(res.sessionId);
     if (my !== turn) return;
     if (res.error || res.stopped || !res.reply || !res.reply.trim()) {
@@ -248,6 +386,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
   // Speech is starting: listen for "Jarvis" over the echo and show real voice levels.
   function beginSpeaking(handle, signal) {
     mode = 'speaking';
+    trace.mark('first_audio');
     current = handle;
     resetSpeaking();
     setState('speaking');
@@ -271,6 +410,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       return;
     }
     current = handle;
+    trace.mark('first_audio');
     setState('speaking');
     let finished = false;
     (async () => {
@@ -307,6 +447,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
           bus.emit('wake', {});
           const pre = ring; ring = []; ringMs = 0;
           listen();
+          trace.mark('wake_heard');
           for (const c of pre) feed(c, 16000);   // start the capture from just before the wake word
         });
         wakeOn = engine;
@@ -322,4 +463,4 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
   };
 }
 
-module.exports = { createVoiceController, SPEAKING_GAIN, STOP_WORDS };
+module.exports = { createVoiceController, SPEAKING_GAIN, STOP_WORDS, WAKE_PREFIX };

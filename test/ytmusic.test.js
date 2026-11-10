@@ -176,3 +176,18 @@ test('skill: honest when the extension is missing or another app is named', asyn
   assert.match((await skill.handle('play bohemian rhapsody on spotify', { source: 'voice' })).reply, /only search YouTube Music, not Spotify/);
   assert.match((await skill.handle("what's up next", { source: 'voice' })).reply, /queue/);
 });
+
+test('link: plays reported by the extension (live and as a batch kept while JARVIS was closed) reach onPlay; junk is ignored', async () => {
+  const got = [];
+  const link = startYtMusicLink({ ports: [47892, 47893], onPlay: e => got.push(e) });
+  const port = await link.started;
+  const ext = await client(port, `chrome-extension://${EXTENSION_ID}`);
+  await tick();
+  ext.send({ type: 'play', event: { videoId: 'abc12345', startedAt: 1 } });
+  ext.send({ type: 'plays', events: [{ videoId: 'def12345' }, { videoId: 'ghi12345' }] });
+  ext.send({ type: 'plays', events: 'nope' });
+  await tick();
+  assert.deepEqual(got.map(e => e.videoId), ['abc12345', 'def12345', 'ghi12345']);
+  ext.s.destroy();
+  await link.close();
+});

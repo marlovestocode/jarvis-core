@@ -97,3 +97,26 @@ test('brain: registers all knowledge tools only with a gated fetcher', () => {
   assert.ok(tools.some(t => t.name === 'lookup_knowledge'));
   assert.ok(tools.some(t => t.name === 'get_weather'));
 });
+
+test('router: requests to act on the PC or media get tools, however short (from real voice turns)', () => {
+  for (const t of ['turn down media button.', 'turn down Chrome application by 10%.', 'can you resume media?', 'Try playlist.',
+    'skip this one', 'mute it', 'make it louder', 'put on some Kendrick', 'resume', 'unpause', 'shuffle my queue', 'open Spotify',
+    'could you lower it a bit?', 'please stop', 'replay that']) {
+    const r = route(t, { source: 'voice' });
+    assert.equal(r.tools, true, t);
+  }
+});
+
+test('router: small talk and questions about JARVIS itself stay quick chat', () => {
+  for (const t of ['how are you?', "I'm testing your wake word ability.", 'I know.', 'hello jarvis', 'what are you?']) {
+    assert.equal(route(t, { source: 'voice' }).tools, false, t);
+  }
+});
+
+test('prompt: brief mode knows JARVIS listens by voice and wake word, and never claims actions it cannot take', () => {
+  const brief = systemPrompt({ source: 'voice', now: new Date(), tools: [], brief: true });
+  assert.match(brief, /wake word "Jarvis"/);
+  assert.match(brief, /voice/i);
+  assert.match(brief, /no tools/i);
+  assert.match(brief, /never say you (?:did|played|changed)/i);
+});

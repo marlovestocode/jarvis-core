@@ -106,3 +106,11 @@ test('applyPatch: routing (auto, fast model) and start with Windows', () => {
   assert.equal(DEFAULTS.ollama.keepAlive, '30m');
   assert.equal(applyPatch(DEFAULTS, { ollama: { fastModel: '' } }, { providers, engines }).config.ollama.fastModel, '');
 });
+
+test('applyPatch: vad accepts silero or energy, refuses anything else', () => {
+  const { providers, engines } = regs();
+  assert.equal(applyPatch(DEFAULTS, { vad: 'energy' }, { providers, engines }).config.vad, 'energy');
+  const bad = applyPatch(DEFAULTS, { vad: 'neural' }, { providers, engines });
+  assert.equal(bad.config.vad, DEFAULTS.vad);
+  assert.ok(bad.errors.some(e => /VAD/i.test(e)));
+});

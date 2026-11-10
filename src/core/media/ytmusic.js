@@ -1,9 +1,10 @@
 // YouTube Music through the JARVIS extension: find and play songs, albums and playlists,
 // read and change the queue, repeat, shuffle and likes. Every action is checked against
 // the tab's real state afterwards (the extension waits for it; this module reads it back).
-const { parseRequest, rank } = require('./rank');
+const { parseRequest, rank, norm } = require('./rank');
 
 const MIN_SCORE = 0.35;      // below this nothing matched well enough to play
+const SURE_GAP = 0.15;       // a pick this far ahead of the next distinct song needs no question
 const SURE_SCORE = 0.75;     // at or above this the pick is announced in voice only if asked
 
 const by = it => (it.artists?.length ? it.artists.join(', ') : it.artist || '');
@@ -36,6 +37,24 @@ function createYtMusic({ link }) {
     const best = ranked[0];
     if (!best || best.score < MIN_SCORE) return { error: `I couldn't find ${req.title || req.artist} on YouTube Music.` };
     return { req, item: best.c, score: best.score, alts: ranked.slice(1, 3).map(x => x.c) };
+  }
+
+  // One real song (not an album, playlist or artist) for adding to a playlist.
+  // → { item, score, sure, alts } | { error }. sure = a clear winner; otherwise the caller asks with alts (distinct songs).
+  async function findSong(text) {
+    const req = { ...parseRequest(text), kind: 'song', mood: false };
+    if (!req.title && !req.artist) return { error: 'Which song?' };
+    const res = await call('search', { query: [req.title, req.artist].filter(Boolean).join(' ') }, 20000);
+    const songs = (res?.candidates || []).filter(c => (c.type === 'song' || c.type === 'video') && c.videoId);
+    const ranked = rank(req, songs, { need: 'play' });
+    const best = ranked[0];
+    if (!best || best.score < MIN_SCORE) return { error: `I couldn't find ${req.title || req.artist} on YouTube Music.`, notFound: true };
+    const key = c => `${norm(c.title)}|${norm(by(c))}`;   // the audio and the video of one song are the same song
+    const others = ranked.filter(x => key(x.c) !== key(best.c) && x.score >= MIN_SCORE);
+    const gap = others.length ? best.score - others[0].score : Infinity;
+    const distinct = [];
+    for (const x of others) if (!distinct.some(d => key(d) === key(x.c))) distinct.push(x.c);
+    return { item: best.c, score: best.score, sure: best.score >= SURE_SCORE && gap >= SURE_GAP, alts: distinct.slice(0, 2) };
   }
 
   // → { ok, item, sure, started, playing, message }
@@ -100,7 +119,7 @@ function createYtMusic({ link }) {
     return { ok: true, value: r.like };
   }
 
-  return { get connected() { return link.connected; }, status, isSource, find, play, enqueue, upNext, removeNext, clear, repeat, shuffle, like, named };
+  return { get connected() { return link.connected; }, status, isSource, find, findSong, play, enqueue, upNext, removeNext, clear, repeat, shuffle, like, named };
 }
 
 module.exports = { createYtMusic, named };

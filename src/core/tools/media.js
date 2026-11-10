@@ -94,7 +94,7 @@ function createYtMusicTool({ ytm }) {
   const { named } = require('../media/ytmusic');
   return {
     name: 'youtube_music',
-    description: 'YouTube Music in Chrome: play a song, album, playlist or artist by name; play one next or add it to the queue; read what is up next; clear the queue; like or dislike the current song. query is what to search, e.g. "bohemian rhapsody by queen", "album american idiot", "some lofi".',
+    description: 'YouTube Music in Chrome: play a song, album, playlist or artist by name right now (action play; also for "skip to <song>"); play_next and add_to_queue only QUEUE it and do not start it; read what is up next; clear the queue; like or dislike the current song. query is what to search, e.g. "bohemian rhapsody by queen", "album american idiot", "some lofi".',
     timeoutMs: 40000,
     params: {
       type: 'object',
@@ -116,7 +116,7 @@ function createYtMusicTool({ ytm }) {
       if (action === 'play_next' || action === 'add_to_queue') {
         const r = await ytm.enqueue(query, action === 'play_next' ? 'next' : 'end');
         if (!r.ok) throw new Error(r.message);
-        return r.started ? `Queue was empty, so ${named(r.item)} is playing.` : `${action === 'play_next' ? 'Next up' : 'Added to the end of the queue'}: ${named(r.item)} (verified).`;
+        return r.started ? `Queue was empty, so ${named(r.item)} is playing.` : `${action === 'play_next' ? 'Queued to play next' : 'Added to the end of the queue'}, NOT playing yet: ${named(r.item)} (verified). To hear it now, call youtube_music action play with the same query`;
       }
       if (action === 'up_next') {
         const q = await ytm.upNext(5);

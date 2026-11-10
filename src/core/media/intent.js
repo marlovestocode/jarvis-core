@@ -143,6 +143,27 @@ function parse(text) {
   if (/^(?:repeat|loop) (?:all|the (?:playlist|album|queue)|everything|playlist|album)$/.test(t) || /^(?:repeat|loop) on$/.test(t) || /^turn (?:on )?(?:repeat|loop)(?: on)?$/.test(t)) return C('repeat', { mode: 'list' });
   if (/^(?:repeat off|loop off|turn off (?:repeat|loop)|turn (?:repeat|loop) off|stop (?:repeating|looping)|no repeat|don'?t repeat)$/.test(t)) return C('repeat', { mode: 'none' });
 
+  // ---- the user's own playlists: library first. The skill falls back to the catalog for a loose phrase
+  // ("play the rock playlist") when nothing in the library matches; "my" makes it a library-only request. ----
+  const NOT_NAME = /^(?:the|this|that|a|an|my|it|some|any|music|songs?|tracks?|something|anything|playlists?|queue|album|list)$/;
+  // add to a playlist / take it back. "explicit" = the user said "playlist", so a name that matches nothing is an answer, not a different request ("add 5 to my total").
+  const THIS = '(?:this|this song|this track|it|that|that song|the current song|the song that\'?s playing|what\'?s playing)';
+  if (/^(?:undo|undo (?:that|it|the last (?:one|thing|change|add)|my last (?:change|add))|take (?:that|it) back|revert that)$/.test(t)) return { kind: 'library-undo' };
+  if ((m = t.match(new RegExp(`^(?:add|save|put) ${THIS}(?: song| track)? (?:to|in|into|on) (?:the |my |a )?(.+?)( playlist)?$`))) && !NOT_NAME.test(m[1]))
+    return { kind: 'library-add', current: true, name: m[1], explicit: !!m[2] };
+  if (new RegExp(`^(?:add|save) ${THIS}(?: song| track)?(?: to (?:a|my|the) playlist)?$`).test(t)) return { kind: 'library-add', current: true, name: null, explicit: true };
+  if ((m = t.match(/^(?:add|put) (.+?) (?:to|in|into|on) (?:the |my )(.+?)( playlist)?$/)) && !NOT_NAME.test(m[2]) && !new RegExp(`^${THIS}$`).test(m[1]))
+    return { kind: 'library-add', songs: [m[1]], name: m[2], explicit: !!m[3] };
+
+  if ((m = t.match(/^(?:play|put on|start playing|start) (.+?) from (?:the |my )(.+?) playlist$/)) && !NOT_NAME.test(m[2]) && !NOT_NAME.test(m[1]))
+    return { kind: 'library', mode: 'play', name: m[2], track: m[1], explicit: true };
+  if ((m = t.match(/^(?:(shuffle)|play|put on|start playing|start) (?:(my|the) )?(.+?) playlist( on shuffle| shuffled)?$/)) && !NOT_NAME.test(m[3]))
+    return { kind: 'library', mode: 'play', name: m[3], shuffle: !!(m[1] || m[4]), explicit: m[2] === 'my', query: `${m[3]} playlist` };
+  if ((m = t.match(/^shuffle (?:my |the )(.+)$/)) && !NOT_NAME.test(m[1]))
+    return { kind: 'library', mode: 'play', name: m[1], shuffle: true, explicit: false, query: m[1] };
+  if ((m = t.match(/^(?:play|put on|start playing) my (.+)$/)) && !NOT_NAME.test(m[1]))
+    return { kind: 'library', mode: 'play', name: m[1], explicit: false, query: m[1] };
+
   // ---- "play <something>": search and play it (YouTube Music) ----
   if ((m = t.match(/^(?:play|put on|start playing|play me|play us) (.+)$/)) && !/^(?:it|this|that|music|again)$/.test(m[1])
     && !/\b(?:game|games|chess|cards|trivia|with me|with us|along|pretend|a joke|dead|nice|fair|dumb)\b/.test(m[1]))

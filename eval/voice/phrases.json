@@ -1,0 +1,242 @@
+[
+  {
+    "id": "command01",
+    "category": "command",
+    "wake": true,
+    "text": "Jarvis, pause the music"
+  },
+  {
+    "id": "command02",
+    "category": "command",
+    "wake": true,
+    "text": "Jarvis, skip this song"
+  },
+  {
+    "id": "command03",
+    "category": "command",
+    "wake": true,
+    "text": "Jarvis, what time is it"
+  },
+  {
+    "id": "command04",
+    "category": "command",
+    "wake": true,
+    "text": "Jarvis, turn the volume down"
+  },
+  {
+    "id": "command05",
+    "category": "command",
+    "wake": true,
+    "text": "Hey Jarvis, play some jazz on Spotify"
+  },
+  {
+    "id": "command06",
+    "category": "command",
+    "wake": true,
+    "text": "Jarvis, mute my speakers"
+  },
+  {
+    "id": "command07",
+    "category": "command",
+    "wake": true,
+    "text": "Jarvis, what's my GPU temperature"
+  },
+  {
+    "id": "command08",
+    "category": "command",
+    "wake": true,
+    "text": "Jarvis, how much VRAM is free"
+  },
+  {
+    "id": "command09",
+    "category": "command",
+    "wake": true,
+    "text": "Jarvis, open Discord"
+  },
+  {
+    "id": "command10",
+    "category": "command",
+    "wake": true,
+    "text": "Jarvis, search the web for Ryzen benchmarks"
+  },
+  {
+    "id": "command11",
+    "category": "command",
+    "wake": true,
+    "text": "Hey Jarvis, what's the weather today"
+  },
+  {
+    "id": "command12",
+    "category": "command",
+    "wake": true,
+    "text": "Jarvis, next track"
+  },
+  {
+    "id": "command13",
+    "category": "command",
+    "wake": true,
+    "text": "Jarvis, set a timer for ten minutes"
+  },
+  {
+    "id": "command14",
+    "category": "command",
+    "wake": true,
+    "text": "Jarvis, what's the date today"
+  },
+  {
+    "id": "command15",
+    "category": "command",
+    "wake": true,
+    "text": "Jarvis, look up the capital of Australia"
+  },
+  {
+    "id": "long01",
+    "category": "long",
+    "wake": true,
+    "text": "Jarvis, can you tell me what is currently using the most memory on my computer and whether anything looks wrong with it"
+  },
+  {
+    "id": "long02",
+    "category": "long",
+    "wake": true,
+    "text": "Hey Jarvis, I would like you to search for the best way to cool a Ryzen processor in a small case and summarize the top results"
+  },
+  {
+    "id": "long03",
+    "category": "long",
+    "wake": true,
+    "text": "Jarvis, please open Steam and then tell me which games I have installed that were played during the last two weeks"
+  },
+  {
+    "id": "long04",
+    "category": "long",
+    "wake": true,
+    "text": "Jarvis, look up how long it takes to travel from London to Edinburgh by train and compare it with driving the same route"
+  },
+  {
+    "id": "long05",
+    "category": "long",
+    "wake": true,
+    "text": "Jarvis, I need you to turn the music down a little bit because I am about to take a phone call from my brother"
+  },
+  {
+    "id": "long06",
+    "category": "long",
+    "wake": true,
+    "text": "Jarvis, tell me what the weather will be like this weekend and whether I should bring a jacket if I go for a walk"
+  },
+  {
+    "id": "long07",
+    "category": "long",
+    "wake": true,
+    "text": "Hey Jarvis, can you find out when the next Formula One race is and what time it starts in my local time zone"
+  },
+  {
+    "id": "long08",
+    "category": "long",
+    "wake": true,
+    "text": "Jarvis, explain in plain words what a graphics card does and why it matters so much for playing modern video games"
+  },
+  {
+    "id": "long09",
+    "category": "long",
+    "wake": true,
+    "text": "Jarvis, check whether the Wallpaper Engine is running right now and if it is please tell me how much processor it uses"
+  },
+  {
+    "id": "long10",
+    "category": "long",
+    "wake": true,
+    "text": "Jarvis, write down a reminder that I need to buy milk and bread and also call the dentist tomorrow morning before work"
+  },
+  {
+    "id": "pause01",
+    "category": "pause",
+    "wake": true,
+    "text": "Jarvis, play some music | by Daft Punk"
+  },
+  {
+    "id": "pause02",
+    "category": "pause",
+    "wake": true,
+    "text": "Jarvis, set a timer | for fifteen minutes"
+  },
+  {
+    "id": "pause03",
+    "category": "pause",
+    "wake": true,
+    "text": "Hey Jarvis, search the web | for the best budget gaming monitors"
+  },
+  {
+    "id": "pause04",
+    "category": "pause",
+    "wake": true,
+    "text": "Jarvis, tell me | what the weather is like tomorrow"
+  },
+  {
+    "id": "pause05",
+    "category": "pause",
+    "wake": true,
+    "text": "Jarvis, open Spotify | and play my liked songs"
+  },
+  {
+    "id": "nonwake01",
+    "category": "nonwake",
+    "wake": false,
+    "text": "Travis said the service was really good last night"
+  },
+  {
+    "id": "nonwake02",
+    "category": "nonwake",
+    "wake": false,
+    "text": "Jarvis's new car is really fast"
+  },
+  {
+    "id": "nonwake03",
+    "category": "nonwake",
+    "wake": false,
+    "text": "Jar of beans is on the top shelf"
+  },
+  {
+    "id": "nonwake04",
+    "category": "nonwake",
+    "wake": false,
+    "text": "Service is closed on Sundays"
+  },
+  {
+    "id": "nonwake05",
+    "category": "nonwake",
+    "wake": false,
+    "text": "Travis, are you coming over for dinner"
+  },
+  {
+    "id": "nonwake06",
+    "category": "nonwake",
+    "wake": false,
+    "text": "Can you pass me the jar of jam please"
+  },
+  {
+    "id": "nonwake07",
+    "category": "nonwake",
+    "wake": false,
+    "text": "The Jarvis family lives down the street from us"
+  },
+  {
+    "id": "nonwake08",
+    "category": "nonwake",
+    "wake": false,
+    "text": "I think we should get the car serviced this week"
+  },
+  {
+    "id": "nonwake09",
+    "category": "nonwake",
+    "wake": false,
+    "text": "What do you want to watch on television tonight"
+  },
+  {
+    "id": "nonwake10",
+    "category": "nonwake",
+    "wake": false,
+    "text": "Remember to take out the bins before you go to bed"
+  }
+]

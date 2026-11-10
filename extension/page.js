@@ -14,13 +14,70 @@ export async function ytm(cmd, args = {}) {
   const ytcfg = window.ytcfg;
   if (!app || !ytcfg?.get) throw new Error('YouTube Music is still loading');
 
-  async function innertube(path, body) {
+  // Personal data (library, playlists) and every write need the signed header the site itself sends:
+  // SAPISIDHASH = <time>_<sha1("<time> <SAPISID cookie> <origin>")>. Verified in Phase 0 (docs/superpowers/plans/2026-11-10-ytm-playlists.md).
+  async function authHeaders() {
+    const sapisid = (document.cookie.match(/(?:^|;\s*)(?:__Secure-3PAPISID|SAPISID)=([^;]+)/) || [])[1];
+    if (!ytcfg.get('LOGGED_IN') || !sapisid) throw new Error('AUTH: Sign in to YouTube Music in Chrome');
+    const ts = Math.floor(Date.now() / 1000);
+    const sum = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(`${ts} ${sapisid} ${location.origin}`));
+    const hash = [...new Uint8Array(sum)].map(b => b.toString(16).padStart(2, '0')).join('');
+    return { Authorization: `SAPISIDHASH ${ts}_${hash}`, 'X-Goog-AuthUser': String(ytcfg.get('SESSION_INDEX') ?? 0), 'X-Origin': location.origin };
+  }
+
+  async function innertube(path, body, { auth = false } = {}) {
     const r = await fetch(`/youtubei/v1/${path}?prettyPrint=false`, {
-      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', ...(auth ? await authHeaders() : {}) },
       body: JSON.stringify({ context: ytcfg.get('INNERTUBE_CONTEXT'), ...body }),
     });
+    if (r.status === 401 || r.status === 403) throw new Error('AUTH: Sign in to YouTube Music in Chrome');
+    if (r.status === 429) throw new Error('RATE: YouTube Music is limiting requests');
     if (!r.ok) throw new Error(`YouTube Music answered ${r.status}`);
     return r.json();
+  }
+
+  // ---- playlists (read) ----
+  const walk = (o, fn) => { if (!o || typeof o !== 'object') return; fn(o); for (const v of Object.values(o)) walk(v, fn); };
+  const tokenOf = j => { let t = null; walk(j, o => { if (!t) t = o.continuationCommand?.token || o.nextContinuationData?.continuation || null; }); return t; };
+  const PLAYLIST_ID = /^[A-Za-z0-9_-]{2,64}$/;
+
+  // library list → [{ id, title, subtitle, trackCount, editable, kind }]
+  function parseLibrary(j) {
+    const out = [];
+    walk(j, o => {
+      const it = o.musicTwoRowItemRenderer;
+      const bid = it?.navigationEndpoint?.browseEndpoint?.browseId;
+      if (!bid || !bid.startsWith('VL')) return;   // "New playlist" has no browse id
+      const id = bid.slice(2);
+      if (id.startsWith('RDAMPL')) return;          // auto mixes made from a playlist
+      const menu = JSON.stringify(it.menu || '');
+      const editable = menu.includes('"playlistEditorEndpoint"');   // only playlists the user owns have it (language independent)
+      const subtitle = runs(it.subtitle);
+      const n = subtitle.match(/(\d[\d,]*)\s+(?:songs?|tracks?)/i);
+      out.push({ id, title: runs(it.title), subtitle, trackCount: n ? Number(n[1].replace(/,/g, '')) : null, editable,
+        kind: id === 'LM' ? 'liked' : /auto playlist/i.test(subtitle) ? 'auto' : editable ? 'user' : 'saved' });
+    });
+    const seen = new Set();
+    return out.filter(p => !seen.has(p.id) && seen.add(p.id));
+  }
+
+  // one row of a playlist → { videoId, setVideoId, title, artists, album, durationSec, available }
+  function parseRow(r) {
+    const col = i => (r.flexColumns?.[i]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs || []);
+    const dur = r.fixedColumns?.[0]?.musicResponsiveListItemFixedColumnRenderer?.text?.runs?.[0]?.text || '';
+    const parts = dur.split(':').map(Number);
+    const sec = parts.length && parts.every(Number.isFinite) ? parts.reduce((a, b) => a * 60 + b, 0) : null;
+    return {
+      videoId: r.playlistItemData.videoId || null, setVideoId: r.playlistItemData.playlistSetVideoId || null,
+      title: col(0).map(x => x.text).join(''), artists: col(1).map(x => x.text).filter(t => t !== ' • ' && t !== ', ' && t !== ' & '),
+      album: col(2).map(x => x.text).join(''), durationSec: sec, available: r.musicItemRendererDisplayPolicy !== 'MUSIC_ITEM_RENDERER_DISPLAY_POLICY_GREY_OUT',
+    };
+  }
+
+  function playlistRows(j) {
+    const out = [];
+    walk(j, o => { if (o.musicResponsiveListItemRenderer?.playlistItemData) out.push(parseRow(o.musicResponsiveListItemRenderer)); });
+    return out;
   }
 
   const panel = it => it?.playlistPanelVideoRenderer || it?.playlistPanelVideoWrapperRenderer?.primaryRenderer?.playlistPanelVideoRenderer;
@@ -119,6 +176,60 @@ export async function ytm(cmd, args = {}) {
   switch (cmd) {
     case 'status':
       return { url: location.href, loggedIn: !!ytcfg.get('LOGGED_IN'), playing: nowPlaying(), queue: queue() };
+
+    case 'playlists': {   // the user's library: playlists they made and saved, plus Liked Music
+      let j = await innertube('browse', { browseId: 'FEmusic_liked_playlists' }, { auth: true });
+      const all = parseLibrary(j);
+      for (let page = 0; page < 10; page++) {   // long libraries continue in pages
+        const token = tokenOf(j);
+        if (!token) break;
+        j = await innertube('browse', { continuation: token }, { auth: true });
+        all.push(...parseLibrary(j));
+      }
+      const seen = new Set();
+      return { playlists: all.filter(p => !seen.has(p.id) && seen.add(p.id)) };
+    }
+
+    case 'playlist': {   // args.id (playlist id), args.limit (max tracks, default 2000)
+      const id = String(args.id || '');
+      if (!PLAYLIST_ID.test(id)) throw new Error('Bad playlist id');
+      const limit = Math.max(1, Math.min(5000, Number(args.limit) || 2000));
+      let j = await innertube('browse', { browseId: 'VL' + id }, { auth: true });
+      let title = '';
+      walk(j, o => { if (!title) for (const k of Object.keys(o)) if (/^music\w*Header\w*Renderer$/.test(k) && o[k]?.title) { title = runs(o[k].title); break; } });
+      const editable = JSON.stringify(j).includes('"playlistEditorEndpoint"') || JSON.stringify(j).includes('musicEditablePlaylistDetailHeaderRenderer');
+      const tracks = playlistRows(j);
+      let truncated = false;
+      for (let page = 0; page < 60; page++) {
+        const token = tokenOf(j);
+        if (!token) break;
+        if (tracks.length >= limit) { truncated = true; break; }
+        await wait(120);   // be gentle with the API
+        j = await innertube('browse', { continuation: token }, { auth: true });
+        tracks.push(...playlistRows(j));
+      }
+      const seen = new Set();
+      const unique = tracks.filter(t => !t.setVideoId || (!seen.has(t.setVideoId) && seen.add(t.setVideoId)));
+      return { id, title, editable, truncated: truncated || unique.length > limit, tracks: unique.slice(0, limit) };
+    }
+
+    case 'playlist_edit': {   // args.id, args.actions = [{ action: 'ADD_VIDEO', videoId } | { action: 'REMOVE_VIDEO', videoId, setVideoId }], args.allowDuplicate
+      const id = String(args.id || '');
+      if (!PLAYLIST_ID.test(id)) throw new Error('Bad playlist id');
+      const list = Array.isArray(args.actions) ? args.actions : [];
+      if (!list.length || list.length > 50) throw new Error('Between 1 and 50 changes at a time');
+      const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/, SET_ID = /^[A-Za-z0-9_-]{4,64}$/;
+      const ok = (re, v) => typeof v === 'string' && re.test(v);   // RegExp.test(undefined) would test the text "undefined"
+      const actions = list.map(a => {   // a fixed set of changes; nothing else can be sent
+        if (a?.action === 'ADD_VIDEO' && ok(VIDEO_ID, a.videoId)) return { action: 'ACTION_ADD_VIDEO', addedVideoId: a.videoId, ...(args.allowDuplicate ? {} : { dedupeOption: 'DEDUPE_OPTION_CHECK' }) };
+        if (a?.action === 'REMOVE_VIDEO' && ok(VIDEO_ID, a.videoId) && ok(SET_ID, a.setVideoId)) return { action: 'ACTION_REMOVE_VIDEO', removedVideoId: a.videoId, setVideoId: a.setVideoId };
+        throw new Error('That change is not allowed');
+      });
+      const j = await innertube('browse/edit_playlist', { playlistId: id, actions }, { auth: true });
+      const results = [];
+      walk(j, o => { const r = o.playlistEditVideoAddedResultData; if (r?.videoId) results.push({ videoId: r.videoId, setVideoId: r.setVideoId || null }); });
+      return { status: j.status || null, ok: j.status === 'STATUS_SUCCEEDED', results };
+    }
 
     case 'search': {
       const j = await innertube('search', { query: String(args.query || '').slice(0, 200) });

@@ -39,6 +39,11 @@
     }
     for (const k of ['stt', 'tts', 'wake']) opt($(k), d.engines[k], c.engines[k]);
     $('wakeEnabled').checked = !!c.wakeEnabled;
+    $('speakerGate').checked = !!c.speakerGate;
+    if (document.activeElement !== $('userName')) $('userName').value = c.user.name;
+    if (document.activeElement !== $('userAbout')) $('userAbout').value = c.user.about;
+    $('sttGpu').checked = !!c.sttGpu;
+    $('logPlays').checked = !!c.music.logPlays;
     $('startAtLogin').checked = !!c.startAtLogin;
     $('rate').value = c.voiceRate;
     $('rateVal').textContent = Number(c.voiceRate).toFixed(2) + '×';
@@ -163,6 +168,25 @@
   $('startAtLogin').addEventListener('change', e => save({ startAtLogin: e.target.checked }));
   for (const k of ['stt', 'tts', 'wake']) $(k).addEventListener('change', e => save({ engines: { [k]: e.target.value } }));
   $('wakeEnabled').addEventListener('change', e => save({ wakeEnabled: e.target.checked }));
+  $('userName').addEventListener('change', e => save({ user: { name: e.target.value } }));
+  $('userAbout').addEventListener('change', e => save({ user: { about: e.target.value } }));
+  $('speakerGate').addEventListener('change', e => save({ speakerGate: e.target.checked }));
+  $('logPlays').addEventListener('change', e => save({ music: { logPlays: e.target.checked } }));
+  $('sttGpu').addEventListener('change', e => save({ sttGpu: e.target.checked }));
+  function showVoice(v, msg) {
+    $('voiceState').textContent = v.available ? (v.enrolled ? 'Your voice: enrolled' : 'Your voice: not enrolled') : 'Your voice: model missing';
+    $('voiceEnroll').textContent = v.enrolled ? 'Re-enroll' : 'Enroll';
+    $('voiceEnroll').disabled = !v.available || v.enrolling;
+    $('voiceClear').hidden = !v.enrolled;
+    $('voiceDetail').textContent = msg || (v.enrolled ? 'Only your voice can wake JARVIS by name. The hotkey always works.' : 'Enroll once so JARVIS knows your voice.');
+  }
+  $('voiceEnroll').addEventListener('click', async () => {
+    $('voiceEnroll').disabled = true;
+    $('voiceDetail').textContent = 'Listening for 12 seconds. Keep talking in your normal voice: read something aloud, or just chat.';
+    try { const r = await S.speakerEnroll(); showVoice(r, r.ok ? `Done: ${r.count} voice samples saved.` : r.reason); }
+    catch (err) { $('voiceDetail').textContent = err.message; $('voiceEnroll').disabled = false; }
+  });
+  $('voiceClear').addEventListener('click', async () => showVoice(await S.speakerClear(), 'Voice print removed.'));
   $('mic').addEventListener('change', e => save({ micDeviceId: e.target.value || null }));
   $('rate').addEventListener('input', e => { $('rateVal').textContent = Number(e.target.value).toFixed(2) + '×'; });
   $('rate').addEventListener('change', e => save({ voiceRate: Number(e.target.value) }));
@@ -195,4 +219,5 @@
   navigator.mediaDevices?.addEventListener?.('devicechange', loadMics);
 
   S.get().then(d => { render(d); loadMics(); });
+  S.speakerStatus().then(v => showVoice(v)).catch(() => {});
 })();

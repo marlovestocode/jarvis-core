@@ -1,0 +1,307 @@
+{
+  "generatedAt": "2026-11-10T15:26:25.717Z",
+  "note": "Synthetic Piper speech, not the user's voice. Relative yardstick only.",
+  "clips": 100,
+  "recordedClips": 0,
+  "stack": {
+    "vad": "energy"
+  },
+  "vad": {
+    "silenceMs": 700,
+    "groups": {
+      "all": {
+        "clips": 100,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 35,
+        "pauseClips": 12,
+        "pausePrematureCuts": 4,
+        "endLagP50Ms": 520
+      },
+      "clean": {
+        "clips": 20,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 2,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 680
+      },
+      "snr20": {
+        "clips": 20,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 2,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 680
+      },
+      "pink20": {
+        "clips": 20,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 0,
+        "pauseClips": 2,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 680
+      },
+      "snr10": {
+        "clips": 40,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 40,
+        "pauseClips": 5,
+        "pausePrematureCuts": 1,
+        "endLagP50Ms": 420
+      },
+      "fan10": {
+        "clips": 20,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 45,
+        "pauseClips": 2,
+        "pausePrematureCuts": 1,
+        "endLagP50Ms": 400
+      },
+      "white10": {
+        "clips": 20,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 35,
+        "pauseClips": 3,
+        "pausePrematureCuts": 0,
+        "endLagP50Ms": 440
+      },
+      "snr5": {
+        "clips": 20,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 95,
+        "pauseClips": 3,
+        "pausePrematureCuts": 3,
+        "endLagP50Ms": -1200
+      },
+      "pink5": {
+        "clips": 20,
+        "recallPct": 100,
+        "falseStartPct": 0,
+        "earlyCutPct": 95,
+        "pauseClips": 3,
+        "pausePrematureCuts": 3,
+        "endLagP50Ms": -1200
+      }
+    },
+    "noiseOnly": {
+      "white": {
+        "seconds": 60,
+        "falseStarts": 0
+      },
+      "pink": {
+        "seconds": 60,
+        "falseStarts": 0
+      },
+      "fan": {
+        "seconds": 60,
+        "falseStarts": 0
+      }
+    }
+  },
+  "stt": {
+    "model": "ggml-base.en.bin",
+    "promptName": "v0",
+    "prompt": "JARVIS, Ollama, sysmon, Wallpaper Engine, Ryzen, RTX 3050, GPU, CPU, VRAM, Spotify, Discord, Steam.",
+    "wake": {
+      "regex": "/^\\s*(?:(?:hey|ok|okay|hi|yo)[\\s,]+)?jarvis\\b[\\s,.!?:;-]*/i",
+      "groups": {
+        "all": {
+          "wakeClips": 75,
+          "hitPct": 92,
+          "nonWakeClips": 25,
+          "falseAcceptPct": 4
+        },
+        "clean": {
+          "wakeClips": 15,
+          "hitPct": 100,
+          "nonWakeClips": 5,
+          "falseAcceptPct": 0
+        },
+        "snr20": {
+          "wakeClips": 15,
+          "hitPct": 93.3,
+          "nonWakeClips": 5,
+          "falseAcceptPct": 0
+        },
+        "pink20": {
+          "wakeClips": 15,
+          "hitPct": 93.3,
+          "nonWakeClips": 5,
+          "falseAcceptPct": 0
+        },
+        "snr10": {
+          "wakeClips": 30,
+          "hitPct": 93.3,
+          "nonWakeClips": 10,
+          "falseAcceptPct": 10
+        },
+        "fan10": {
+          "wakeClips": 15,
+          "hitPct": 93.3,
+          "nonWakeClips": 5,
+          "falseAcceptPct": 0
+        },
+        "white10": {
+          "wakeClips": 15,
+          "hitPct": 93.3,
+          "nonWakeClips": 5,
+          "falseAcceptPct": 20
+        },
+        "snr5": {
+          "wakeClips": 15,
+          "hitPct": 80,
+          "nonWakeClips": 5,
+          "falseAcceptPct": 0
+        },
+        "pink5": {
+          "wakeClips": 15,
+          "hitPct": 80,
+          "nonWakeClips": 5,
+          "falseAcceptPct": 0
+        }
+      },
+      "misses": [
+        {
+          "id": "command08",
+          "noise": "pink",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's how much RAM is free."
+        },
+        {
+          "id": "long01",
+          "noise": "pink",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's, can you tell me what is currently using the most memory on my computer and whether anything looks wrong with it?"
+        },
+        {
+          "id": "pause01",
+          "noise": "white",
+          "snr": 10,
+          "wanted": true,
+          "heard": "Java's Play Some Music by Dark Pump."
+        },
+        {
+          "id": "pause01",
+          "noise": "pink",
+          "snr": 5,
+          "wanted": true,
+          "heard": "Java's Play Some Music by Daffd Pump."
+        },
+        {
+          "id": "pause02",
+          "noise": "pink",
+          "snr": 20,
+          "wanted": true,
+          "heard": "Java's set a time for 15 minutes."
+        },
+        {
+          "id": "pause02",
+          "noise": "fan",
+          "snr": 10,
+          "wanted": true,
+          "heard": "Java's set a time for 15 minutes."
+        },
+        {
+          "id": "nonwake02",
+          "noise": "white",
+          "snr": 10,
+          "wanted": false,
+          "heard": "Jarvis's new car is really fast."
+        }
+      ]
+    },
+    "wer": {
+      "all": {
+        "clips": 100,
+        "werPct": 3.5
+      },
+      "clean": {
+        "clips": 20,
+        "werPct": 1.4
+      },
+      "snr20": {
+        "clips": 20,
+        "werPct": 1.8
+      },
+      "pink20": {
+        "clips": 20,
+        "werPct": 1.8
+      },
+      "snr10": {
+        "clips": 40,
+        "werPct": 3.7
+      },
+      "fan10": {
+        "clips": 20,
+        "werPct": 2.8
+      },
+      "white10": {
+        "clips": 20,
+        "werPct": 4.7
+      },
+      "snr5": {
+        "clips": 20,
+        "werPct": 7
+      },
+      "pink5": {
+        "clips": 20,
+        "werPct": 7
+      }
+    },
+    "latencyMs": {
+      "p50": 370,
+      "p95": 442,
+      "byClipLength": {
+        "under5s": {
+          "n": 61,
+          "p50": 362,
+          "p95": 421
+        },
+        "s5to10": {
+          "n": 36,
+          "p50": 408,
+          "p95": 437
+        },
+        "over10s": {
+          "n": 3,
+          "p50": 447,
+          "p95": 456
+        }
+      }
+    },
+    "whisperArgs": [],
+    "threads": 4,
+    "fixedLatencyMs": {
+      "3s": {
+        "n": 10,
+        "p50": 350,
+        "p95": 401
+      },
+      "8s": {
+        "n": 10,
+        "p50": 407,
+        "p95": 486
+      },
+      "15s": {
+        "n": 10,
+        "p50": 760,
+        "p95": 850
+      }
+    },
+    "noiseOnlyTranscripts": {
+      "white": "(machine whirring)",
+      "pink": "[sound of rain]",
+      "fan": "[sound of rain]"
+    }
+  }
+}

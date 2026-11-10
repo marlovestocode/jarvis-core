@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
-const { createWhisperStt, cleanTranscript } = require('../src/core/voice/whisper');
+const { pickSttModel, createWhisperStt, cleanTranscript } = require('../src/core/voice/whisper');
 
 function fakeSpawn() {
   const kids = [];
@@ -39,7 +39,7 @@ test('whisper: starts one server on 127.0.0.1 lazily, posts WAV, returns clean t
   assert.equal(a[a.indexOf('--port') + 1], '47810');
   assert.equal(a[a.indexOf('-m') + 1], 'C:/w/base.en.bin');
   const form = posts[0].body;
-  assert.equal(form.get('response_format'), 'json');
+  assert.equal(form.get('response_format'), 'verbose_json');
   assert.equal(form.get('temperature'), '0');
   assert.equal(form.get('prompt'), 'JARVIS, Ollama');
   assert.equal((await form.get('file').arrayBuffer()).byteLength, 44 + 32000);
@@ -94,4 +94,56 @@ test('whisper: speech longer than the window is split at a quiet point and joine
   assert.equal(sizes[0] + sizes[1], 96000);
   assert.ok(spawn.kids[0].args.includes('-ac'));
   stt.close();
+});
+
+test('whisperModelPath: configured file under engines/whisper; missing or unsafe → default, one warning', () => {
+  const { whisperModelPath, DEFAULT_STT_MODEL } = require('../src/core/voice/whisper');
+  const path = require('node:path');
+  const dir = path.join('E', 'whisper');
+  const has = new Set([path.join(dir, 'ggml-small.en-q5_1.bin'), path.join(dir, DEFAULT_STT_MODEL)]);
+  const logs = [];
+  const log = (...a) => logs.push(a.join(' '));
+  const exists = p => has.has(p);
+  assert.equal(DEFAULT_STT_MODEL, 'ggml-base.en.bin');
+  assert.equal(whisperModelPath({ dir, name: 'ggml-small.en-q5_1.bin', exists, log }), path.join(dir, 'ggml-small.en-q5_1.bin'));
+  assert.equal(logs.length, 0);
+  assert.equal(whisperModelPath({ dir, name: 'ggml-medium.bin', exists, log }), path.join(dir, DEFAULT_STT_MODEL));
+  assert.match(logs[0], /ggml-medium\.bin.*not found.*ggml-base\.en\.bin/);
+  for (const bad of ['../x.bin', String.raw`C:\x.bin`, 'a/b.bin', '']) assert.equal(whisperModelPath({ dir, name: bad, exists, log }), path.join(dir, DEFAULT_STT_MODEL), bad);
+});
+
+test('cleanTranscript: any bracketed sound description is noise (seen on fan/white/pink noise in the bench)', () => {
+  for (const t of ['(machine whirring)', '[sound of rain]', '[static]', '(engine revving)', '[SOUND]', ' (wind blowing) [typing] ']) assert.equal(cleanTranscript(t), '', t);
+  assert.equal(cleanTranscript('[sound of rain] Jarvis, what time is it?'), 'Jarvis, what time is it?');
+});
+
+test('whisper: gpu server uses flash attention and no -ng/-ac; cpu server uses -ng and the short window', async () => {
+  const mk = gpu => { const spawn = fakeSpawn(); createWhisperStt({ exe: 'x', model: 'small', cpuModel: 'base', gpu, spawn, fetch: async () => ({ ok: true }), exists }).warm(); return spawn; };
+  const g = mk(true), c = mk(false);
+  await new Promise(r => setTimeout(r, 20));
+  const ga = g.kids[0].args, ca = c.kids[0].args;
+  assert.ok(ga.includes('-fa') && !ga.includes('-ng') && !ga.includes('-ac'));
+  assert.equal(ga[ga.indexOf('-m') + 1], 'small');
+  assert.ok(ca.includes('-ng') && ca.includes('-ac'));
+  assert.equal(ca[ca.indexOf('-m') + 1], 'base');
+});
+
+test('whisper: a GPU server that never comes up restarts once on the CPU with the CPU model', async () => {
+  const spawn = fakeSpawn(); const logs = [];
+  let n = 0;
+  const fetch = async () => { if (spawn.kids.length < 2) throw new Error('down'); n++; return { ok: true }; };
+  const stt = createWhisperStt({ exe: 'x', model: 'small', cpuModel: 'base', gpu: true, spawn, fetch, exists, startTimeoutMs: 80, log: m => logs.push(m) });
+  assert.equal(await stt.warm(), true);
+  assert.equal(spawn.kids.length, 2);
+  const a = spawn.kids[1].args;
+  assert.equal(a[a.indexOf('-m') + 1], 'base');
+  assert.ok(a.includes('-ng'));
+  assert.ok(logs.some(l => /GPU did not start/.test(l)));
+  stt.close();
+});
+
+test('whisper: pickSttModel keeps small.en on the GPU and drops to base.en on the CPU', () => {
+  assert.equal(pickSttModel({ sttModel: 'ggml-small.en-q5_1.bin', sttGpu: true }), 'ggml-small.en-q5_1.bin');
+  assert.equal(pickSttModel({ sttModel: 'ggml-small.en-q5_1.bin', sttGpu: false }), 'ggml-base.en.bin');
+  assert.equal(pickSttModel({ sttModel: 'ggml-distil-small.en.bin', sttGpu: false }), 'ggml-distil-small.en.bin');
 });
