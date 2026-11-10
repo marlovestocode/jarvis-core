@@ -24,6 +24,7 @@ test('startup: with the JARVIS AI Core task, the task is the one path: enabled, 
   assert.ok(f.calls.some(c => c.includes('/Change') && c.includes('/ENABLE')));
   assert.ok(f.calls.some(c => c.includes('/Change') && c.includes('/TR') && c.includes('--hidden')));
   assert.deepEqual(f.login.at(-1).openAtLogin, false, 'no duplicate Run entry');
+  assert.ok(f.calls.some(c => c.startsWith('reg delete') && c.includes('/v jarvis.core')), 'old Run value deleted explicitly');
 });
 
 test('startup: turning it off disables the task', () => {

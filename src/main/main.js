@@ -1,5 +1,6 @@
 // JARVIS core: Electron shell around src/core. Local only.
 const path = require('node:path');
+const fs = require('node:fs');
 const { app, globalShortcut, session } = require('electron');
 
 // Data in %APPDATA%\jarvis-core (JARVIS_DATA_DIR overrides it, for self-tests).
@@ -51,7 +52,16 @@ const ctx = {
   hotkeys: { failed: [], registered: [] },
   bridge: null,
   voice: null,
-  log: (...a) => console.log('[jarvis]', ...a),
+  log: (...a) => {
+    const line = `${new Date().toISOString()}  ${a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')}`;
+    console.log('[jarvis]', ...a);
+    // started by Task Scheduler there is no console: keep a small log next to the config
+    try {
+      const file = path.join(DATA_DIR, 'jarvis.log');
+      if (fs.existsSync(file) && fs.statSync(file).size > 512 * 1024) fs.renameSync(file, file + '.old');
+      fs.appendFileSync(file, line + '\n');
+    } catch { /* logging must never break the app */ }
+  },
 };
 
 ctx.bus = createBus({ onError: err => ctx.log('listener error:', err?.message) });
@@ -115,8 +125,11 @@ ctx.engines = createEngineRegistries();
 ctx.engines.stt.add(windowsStt(ctx.speechHost));
 ctx.engines.tts.add(windowsTts(ctx.speechHost));
 ctx.engines.wake.add(windowsWake(ctx.speechHost));
-// Local neural engines (downloaded into %LOCALAPPDATA%jarvis-coreengines); Windows speech is the fallback.
-const ENGINES = process.env.JARVIS_ENGINES || path.join(process.env.LOCALAPPDATA || app.getPath('appData'), 'jarvis-core', 'engines');
+// Local neural engines (Whisper, Piper) live in <app>/engines. Not in %LOCALAPPDATA%: writes there from a
+// packaged app (e.g. a terminal inside the Claude app) are redirected into that app's private store and the
+// real desktop never sees them. Windows speech is the fallback.
+const ENGINES = process.env.JARVIS_ENGINES || [path.join(__dirname, '..', '..', 'engines'), path.join(app.getPath('home'), 'AppData', 'Local', 'jarvis-core', 'engines')]
+  .find(d => fs.existsSync(path.join(d, 'whisper'))) || path.join(__dirname, '..', '..', 'engines');
 ctx.whisper = createWhisperStt({
   exe: path.join(ENGINES, 'whisper', 'bin', 'Release', 'whisper-server.exe'), model: path.join(ENGINES, 'whisper', 'ggml-base.en.bin'),
   prompt: 'JARVIS, Ollama, sysmon, Wallpaper Engine, Ryzen, RTX 3050, GPU, CPU, VRAM, Spotify, Discord, Steam.', log: ctx.log,
@@ -234,11 +247,13 @@ app.whenReady().then(async () => {
     { stage: 'voice', run: async () => {
       ctx.voice.applyWake();
       const stt = engine('stt'), tts = engine('tts');
+      ctx.log(`voice engines: configured ${ctx.config.engines.stt}/${ctx.config.engines.tts}, using ${stt.id}/${tts.id} (engines in ${ENGINES})`);
       tts.warm?.(ctx.config.voiceRate);
       if (stt.warm) await stt.warm();
       return `${stt.label} + ${tts.label}${ctx.config.wakeEnabled ? ' + wake word' : ''}`;
     } },
   ]).then(r => { ctx.log(`boot ${r.ok ? 'ok' : 'partial'} in ${r.ms} ms`); return r; });
+  ctx.bus.on('boot', e => { if (e.stage !== 'done') ctx.log(`boot ${e.stage}: ${e.ok ? 'ok' : 'OFF'} ${e.detail} (${e.ms} ms)`); });
 });
 
 module.exports = { ctx };

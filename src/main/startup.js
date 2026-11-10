@@ -29,7 +29,13 @@ function createStartup({ exec = run, setLoginItem, execPath, appPath, packaged }
           exec('schtasks', ['/Change', '/TN', TASK, '/TR', `"${execPath}"${app} --hidden`]);
         }
         setLoginItem({ ...loginItem({ enabled: false, execPath, appPath, packaged }) }); // no second Run entry
-        return { via: 'task', enabled };
+        // Electron leaves its value behind in some cases; delete it explicitly (missing value is fine)
+        let note;
+        try { exec('reg', ['delete', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', '/v', 'jarvis.core', '/f']); } catch (err) {
+          const msg = String(err.stderr || err.message || err).trim();
+          if (!/unable to find/i.test(msg)) note = `Run entry not removed: ${msg}`;
+        }
+        return { via: 'task', enabled, note };
       } catch (err) {
         setLoginItem(loginItem({ enabled, execPath, appPath, packaged }));
         return { via: 'login item', enabled, note: `task not changed: ${String(err.message || err).trim()}` };
