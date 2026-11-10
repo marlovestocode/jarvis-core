@@ -7,6 +7,8 @@ const DATA_DIR = process.env.JARVIS_DATA_DIR || path.join(app.getPath('appData')
 app.setPath('userData', DATA_DIR);
 
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
+// Own identity (startup entry, notifications) instead of the generic "electron.app.Electron".
+app.setAppUserModelId('jarvis.core');
 
 // The chat is light 2D UI: software rendering skips the GPU process (~100 MB) and keeps
 // the GPU free for the model. JARVIS_GPU=1 turns hardware acceleration back on.
