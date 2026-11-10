@@ -1,0 +1,31 @@
+/* GENERATED from palette/jarvis-palette.json — do not edit */
+:root {
+  --base: #020910;
+  --surface: #041c2c;
+  --accent: #3fd7ff;
+  --accent-soft: #b9f3ff;
+  --text: #e2f9ff;
+  --muted: #86bfd1;
+  --gold: #ffb547;
+  --crit: #ff4d6a;
+  --ok: #3fd7ff;
+  --accent-rgb: 63, 215, 255;
+  --gold-rgb: 255, 181, 71;
+  --crit-rgb: 255, 77, 106;
+  --base-rgb: 2, 9, 16;
+  --surface-rgb: 4, 28, 44;
+  --a-panel: 0.42;
+  --a-line: 0.4;
+  --a-grid: 0.045;
+  --a-track: 0.12;
+  --a-glass: 0.55;
+  --font-sans: Bahnschrift SemiLight, Bahnschrift, Segoe UI, sans-serif;
+  --font-mono: Cascadia Mono, Consolas, monospace;
+  --title-spacing: 0.32em;
+  --glow-r: 10px;
+  --glow-k: 0.65;
+  --gap: 9px;
+  --pad: 12px;
+  --radius: 2px;
+  --line: 1px;
+}

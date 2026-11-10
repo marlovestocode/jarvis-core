@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'">
+<title>JARVIS</title>
+<link rel="stylesheet" href="palette.css">
+<link rel="stylesheet" href="chat.css">
+</head>
+<body>
+<div class="panel" id="panel">
+  <aside class="rail">
+    <div class="rail-head">
+      <span class="rail-title">CHATS</span>
+      <button class="icon-btn" id="newBtn" type="button" title="New chat (/new)">+</button>
+    </div>
+    <input class="search" id="search" type="search" placeholder="Search" spellcheck="false">
+    <ul class="list" id="list"></ul>
+  </aside>
+  <main class="main">
+    <header class="head">
+      <canvas id="orb" class="orb" width="48" height="48"></canvas>
+      <div class="head-title">
+        <span class="brand">J.A.R.V.I.S</span>
+        <span class="state" id="state">IDLE</span>
+      </div>
+      <button class="chip" id="chip" type="button" title="Model settings">NO MODEL SET</button>
+      <button class="icon-btn close" id="closeBtn" type="button" title="Hide (Esc)">×</button>
+    </header>
+    <section class="log" id="log" aria-live="polite"></section>
+    <footer class="input">
+      <button class="mic" id="micBtn" type="button" title="Talk (Ctrl+Shift+Space)">
+        <canvas id="wave" width="44" height="28"></canvas>
+      </button>
+      <textarea id="text" rows="1" placeholder="Ask JARVIS…   /new /clear /voice /settings" title="Enter send · Shift+Enter newline" spellcheck="false"></textarea>
+      <button class="send" id="sendBtn" type="button">SEND</button>
+      <button class="stop" id="stopBtn" type="button" hidden>STOP</button>
+    </footer>
+  </main>
+</div>
+<script src="markdown.js"></script>
+<script src="chat.js"></script>
+</body>
+</html>
