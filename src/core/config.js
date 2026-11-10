@@ -19,9 +19,19 @@ const DEFAULTS = Object.freeze({
   voiceRate: 1.0,
   hotkeys: Object.freeze({ chat: 'Control+Space', voice: 'Control+Shift+Space' }),
   port: 47801,
+  // knowledge & live data (spec 2026-11-10-knowledge §3): allowlisted lookups only
+  online: Object.freeze({ enabled: true, weather: true, news: true, sports: true, wiki: true }),
+  location: Object.freeze({ city: 'Abilene, TX', lat: 32.4487, lon: -99.7331, units: 'F' }),
+  news: Object.freeze({ feeds: Object.freeze([
+    'https://feeds.bbci.co.uk/news/rss.xml',
+    'https://feeds.npr.org/1001/rss.xml',
+    'https://feeds.arstechnica.com/arstechnica/index',
+    'https://www.sciencedaily.com/rss/all.xml',
+  ]) }),
+  sports: Object.freeze({ follow: Object.freeze([]) }),   // [{ league: 'nfl', team: 'Cowboys' }]
 });
 
-const NESTED = ['engines', 'hotkeys', 'ollama'];
+const NESTED = ['engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports'];
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 // micDeviceId defaults to null but holds a string: accept string or null.
@@ -29,6 +39,13 @@ function okValue(key, def, v) {
   if (key === 'micDeviceId') return v === null || typeof v === 'string';
   if (typeof def === 'number') return typeof v === 'number' && Number.isFinite(v);
   return typeof v === typeof def;
+}
+
+// list values keep only well-formed items
+function cleanList(key, k, list) {
+  if (key === 'news' && k === 'feeds') return list.filter(u => typeof u === 'string' && u.startsWith('https://'));
+  if (key === 'sports' && k === 'follow') return list.filter(x => isObj(x) && typeof x.league === 'string' && typeof x.team === 'string').map(x => ({ league: x.league, team: x.team }));
+  return list;
 }
 
 function merge(raw) {
@@ -39,7 +56,9 @@ function merge(raw) {
       out[key] = {};
       for (const [k, d] of Object.entries(def)) {
         const sv = isObj(v) ? v[k] : undefined;
-        out[key][k] = typeof sv === typeof d ? sv : d;
+        if (Array.isArray(d)) out[key][k] = Array.isArray(sv) ? cleanList(key, k, sv) : [...d];
+        else if (typeof d === 'number') out[key][k] = typeof sv === 'number' && Number.isFinite(sv) ? sv : d;
+        else out[key][k] = typeof sv === typeof d ? sv : d;
       }
     } else {
       out[key] = v !== undefined && okValue(key, def, v) ? v : def;
