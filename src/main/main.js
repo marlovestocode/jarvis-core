@@ -25,7 +25,7 @@ const { createOllamaProvider } = require('../core/providers/ollama');
 const { createToolRunner } = require('../core/tools/registry');
 const brain = require('../core/brain');
 const { createHardwareProbe } = require('../core/brain/hardware');
-const { runBoot, loginItem } = require('../core/boot');
+const { runBoot } = require('../core/boot');
 const { createOrchestrator } = require('../core/orchestrator');
 const { startBridge } = require('../core/bridge');
 const { createEngineRegistries } = require('../core/voice/engines');
@@ -37,6 +37,7 @@ const os = require('node:os');
 const { registerHotkeys } = require('./hotkeys');
 const { createMic } = require('./mic');
 const { guardWebContents } = require('./guard');
+const { createStartup } = require('./startup');
 const { createWindows } = require('./windows');
 const { createTray } = require('./tray');
 const { registerIpc } = require('./ipc');
@@ -90,8 +91,10 @@ ctx.orchestrator = createOrchestrator({
 ctx.applyLogin = () => {
   if (DEV_RUN) return; // tests and self-checks never touch Windows startup
   try {
-    app.setLoginItemSettings(loginItem({ enabled: ctx.config.startAtLogin, execPath: process.execPath, appPath: path.resolve(app.getAppPath()), packaged: app.isPackaged }));
-  } catch (err) { ctx.log('login item failed:', err.message); }
+    const r = createStartup({ setLoginItem: o => app.setLoginItemSettings(o), execPath: process.execPath, appPath: path.resolve(app.getAppPath()), packaged: app.isPackaged })
+      .apply(ctx.config.startAtLogin);
+    ctx.log(`start with Windows: ${r.enabled ? 'on' : 'off'} via ${r.via}${r.note ? ' (' + r.note + ')' : ''}`);
+  } catch (err) { ctx.log('startup setting failed:', err.message); }
 };
 
 function applyHotkeys() {
@@ -203,7 +206,7 @@ app.whenReady().then(async () => {
   } catch (err) {
     ctx.log('bridge off:', err.message); // wallpaper link is optional
   }
-  ctx.applyLogin();
+  setTimeout(() => ctx.applyLogin(), 4000); // schtasks calls are slow; never on the startup path
   if (!HIDDEN && !DEV_RUN) ctx.windows.showChat(); // opened by hand: show the boot in the chat
   ctx.onReady?.forEach(fn => fn());
   if (process.env.JARVIS_SELFTEST) require('./selftest').run(ctx, process.env.JARVIS_SELFTEST);
