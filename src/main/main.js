@@ -188,6 +188,7 @@ ctx.orchestrator = createOrchestrator({
   },
   // a pending PC action reads the user's own reply first (yes / no); nothing else can confirm it
   fastPath: async (text, o) => (await ctx.confirm.handle(text, o)) || (await ctx.memorySkill.handle(text, o)) || ctx.mediaSkill.handle(text, o),
+  onQuestionLost: () => ctx.confirm.clear(),
   timeoutMs: 120000, // a cold model load plus thinking can be slow on the first turn
 });
 

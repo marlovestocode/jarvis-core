@@ -27,7 +27,7 @@ function createActionLog({ file, now = Date.now, log = () => {} }) {
 
   // the newest successful move that has not been undone
   function lastUndoable() {
-    const undone = new Set(entries.filter(e => e.undid).map(e => e.undid));
+    const undone = new Set(entries.filter(e => e.undid && e.ok).map(e => e.undid));
     for (let i = entries.length - 1; i >= 0; i--) {
       const e = entries[i];
       if (e.ok && Array.isArray(e.undo) && e.undo.length && !undone.has(e.id)) return e;

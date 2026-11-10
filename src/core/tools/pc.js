@@ -53,11 +53,17 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
   }
 
   // windows that belong to the app the user named
+  // matched by process only (its exe, or the app name): words in other windows' titles never count,
+  // so "close code" cannot catch a Chrome tab called "Code review"
   async function windowsFor(name) {
-    let label = name;
-    try { const r = resolveApp(name, await getAllowlist()); if (r?.entry) label = r.entry.name; } catch { /* allowlist unavailable */ }
-    const ws = (await host.windows()).filter(w => Math.max(matchText(name, w.app), matchText(name, w.title), matchText(label, w.app), matchText(label, w.title)) >= 0.6);
-    return { label, ws };
+    let label = null, exe = null;
+    try {
+      const r = resolveApp(name, await getAllowlist());
+      if (r?.entry) { label = r.entry.name; const m = /([^\\/]+)\.exe$/i.exec(r.entry.target); if (m) exe = norm(m[1]); }
+    } catch { /* allowlist unavailable */ }
+    const ws = (await host.windows()).filter(w => (exe && norm(w.app) === exe) || matchText(name, w.app) >= 0.6 || (label && matchText(label, w.app) >= 0.6));
+    const apps = [...new Set(ws.map(w => w.app))];
+    return { label: label || apps[0] || name, ws, apps };
   }
 
   const openApp = {
@@ -82,12 +88,12 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
       name = String(name || '').trim();
       if (!name) throw new Error('Which app should I close?');
       if (PROTECTED.has(norm(name))) throw new Error(`I won't close ${name}; Windows or JARVIS needs it`);
-      const { label, ws } = await windowsFor(name);
+      const { label, ws, apps } = await windowsFor(name);
       if (ws.some(w => PROTECTED.has(norm(w.app)))) throw new Error(`I won't close ${name}; Windows or JARVIS needs it`);
       if (!ws.length) throw new Error(`${label} is not open`);
       const pids = [...new Set(ws.map(w => w.pid))];
       return confirm.propose({
-        tool: 'close_app', summary: `Close ${label}`, args: { name, pids },
+        tool: 'close_app', summary: `Close ${label}${apps.length > 1 ? ` (${apps.join(', ')})` : ''}`, args: { name, pids },
         run: async () => {
           for (const pid of pids) await host.closeMain(pid);
           if (await poll(async () => (await host.alive(pids)).length === 0)) return `Closed ${label}.`;
@@ -260,10 +266,17 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
         tool: 'delete_to_recycle_bin', summary: `Move ${what} to the Recycle Bin`, args: { paths: list },
         run: async () => {
           let k = 0;
-          const failed = [];
+          const failed = [], erased = [];
           for (const p of list) {
-            try { safe(p); if ((await host.recycle(p)) && !exists(p)) k++; else failed.push(win.basename(p)); } catch (err) { failed.push(`${win.basename(p)}: ${err.message}`); }
+            try {
+              safe(p);
+              const r = await host.recycle(p);
+              if (exists(p)) failed.push(win.basename(p));
+              else if (r.inBin) k++;
+              else erased.push(win.basename(p));   // gone but not in the bin: Windows erased it (after asking in its own dialog)
+            } catch (err) { failed.push(`${win.basename(p)}: ${err.message}`); }
           }
+          if (erased.length) throw new Error(`${listWords(erased)} did not go to the Recycle Bin; Windows deleted it permanently${k ? `. ${plural(k, 'other item')} went to the Recycle Bin` : ''}`);
           if (!k) throw new Error(`Nothing went to the Recycle Bin. ${failed.join('; ')}`);
           return `Moved ${plural(k, 'item')} to the Recycle Bin.${failed.length ? ` Not moved: ${failed.join('; ')}.` : ''}`;
         },

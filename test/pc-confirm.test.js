@@ -178,3 +178,30 @@ test('orchestrator: a proposal ends the turn with the exact question; the next u
   const msgs = sessions.load(s.id).messages;
   assert.equal(msgs.at(-1).content, 'Moved 3 files.');
 });
+
+test('review #6: a failed undo does not block a retry', () => {
+  const a = createActionLog({ file: tmpLog() });
+  const m = a.write({ what: 'move_files', args: {}, result: 'Moved 1 file.', ok: true, undo: [{ from: 'A', to: 'B' }] });
+  a.write({ what: 'undo_last', args: {}, result: 'That did not work.', ok: false, undid: m.id });
+  assert.equal(a.lastUndoable()?.id, m.id);
+});
+
+test('review #2: a question lost to a stopped turn is dropped, so a later yes does nothing', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jc-pc2-'));
+  const bus = createBus();
+  const sessions = createSessionStore(dir);
+  const providers = createRegistry();
+  providers.add(NullProvider);
+  providers.add(createFakeProvider([[{ type: 'tool_call', id: 'p', name: 'power', args: {} }, { type: 'done' }]]));
+  const { c } = confirmSetup();
+  let orc;
+  const ran = [];
+  const tools = createToolRunner([{ name: 'power', risk: 'confirm', description: 'p', params: {}, async run() { const q = c.propose({ tool: 'power', summary: 'Shut down the PC now', args: {}, run: async () => { ran.push(1); return 'Shutting down now.'; } }); orc.stop(); return q; } }]);
+  orc = createOrchestrator({ bus, sessions, providers, tools, getConfig: () => ({ ...DEFAULTS, provider: 'fake' }), fastPath: (t, o) => c.handle(t, o), onQuestionLost: () => c.clear() });
+  const s = sessions.create(); sessions.save(s);
+  const r = await orc.send(s.id, 'shut down', { source: 'voice' });
+  assert.equal(r.stopped, true);
+  assert.equal(c.pending(), null);
+  await orc.send(s.id, 'yes', { source: 'voice' });
+  assert.deepEqual(ran, []);
+});

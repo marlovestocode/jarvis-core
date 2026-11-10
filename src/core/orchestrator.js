@@ -42,7 +42,7 @@ function forProvider(m) {
 // (media commands). An empty reply is silent; record is what the chat history keeps.
 const { unbackedClaim, UNBACKED_FIX, UNTRUSTED_TOOLS, NEEDS_OK } = require('./brain/guard');
 
-function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, route, promptInfo = () => ({}), fastPath }) {
+function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, route, promptInfo = () => ({}), fastPath, onQuestionLost = () => {} }) {
   let current = null; // AbortController of the running turn
 
   function pickProvider() {
@@ -175,6 +175,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       let okTools = 0;   // tools that ran, did not fail and can back an action claim (lookups cannot)
       const turn = { source, tainted: false };   // tainted: text from outside (pages, files) came in this turn
       let question = null;   // a confirm tool is waiting for the user's yes: this is the question
+      let asked = false;     // ...and the user got it (not lost to a stop or an error)
       let sentChars = 0;
       let usage;
       let completionTokens = 0;
@@ -237,10 +238,13 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           reply = question;
           bus.emit('token', { text: reply });
           s.messages.push({ role: 'assistant', content: reply, pending: true });
+          asked = true;
           break;
         }
       }
 
+      // never leave a risky action armed behind a question the user did not hear
+      if (question && !asked) { try { onQuestionLost(); } catch { /* best effort */ } }
       const last = s.messages.at(-1);
       // the model said it DID something but no tool confirmed it: say so instead of leaving a false claim
       if (!error && !stopped && last?.role === 'assistant' && unbackedClaim(reply, okTools)) {

@@ -210,3 +210,45 @@ test('static: tool code never deletes permanently, edits the registry, or import
   }
   for (const f of walk(src).filter(f => f.endsWith('.js'))) assert.doesNotMatch(fs.readFileSync(f, 'utf8'), /require\(\s*['"]electron['"]\s*\)/, f);
 });
+
+test('review #1: Windows erasing instead of recycling is reported, never called "Recycle Bin"', async () => {
+  const { run, yes, host, file } = setup();
+  host.recycle = async p => { fs.renameSync(p, p + '.gone'); fs.unlinkSync(p + '.gone'); return { gone: true, inBin: false }; };
+  file('Desktop/huge.iso');
+  asked(await run('delete_to_recycle_bin', { paths: ['Desktop/huge.iso'] }));
+  assert.match(await yes(), /^That did not work: .*huge\.iso.*deleted it permanently/);
+});
+
+test('review #1: the host script lets Windows ask before a permanent delete', () => {
+  const ps = fs.readFileSync(path.join(__dirname, '../src/core/pc/pc-host.ps1'), 'utf8');
+  assert.doesNotMatch(ps, /OnlyErrorDialogs/);
+  assert.match(ps, /AllDialogs/);
+  assert.match(ps, /Namespace\(10\)/);
+});
+
+test('review #3: close_app matches the app process, not words in other window titles', async () => {
+  const { run, yes, host } = setup({ host: { windows: [
+    { hwnd: 1, pid: 11, app: 'chrome', title: 'Code review - Google Chrome' },
+    { hwnd: 2, pid: 12, app: 'Code', title: 'main.js - jarvis-core - Visual Studio Code' },
+  ] } });
+  assert.equal(asked(await run('close_app', { name: 'code' })), 'Close Code. Say yes to confirm.');
+  await yes();
+  assert.deepEqual(host.calls.filter(c => c[0] === 'closeMain'), [['closeMain', 12]]);
+});
+
+test('review #3: close_app by full name finds the app by its exe, still not the Chrome tab', async () => {
+  const { run, yes, host } = setup({ host: { windows: [
+    { hwnd: 1, pid: 11, app: 'chrome', title: 'Code review - Google Chrome' },
+    { hwnd: 2, pid: 12, app: 'Code', title: 'main.js - jarvis-core - Visual Studio Code' },
+  ] } });
+  assert.equal(asked(await run('close_app', { name: 'Visual Studio Code' })), 'Close Visual Studio Code. Say yes to confirm.');
+  await yes();
+  assert.deepEqual(host.calls.filter(c => c[0] === 'closeMain'), [['closeMain', 12]]);
+});
+
+test('review #5: alternate data stream paths are refused', async () => {
+  const { run, file } = setup();
+  file('Downloads/evil.exe');
+  assert.match(await run('open_path', { path: 'Downloads/evil.exe::$DATA' }), /^Error: Not allowed/);
+  assert.match(await run('open_path', { path: 'Downloads/evil.exe:x' }), /^Error: Not allowed/);
+});

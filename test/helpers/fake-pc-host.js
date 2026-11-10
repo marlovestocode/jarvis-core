@@ -27,9 +27,9 @@ function createFakePcHost({ windows = [], opens = {}, binDir = null, stubborn = 
     async focus(hwnd) { log('focus', hwnd); return focusOk; },
     async recycle(p) {
       log('recycle', p);
-      if (!binDir) return false;
+      if (!binDir) return { gone: false, inBin: false };
       fs.renameSync(p, path.join(binDir, path.basename(p) + '.' + calls.length));
-      return true;
+      return { gone: true, inBin: true };
     },
     async lock() { log('lock'); return lockOk; },
     async power(mode) { log('power', mode); return true; },

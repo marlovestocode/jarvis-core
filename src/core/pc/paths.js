@@ -33,6 +33,7 @@ function safePath(input, roots, { realpath = fs.realpathSync.native } = {}) {
   if (!raw || /[\0\r\n]/.test(raw) || raw.length > 1024) throw outside(JSON.stringify(input), roots);
   if (/^[\\/]{2}/.test(raw)) throw outside(raw, roots);                       // UNC, \\?\, \\.\
   if (/^[a-z]:(?![\\/])/i.test(raw)) throw outside(raw, roots);               // C:foo (drive-relative)
+  if (raw.replace(/^[a-z]:/i, '').includes(':')) throw outside(raw, roots);   // file.exe::$DATA (alternate data streams)
   let p;
   if (win.isAbsolute(raw) && /^[a-z]:/i.test(raw)) p = win.resolve(raw);
   else {

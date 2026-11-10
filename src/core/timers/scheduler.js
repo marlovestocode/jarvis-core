@@ -2,6 +2,7 @@
 // then `timer { id, label, kind, due, missed }` goes on the bus (speaking is the proactive engine's job).
 // start() on boot: items already past due fire once with missed:true, the rest are armed.
 const MAX_DELAY = 2 ** 31 - 1;   // setTimeout limit; longer waits are re-armed in chunks
+const LATE_MS = 60e3;            // fired this late (PC asleep) → said as missed, not "it's 7:00"
 
 const labelKey = s => String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ')
   .replace(/\b(?:the|my|a|an|for|timer|timers|alarm|alarms|reminder|reminders)\b/g, ' ').replace(/\s+/g, ' ').trim();
@@ -19,7 +20,7 @@ function createScheduler({ store, bus, now = Date.now, setTimer = setTimeout, cl
     let n = 0;
     for (const t of store.list().filter(x => x.due <= now()).sort((a, b) => a.due - b.due)) {
       try { store.remove(t.id); } catch (err) { log(`timer ${t.id} could not be removed: ${err.message}`); }
-      emit(t, missed);
+      emit(t, missed || now() - t.due > LATE_MS);
       n++;
     }
     return n;

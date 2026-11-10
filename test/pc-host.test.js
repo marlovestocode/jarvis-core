@@ -19,7 +19,7 @@ test('pc host: every call is a command name plus typed args', async () => {
   const { request, sent } = fakeRequest({
     startApps: [{ name: 'Spotify', appId: 'SpotifyAB.Spotify_zpdnekdrzrea0!Spotify' }, { name: 'Bad' }],
     windows: [{ hwnd: 10, pid: 4, app: 'chrome', title: 'YouTube' }, { hwnd: 'x' }],
-    launch: {}, alive: [4], closeMain: true, kill: true, focus: true, recycle: true, lock: true, power: true,
+    launch: {}, alive: [4], closeMain: true, kill: true, focus: true, recycle: { gone: true, inBin: true }, lock: true, power: true,
   });
   const h = createPcHost({ request });
   assert.deepEqual(await h.startApps(), [{ name: 'Spotify', appId: 'SpotifyAB.Spotify_zpdnekdrzrea0!Spotify' }]);
@@ -29,7 +29,7 @@ test('pc host: every call is a command name plus typed args', async () => {
   assert.equal(await h.closeMain(4), true);
   assert.equal(await h.kill(4), true);
   assert.equal(await h.focus(10), true);
-  assert.equal(await h.recycle('C:\\Users\\me\\Downloads\\x.txt'), true);
+  assert.deepEqual(await h.recycle('C:\\Users\\me\\Downloads\\x.txt'), { gone: true, inBin: true });
   assert.equal(await h.lock(), true);
   assert.equal(await h.power('sleep'), true);
   assert.deepEqual(sent.map(s => s.cmd), ['startApps', 'windows', 'launch', 'alive', 'closeMain', 'kill', 'focus', 'recycle', 'lock', 'power']);

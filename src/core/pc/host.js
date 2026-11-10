@@ -34,7 +34,9 @@ function createPcHost({ request }) {
     recycle: wrap(async p => {
       needText(p, 'path');
       if (!path.win32.isAbsolute(p) || /^[\\/]{2}/.test(p)) throw new Error('Recycle needs an absolute local path');
-      return (await call('recycle', { path: p })) === true;
+      // { gone, inBin }: gone from its folder, and found in the Recycle Bin (not erased)
+      const r = await call('recycle', { path: p });
+      return { gone: !!r?.gone, inBin: !!r?.inBin };
     }),
     lock: wrap(async () => (await call('lock')) === true),
     power: wrap(async mode => {

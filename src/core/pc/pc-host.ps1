@@ -84,15 +84,30 @@ function Do-Launch($m) {
   @{}
 }
 
+# AllDialogs, never the silent mode: if an item is too big for the Recycle Bin (or the bin is off),
+# Windows asks the user itself before it would erase anything. Afterwards the bin is searched, so
+# "in the Recycle Bin" is only reported when the item is really there.
 function Do-Recycle($m) {
   $p = [string]$m.path
   if (-not (Test-Path -LiteralPath $p)) { throw "Not found: $p" }
+  $parent = Split-Path -LiteralPath $p -Parent
+  $leaf = Split-Path -LiteralPath $p -Leaf
   Add-Type -AssemblyName Microsoft.VisualBasic
-  $ui = [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs
+  $ui = [Microsoft.VisualBasic.FileIO.UIOption]::AllDialogs
   $bin = [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin
-  if (Test-Path -LiteralPath $p -PathType Container) { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, $ui, $bin) }
-  else { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, $ui, $bin) }
-  -not (Test-Path -LiteralPath $p)
+  $cancel = [Microsoft.VisualBasic.FileIO.UICancelOption]::DoNothing
+  if (Test-Path -LiteralPath $p -PathType Container) { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p, $ui, $bin, $cancel) }
+  else { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, $ui, $bin, $cancel) }
+  $gone = -not (Test-Path -LiteralPath $p)
+  $inBin = $false
+  if ($gone) {
+    $base = [IO.Path]::GetFileNameWithoutExtension($leaf)
+    foreach ($it in (New-Object -ComObject Shell.Application).Namespace(10).Items()) {
+      $from = [string]$it.ExtendedProperty('System.Recycle.DeletedFrom')
+      if ($from.TrimEnd('\') -ieq $parent.TrimEnd('\') -and ($it.Name -ieq $leaf -or $it.Name -ieq $base)) { $inBin = $true; break }
+    }
+  }
+  @{ gone = $gone; inBin = $inBin }
 }
 
 function Do-Power($m) {

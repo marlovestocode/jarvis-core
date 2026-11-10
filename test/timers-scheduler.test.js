@@ -16,6 +16,7 @@ function fakeClock(start = 1_800_000_000_000) {
     setTimer(fn, ms) { const id = ++seq; live.set(id, { fn, at: t + ms, ms }); return id; },
     clearTimer(id) { live.delete(id); },
     live,
+    skip(ms) { t += ms; },   // time passes with no callbacks (PC asleep)
     advance(ms) {
       const end = t + ms;
       for (;;) {
@@ -118,4 +119,17 @@ test('scheduler: due is absolute epoch ms; firing compares now() >= due', () => 
   assert.equal(s.list()[0].due, due);
   clock.advance(5e3);
   assert.equal(fired[0].due, due);
+});
+
+test('review #4: firing long after due (PC was asleep) counts as missed', () => {
+  const { clock, fired, s } = setup();
+  s.start();
+  s.add({ kind: 'alarm', label: '', due: clock.now() + 60e3 });
+  const h = [...clock.live.values()][0];
+  clock.live.clear();
+  // the PC slept: the timer callback runs 8 hours late
+  clock.skip(8 * 3600e3);
+  h.fn();
+  assert.equal(fired.length, 1);
+  assert.equal(fired[0].missed, true);
 });
