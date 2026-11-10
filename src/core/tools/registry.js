@@ -1,4 +1,4 @@
-// Tool definitions + runner. Tool: { name, description, params: JSONSchema, async run(args, ctx) → string }
+// Tool definitions + runner. Tool: { name, description, params: JSONSchema, async run(args, ctx) → string, timeoutMs? }
 function createToolRunner(tools, { timeoutMs = 10000 } = {}) {
   const byName = new Map(tools.map(t => [t.name, t]));
 
@@ -12,7 +12,7 @@ function createToolRunner(tools, { timeoutMs = 10000 } = {}) {
     let timer;
     try {
       const timeout = new Promise((_, rej) => {
-        timer = setTimeout(() => rej(new Error(`tool ${name} timed out`)), timeoutMs);
+        timer = setTimeout(() => rej(new Error(`tool ${name} timed out`)), tool.timeoutMs || timeoutMs);
       });
       const text = await Promise.race([Promise.resolve().then(() => tool.run(args || {}, ctx)), timeout]);
       return { ok: true, text: String(text) };

@@ -28,6 +28,11 @@ test('throwing tool → ok:false with message', async () => {
   assert.deepEqual(await r.run('bad', {}, {}), { ok: false, text: 'Error: kaput' });
 });
 
+test('a tool may carry its own longer timeout', async () => {
+  const r = createToolRunner([{ ...echo, name: 'slowish', timeoutMs: 200, run: () => new Promise(res => setTimeout(() => res('done'), 60)) }], { timeoutMs: 30 });
+  assert.deepEqual(await r.run('slowish', {}), { ok: true, text: 'done' });
+});
+
 test('slow tool → ok:false after timeout', async () => {
   const r = createToolRunner([{ ...echo, name: 'slow', run: () => new Promise(res => setTimeout(() => res('late'), 500)) }], { timeoutMs: 30 });
   const t0 = Date.now();
