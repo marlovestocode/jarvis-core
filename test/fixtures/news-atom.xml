@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title type="text">Example Atom &amp; Science</title>
+  <link href="https://atom.example.org/"/>
+  <updated>2026-11-10T05:00:00Z</updated>
+  <entry>
+    <title type="html">Telescope spots &lt;b&gt;water&lt;/b&gt; on a distant moon</title>
+    <link rel="alternate" href="https://atom.example.org/water-moon"/>
+    <id>tag:atom.example.org,2026:1</id>
+    <updated>2026-11-10T04:30:00Z</updated>
+    <summary type="html">&lt;p&gt;Astronomers say the &lt;a href="x"&gt;signal&lt;/a&gt; is &amp;quot;unmistakable&amp;quot;.&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title><![CDATA[Russell Brand's ex Jemima Goldsmith accuses him of violence and abuse against her]]></title>
+    <link href="https://atom.example.org/brand"/>
+    <published>2026-11-10T03:10:00Z</published>
+    <content type="html"><![CDATA[<div>Same story as the BBC one, from another feed.</div>]]></content>
+  </entry>
+  <entry>
+    <title>Undated note about the weather in Abilene</title>
+    <link href="https://atom.example.org/undated"/>
+    <summary>No date on this one.</summary>
+  </entry>
+</feed>
