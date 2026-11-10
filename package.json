@@ -1,0 +1,14 @@
+{
+  "name": "jarvis-core",
+  "version": "0.1.0",
+  "description": "JARVIS local AI core: model-agnostic chat and voice",
+  "main": "src/main/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "devDependencies": {
+    "electron": "^45.2.3"
+  }
+}
