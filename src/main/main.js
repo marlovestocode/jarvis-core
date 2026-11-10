@@ -30,6 +30,10 @@ const { runBoot } = require('../core/boot');
 const { createTimerStore } = require('../core/timers/store');
 const { createScheduler } = require('../core/timers/scheduler');
 const { createProactiveEngine } = require('../core/proactive/engine');
+const { createPcHost, SCRIPT: PC_HOST_SCRIPT } = require('../core/pc/host');
+const { buildAllowlist } = require('../core/pc/apps');
+const { createConfirm } = require('../core/pc/confirm');
+const { createActionLog } = require('../core/pc/actions-log');
 const { createOrchestrator } = require('../core/orchestrator');
 const { createPolicy } = require('../core/net/policy');
 const { createFetcher } = require('../core/net/fetcher');
@@ -141,6 +145,8 @@ function capsLine() {
     `listening log: ${c.music.logPlays ? `${ctx.playLog.count()} plays recorded${ctx.playLog.since() ? ` since ${new Date(ctx.playLog.since()).toLocaleDateString('en-US')}` : ''}` : 'off'} (music_stats tool)`,
     'media control with per-app and system volume, play/pause/skip, queue',
     'math, unit conversion, time, system stats, weather, news, scores, Wikipedia',
+    'timers, alarms and reminders (spoken when they fire)',
+    'open, close and switch apps and windows; find, open and move files in Desktop, Documents, Downloads and Projects; Recycle Bin; volume; lock; shutdown (risky ones ask the user first)',
     `speech-to-text ${c.engines.stt}${c.sttGpu ? ' on GPU' : ''}, saved memory of the user`,
   ].join('; ') + '.';
 }
@@ -152,9 +158,24 @@ function userInfo() {
   };
 }
 // timers, alarms and reminders: <data>/timers.json; firing puts 'timer' on the bus (started in the boot stage)
+// PC control: one PowerShell host for apps/windows/Recycle Bin; risky actions wait for the user's yes
+ctx.pcHostProc = createSpeechHost({ script: PC_HOST_SCRIPT, log: ctx.log, name: 'pc host' });
+ctx.pcHost = createPcHost({ request: (cmd, args) => ctx.pcHostProc.request(cmd, args) });
+ctx.pcStartApps = null;   // Start menu list, read at boot and then every 10 minutes when asked
+ctx.pcStartAt = 0;
+async function pcAllowlist() {
+  if (!ctx.pcStartApps || Date.now() - ctx.pcStartAt > 600000) {
+    try { ctx.pcStartApps = await ctx.pcHost.startApps(); ctx.pcStartAt = Date.now(); } catch (err) { ctx.log('start menu apps:', err.message); ctx.pcStartApps = ctx.pcStartApps || []; }
+  }
+  return buildAllowlist(ctx.pcStartApps, ctx.config.pc.apps);
+}
+// the user's own folders, where Windows really keeps them (Documents may live in OneDrive)
+ctx.pcRoots = [app.getPath('desktop'), app.getPath('documents'), app.getPath('downloads'), path.join(app.getPath('home'), 'Projects')];
+ctx.actionLog = createActionLog({ file: path.join(DATA_DIR, 'actions.log'), log: ctx.log });
+ctx.confirm = createConfirm({ actionLog: ctx.actionLog });
 ctx.timerStore = createTimerStore({ file: path.join(DATA_DIR, 'timers.json'), log: ctx.log });
 ctx.scheduler = createScheduler({ store: ctx.timerStore, bus: ctx.bus, log: ctx.log });
-ctx.toolList = brain.defaultTools({ memory: ctx.memory, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler });
+ctx.toolList = brain.defaultTools({ memory: ctx.memory, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog } });
 ctx.tools = createToolRunner(ctx.toolList);
 ctx.orchestrator = createOrchestrator({
   bus: ctx.bus, sessions: ctx.sessions, providers: ctx.providers, tools: ctx.tools, getConfig: ctx.getConfig,
@@ -165,7 +186,8 @@ ctx.orchestrator = createOrchestrator({
     try { media = mediaPromptLine(await Promise.race([ctx.media.state(), new Promise((_, rej) => setTimeout(() => rej(new Error('slow')), 600))])); } catch { media = undefined; }
     return { hardware: ctx.hardware.cached() || undefined, media, library: ctx.ytPlaylists.digest() || undefined, memory: ctx.memory.digest() || undefined, user: userInfo(), caps: capsLine() };
   },
-  fastPath: async (text, o) => (await ctx.memorySkill.handle(text, o)) || ctx.mediaSkill.handle(text, o),
+  // a pending PC action reads the user's own reply first (yes / no); nothing else can confirm it
+  fastPath: async (text, o) => (await ctx.confirm.handle(text, o)) || (await ctx.memorySkill.handle(text, o)) || ctx.mediaSkill.handle(text, o),
   timeoutMs: 120000, // a cold model load plus thinking can be slow on the first turn
 });
 
@@ -269,7 +291,7 @@ ctx.bus.on('state', () => {
   // with the wake word on, the mic stays open (local only) so "Jarvis, <command>" keeps its first words
   if (ctx.voice.active || ctx.config.wakeEnabled) ctx.mic.start(); else ctx.mic.stop();
 });
-ctx.onQuit = [() => ctx.scheduler.stop(), () => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close()];
+ctx.onQuit = [() => ctx.scheduler.stop(), () => ctx.pcHostProc.close(), () => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close()];
 
 app.on('web-contents-created', (_e, wc) => guardWebContents(wc));
 app.on('second-instance', () => ctx.windows?.showChat());
@@ -354,6 +376,7 @@ app.whenReady().then(async () => {
       }
       return st.detail;
     } },
+    { stage: 'pc', run: async () => `${(await pcAllowlist()).length} apps allowed` },
     { stage: 'timers', run: async () => { const r = ctx.scheduler.start(); return `${r.armed} set${r.fired ? `, ${r.fired} missed while off` : ''}`; } },
     { stage: 'sysmon', run: async () => {
       const r = await fetch('http://127.0.0.1:47800/health', { signal: AbortSignal.timeout(1000) }).catch(() => null);

@@ -23,4 +23,17 @@ function unbackedClaim(reply, okTools = 0) {
 
 const UNBACKED_FIX = " Correction: I didn't actually do that. No tool confirmed it.";
 
-module.exports = { unbackedClaim, UNBACKED_FIX };
+// PC actions (src/core/pc/confirm.js). A risky action only runs after the user's own plain "yes" in
+// the next turn. That answer is read from the user's text only (the fastPath), never from a tool
+// result, page or file. The tools below return text from outside; after one of them runs in a turn,
+// no confirm tool may start in that turn (so a page saying "move all files" cannot queue the move).
+const UNTRUSTED_TOOLS = new Set(['lookup_knowledge', 'read_article', 'news_headlines', 'get_weather', 'weather_alerts', 'sports_scores', 'find_files', 'list_windows']);
+// a confirm tool's result starts with this: the turn ends and the question is the reply, word for word
+const NEEDS_OK = 'Needs your OK: ';
+const plain = t => String(t || '').toLowerCase().replace(/^\s*(?:(?:hey |ok(?:ay)? )?jarvis[,.!]?\s*)/, '').replace(/[.!,]+/g, ' ').replace(/\s+/g, ' ').trim();
+const YES = new Set(['yes', 'yeah', 'yep', 'yup', 'sure', 'confirm', 'confirmed', 'do it', 'go ahead', 'yes please', 'yes do it', 'ok do it', 'okay do it', 'yes go ahead', 'please do', 'do it now']);
+const NO = new Set(['no', 'nope', 'cancel', 'stop', "don't", 'do not', 'never mind', 'nevermind', 'no thanks', 'forget it']);
+const isYes = t => YES.has(plain(t));
+const isNo = t => NO.has(plain(t));
+
+module.exports = { unbackedClaim, UNBACKED_FIX, isYes, isNo, UNTRUSTED_TOOLS, NEEDS_OK };

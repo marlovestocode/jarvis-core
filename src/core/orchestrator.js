@@ -40,7 +40,7 @@ function forProvider(m) {
 // promptInfo() → { hardware, media } (or a promise of it): facts for the prompt.
 // fastPath(text, { source }) → null | { reply, record?, tool, ok }: a skill that answers without the model
 // (media commands). An empty reply is silent; record is what the chat history keeps.
-const { unbackedClaim, UNBACKED_FIX } = require('./brain/guard');
+const { unbackedClaim, UNBACKED_FIX, UNTRUSTED_TOOLS, NEEDS_OK } = require('./brain/guard');
 
 function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, route, promptInfo = () => ({}), fastPath }) {
   let current = null; // AbortController of the running turn
@@ -172,7 +172,9 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       let error;
       let stopped = false;
       let toolRounds = 0;
-      let okTools = 0;   // tools that ran and did not fail this turn
+      let okTools = 0;   // tools that ran, did not fail and can back an action claim (lookups cannot)
+      const turn = { source, tainted: false };   // tainted: text from outside (pages, files) came in this turn
+      let question = null;   // a confirm tool is waiting for the user's yes: this is the question
       let sentChars = 0;
       let usage;
       let completionTokens = 0;
@@ -219,15 +221,24 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           bus.emit('tool', { id: call.id, name: call.name, phase: 'start' });
           inTool = true;
           let res;
-          try { res = await tools.run(call.name, call.args, { signal: ac.signal }); }
+          try { res = await tools.run(call.name, call.args, { signal: ac.signal, turn }); }
           finally { inTool = false; }
           bus.emit('tool', { id: call.id, name: call.name, phase: 'end', ok: res.ok });
-          if (res.ok && !/^error/i.test(String(res.text))) okTools++;
+          if (UNTRUSTED_TOOLS.has(call.name)) turn.tainted = true;
+          if (res.ok && String(res.text).startsWith(NEEDS_OK)) question = String(res.text).slice(NEEDS_OK.length);
+          else if (res.ok && !/^error/i.test(String(res.text)) && !UNTRUSTED_TOOLS.has(call.name)) okTools++;
           s.messages.push({ role: 'tool', content: res.text, toolCallId: call.id, name: call.name });
           if (ac.signal.aborted) break;
         }
         sessions.save(s);
         if (ac.signal.aborted) { stopped = true; reply = ''; break; }
+        // a risky action waits for the user's yes: ask exactly that, no more model rounds
+        if (question) {
+          reply = question;
+          bus.emit('token', { text: reply });
+          s.messages.push({ role: 'assistant', content: reply, pending: true });
+          break;
+        }
       }
 
       const last = s.messages.at(-1);

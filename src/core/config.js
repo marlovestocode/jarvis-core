@@ -50,11 +50,13 @@ const DEFAULTS = Object.freeze({
     logPlays: true,                     // keep a local log of what you listen to (music_stats); off stops logging
   }),
   // JARVIS speaking unasked (timers): quiet hours and Do-not-disturb give a notification only
+  // PC control: extra apps JARVIS may open, { "spoken name": "C:\path\app.exe" or a Start menu AppID }
+  pc: Object.freeze({ apps: Object.freeze({}) }),
   proactive: Object.freeze({ enabled: true, dnd: false, quietStart: '22:00', quietEnd: '07:00', minGapSec: 10, chime: true }),
 });
 
 const VADS = ['silero', 'energy'];
-const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive'];
+const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive', 'pc'];
 const HHMM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;   // "22:00"
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
@@ -78,6 +80,13 @@ function cleanList(key, k, list) {
   return list;
 }
 
+// pc.apps: only well-formed { name: target } pairs (see pc/apps.js validAppTarget)
+function cleanApps(v) {
+  if (!isObj(v)) return {};
+  const { validAppTarget } = require('./pc/apps');
+  return Object.fromEntries(Object.entries(v).filter(([n, t]) => n.trim() && n.length <= 60 && validAppTarget(t)).slice(0, 50));
+}
+
 function merge(raw) {
   const out = {};
   for (const [key, def] of Object.entries(DEFAULTS)) {
@@ -86,6 +95,7 @@ function merge(raw) {
       out[key] = {};
       for (const [k, d] of Object.entries(def)) {
         const sv = isObj(v) ? v[k] : undefined;
+        if (key === 'pc' && k === 'apps') { out[key][k] = cleanApps(sv); continue; }
         if (Array.isArray(d)) out[key][k] = Array.isArray(sv) ? cleanList(key, k, sv) : [...d];
         else if (typeof d === 'number') out[key][k] = typeof sv === 'number' && Number.isFinite(sv) ? sv : d;
         else out[key][k] = typeof sv === typeof d ? sv : d;
