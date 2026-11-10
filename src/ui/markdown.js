@@ -23,6 +23,50 @@
     return out;
   }
 
+  // ---- LaTeX → readable Unicode (small models slip into LaTeX; the chat has no math renderer) ----
+  const CMD = {
+    cdot: '·', times: '×', div: '÷', pm: '±', mp: '∓', approx: '≈', neq: '≠', ne: '≠', leq: '≤', le: '≤', geq: '≥', ge: '≥',
+    infty: '∞', int: '∫', iint: '∬', oint: '∮', sum: '∑', prod: '∏', partial: '∂', nabla: '∇', to: '→', rightarrow: '→',
+    leftarrow: '←', Rightarrow: '⇒', iff: '⇔', degree: '°', circ: '°', propto: '∝', sim: '∼', equiv: '≡', in: '∈', forall: '∀',
+    exists: '∃', cdots: '⋯', ldots: '…', dots: '…', hbar: 'ħ', ell: 'ℓ', angle: '∠', perp: '⊥', parallel: '∥',
+    alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', varepsilon: 'ε', zeta: 'ζ', eta: 'η', theta: 'θ', iota: 'ι',
+    kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', pi: 'π', rho: 'ρ', sigma: 'σ', tau: 'τ', phi: 'φ', varphi: 'φ', chi: 'χ',
+    psi: 'ψ', omega: 'ω', Gamma: 'Γ', Delta: 'Δ', Theta: 'Θ', Lambda: 'Λ', Pi: 'Π', Sigma: 'Σ', Phi: 'Φ', Psi: 'Ψ', Omega: 'Ω',
+    sin: 'sin', cos: 'cos', tan: 'tan', ln: 'ln', log: 'log', exp: 'exp', lim: 'lim', max: 'max', min: 'min', quad: ' ', qquad: ' ',
+  };
+  const SUP = { 0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴', 5: '⁵', 6: '⁶', 7: '⁷', 8: '⁸', 9: '⁹', '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾', n: 'ⁿ', i: 'ⁱ' };
+  const SUB = { 0: '₀', 1: '₁', 2: '₂', 3: '₃', 4: '₄', 5: '₅', 6: '₆', 7: '₇', 8: '₈', 9: '₉', '+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎' };
+
+  function script(content, map, mark) {
+    if ([...content].every(c => map[c])) return [...content].map(c => map[c]).join('');
+    if ([...content].length === 1) return mark + content;
+    return mark + '(' + content.replace(/-/g, '−') + ')';
+  }
+
+  function texToText(t) {
+    let s = t;
+    for (let k = 0; k < 4; k++) s = s.replace(/\\[dt]?frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, '($1)/($2)');
+    for (let k = 0; k < 3; k++) s = s.replace(/\\sqrt\s*\{([^{}]*)\}/g, '√($1)');
+    s = s.replace(/\\(?:text|mathrm|mathbf|mathit|operatorname|textbf)\s*\{([^{}]*)\}/g, '$1');
+    s = s.replace(/\\left|\\right/g, '').replace(/\\[,;:! ]/g, ' ');
+    s = s.replace(/\\([A-Za-z]+)/g, (m, name) => (CMD[name] !== undefined ? CMD[name] : name));
+    s = s.replace(/\^\{([^{}]*)\}/g, (m, c) => script(c.trim(), SUP, '^')).replace(/\^([0-9A-Za-z+\-∞])/g, (m, c) => script(c, SUP, '^'));
+    s = s.replace(/_\{([^{}]*)\}/g, (m, c) => script(c.trim(), SUB, '_')).replace(/_([0-9])/g, (m, c) => SUB[c]);
+    return s.replace(/[{}]/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  function delatex(text) {
+    // leave inline code spans alone
+    return String(text).split(/(`[^`]*`)/).map((part, i) => {
+      if (i % 2) return part;
+      return part
+        .replace(/\$\$([^$]+)\$\$/g, (m, t) => texToText(t))
+        .replace(/\\\[(.+?)\\\]/g, (m, t) => texToText(t))
+        .replace(/\\\((.+?)\\\)/g, (m, t) => texToText(t))
+        .replace(/\$(?![\s\d])([^$\n]+?)(?<!\s)\$/g, (m, t) => texToText(t));
+    }).join('');
+  }
+
   function parse(src) {
     const lines = String(src ?? '').replace(/\r\n?/g, '\n').split('\n');
     const out = [];
@@ -32,8 +76,8 @@
     const endList = () => { list = null; };
 
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const fence = /^\s*```\s*([\w+-]*)\s*$/.exec(line);
+      const fence = /^\s*```\s*([\w+-]*)\s*$/.exec(lines[i]);
+      const line = fence ? lines[i] : delatex(lines[i]);
       if (fence) {
         endPara(); endList();
         const code = [];
@@ -98,5 +142,5 @@
     return frag;
   }
 
-  return { parse, inline, toDom };
+  return { parse, inline, toDom, delatex };
 }));

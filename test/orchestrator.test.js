@@ -200,3 +200,65 @@ test('unknown session id creates a new chat', async () => {
   assert.ok(res.sessionId);
   assert.equal(sessions.load(res.sessionId).messages[0].content, 'hello');
 });
+
+// ---- brain hooks: system prompt, routing, turn stats ----
+function setupBrain(provider, extra = {}) {
+  return setup(provider, { orc: {
+    systemPrompt: ctx => `SYS source=${ctx.source} tools=${ctx.tools.join(',')} model=${ctx.model}`,
+    route: (text, ctx) => ({ tier: /hard/.test(text) ? 'deep' : 'fast', think: /hard/.test(text), reason: 'test', source: ctx.source }),
+    ...extra,
+  } });
+}
+
+test('system prompt is sent first on every round and never saved', async () => {
+  const fp = createFakeProvider([
+    [{ type: 'tool_call', id: 'c1', name: 'get_time', args: {} }, { type: 'done' }],
+    [{ type: 'token', text: 'ok' }, { type: 'done' }],
+  ]);
+  fp.resolveModel = hints => (hints.tier === 'fast' ? 'small' : 'big');
+  const { orc, s, sessions } = setupBrain(fp);
+  await orc.send(s.id, 'hard question', { source: 'voice' });
+  for (const call of fp.calls) {
+    assert.equal(call.messages[0].role, 'system');
+    assert.equal(call.messages[0].content, 'SYS source=voice tools=get_time model=big');
+  }
+  assert.ok(sessions.load(s.id).messages.every(m => m.role !== 'system'));
+});
+
+test('route hints reach the provider and a route event is emitted', async () => {
+  const fp = createFakeProvider([{ type: 'token', text: 'hey' }, { type: 'done' }]);
+  fp.resolveModel = hints => (hints.tier === 'fast' ? 'small' : 'big');
+  const { orc, s, events } = setupBrain(fp);
+  await orc.send(s.id, 'hi', { source: 'text' });
+  assert.deepEqual(fp.calls[0].hints, { tier: 'fast', think: false, reason: 'test', source: 'text' });
+  const r = of(events, 'route')[0];
+  assert.deepEqual([r.tier, r.think, r.model], ['fast', false, 'small']);
+});
+
+test('turn event carries model, tokens and speed', async () => {
+  const fp = createFakeProvider([{ type: 'token', text: 'a' }, { type: 'token', text: 'b' }, { type: 'done', usage: { promptTokens: 40, completionTokens: 20, evalMs: 400 } }]);
+  fp.resolveModel = () => 'big';
+  const { orc, s, events } = setupBrain(fp);
+  await orc.send(s.id, 'hard one', { source: 'text' });
+  const t = of(events, 'turn')[0];
+  assert.equal(t.model, 'big');
+  assert.equal(t.completionTokens, 20);
+  assert.equal(t.promptTokens, 40);
+  assert.equal(t.tps, 50);
+  assert.equal(t.think, true);
+  assert.ok(t.ms >= 0);
+});
+
+test('system prompt counts toward the context window', async () => {
+  const fp = createFakeProvider([{ type: 'done' }], { contextMax: 100 });
+  const { orc, s, sessions } = setup(fp, { orc: { systemPrompt: () => 'S'.repeat(200) } });
+  const full = sessions.load(s.id);
+  for (let i = 0; i < 4; i++) full.messages.push({ role: i % 2 ? 'assistant' : 'user', content: String(i).repeat(100) });
+  sessions.save(full);
+  await orc.send(s.id, 'Q'.repeat(50), { source: 'text' });
+  const sent = fp.calls[0].messages;
+  assert.equal(sent[0].role, 'system');
+  const chars = sent.reduce((n, m) => n + m.content.length, 0);
+  assert.ok(chars <= 400, `sent ${chars} chars`);
+  assert.equal(sent.at(-1).content, 'Q'.repeat(50));
+});

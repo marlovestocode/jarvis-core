@@ -28,7 +28,11 @@ function createOllamaProvider({ getConfig, fetch: fetchImpl, statusTimeoutMs = 4
     return h;
   };
   const model = () => String(cfg().model || '');
-  let cache = { key: '', at: 0, tags: null, info: null };
+  const fastModel = () => String(cfg().fastModel || 'jarvis-router:latest');
+  const auto = () => cfg().auto !== false;
+  const keepAlive = () => String(cfg().keepAlive || '30m');
+  const caches = new Map(); // host|model → { at, info }
+  let lastTags = null;      // names Ollama had at the last check
 
   async function getJson(path, body) {
     const res = await doFetch(host() + path, {
@@ -45,14 +49,16 @@ function createOllamaProvider({ getConfig, fetch: fetchImpl, statusTimeoutMs = 4
     return res.json();
   }
 
-  // tags + show for the configured model, cached briefly (status runs per turn).
-  async function info() {
-    const key = host() + '|' + model();
-    if (cache.key === key && Date.now() - cache.at < INFO_TTL) return cache;
+  // tags + show for one model, cached briefly (status runs per turn).
+  async function info(name = model()) {
+    const key = host() + '|' + name;
+    const hit = caches.get(key);
+    if (hit && Date.now() - hit.at < INFO_TTL) return hit;
     const tags = await getJson('/api/tags');
-    const entry = (tags.models || []).find(m => m.name === model());
+    lastTags = new Set((tags.models || []).filter(m => !m.remote_model && !m.remote_host).map(m => m.name));
+    const entry = (tags.models || []).find(m => m.name === name);
     if (!entry) {
-      const err = new Error(`Model "${model()}" is not in Ollama. Pull it or pick another in settings.`);
+      const err = new Error(`Model "${name}" is not in Ollama. Pull it or pick another in settings.`);
       err.code = 'MODEL_MISSING';
       throw err;
     }
@@ -62,18 +68,26 @@ function createOllamaProvider({ getConfig, fetch: fetchImpl, statusTimeoutMs = 4
       throw err;
     }
     let show = null;
-    try { show = await getJson('/api/show', { name: model() }); } catch { /* tags data is enough */ }
+    try { show = await getJson('/api/show', { name }); } catch { /* tags data is enough */ }
     const numCtx = show?.parameters?.match(/num_ctx\s+(\d+)/);
     const next = {
-      key, at: Date.now(), tags,
+      at: Date.now(),
       info: {
         capabilities: entry.capabilities || show?.capabilities || [],
         contextMax: numCtx ? +numCtx[1] : (entry.details?.context_length || undefined),
         detail: [entry.details?.parameter_size, entry.details?.quantization_level].filter(Boolean).join(' '),
       },
     };
-    cache = next;
+    caches.set(key, next);
     return next;
+  }
+
+  // Which model serves a turn: quick chat → fast model (when auto and present), else main.
+  function resolveModel(hints = {}) {
+    if (auto() && hints.tier === 'fast' && fastModel() && fastModel() !== model()) {
+      if (!lastTags || lastTags.has(fastModel())) return fastModel();
+    }
+    return model();
   }
 
   const provider = {
@@ -96,15 +110,42 @@ function createOllamaProvider({ getConfig, fetch: fetchImpl, statusTimeoutMs = 4
         .map(m => ({ id: m.name, label: m.name + (m.details?.parameter_size ? ` · ${m.details.parameter_size}` : '') }));
     },
 
-    async *chat({ messages, tools, signal } = {}) {
+    resolveModel,
+
+    // Load the main (and fast) model into VRAM so the first answer is quick. Never throws.
+    async warm() {
+      const names = [model()];
+      if (auto() && fastModel() && fastModel() !== model()) names.push(fastModel());
+      const loaded = [];
+      try {
+        for (const name of names) {
+          try { await info(name); } catch (err) { if (err.code === 'MODEL_MISSING') continue; throw err; }
+          await getJson('/api/generate', { model: name, prompt: '', keep_alive: keepAlive() }).catch(() => {});
+          loaded.push(name);
+        }
+        return { loaded };
+      } catch (err) {
+        return { loaded, error: err.code === 'HOST_NOT_LOCAL' ? err.message : 'Ollama is not running' };
+      }
+    },
+
+    async *chat({ messages, tools, signal, hints } = {}) {
       if (signal?.aborted) throw abortError();
       let i = null;
-      try { i = await info(); } catch (err) {
-        if (['MODEL_MISSING', 'MODEL_REMOTE', 'HOST_NOT_LOCAL'].includes(err.code)) throw err;
-        throw new Error('Ollama is not running');
+      let name = resolveModel(hints || {});
+      try { i = await info(name); } catch (err) {
+        if (err.code === 'MODEL_MISSING' && name !== model()) {   // fast model gone: use the main one
+          name = model();
+          try { i = await info(name); } catch (e2) { err = e2; i = null; }
+        }
+        if (!i) {
+          if (['MODEL_MISSING', 'MODEL_REMOTE', 'HOST_NOT_LOCAL'].includes(err.code)) throw err;
+          throw new Error('Ollama is not running');
+        }
       }
-      const body = { model: model(), messages: mapMessages(messages || []), stream: true };
-      if (i.info.capabilities.includes('thinking')) body.think = !!cfg().think;
+      const body = { model: name, messages: mapMessages(messages || []), stream: true, keep_alive: keepAlive() };
+      const think = auto() && hints && typeof hints.think === 'boolean' ? hints.think : !!cfg().think;
+      if (i.info.capabilities.includes('thinking')) body.think = think;
       if (tools?.length && i.info.capabilities.includes('tools')) {
         body.tools = tools.map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.params } }));
       }
@@ -140,7 +181,9 @@ function createOllamaProvider({ getConfig, fetch: fetchImpl, statusTimeoutMs = 4
             }
             if (j.done) {
               done = true;
-              yield { type: 'done', usage: { promptTokens: j.prompt_eval_count, completionTokens: j.eval_count } };
+              const usage = { promptTokens: j.prompt_eval_count, completionTokens: j.eval_count };
+              if (j.eval_duration) usage.evalMs = Math.round(j.eval_duration / 1e6);
+              yield { type: 'done', usage };
               return;
             }
           }

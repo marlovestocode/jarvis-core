@@ -1,0 +1,130 @@
+{
+  "mode": "app",
+  "model": "jarvis-worker:latest",
+  "pass": 11,
+  "total": 12,
+  "totalMs": 61998,
+  "rows": [
+    {
+      "id": "pow",
+      "ok": true,
+      "ms": 4994,
+      "tools": [
+        "calculate"
+      ],
+      "route": "jarvis-worker:latest",
+      "answer": "23.7 raised to the power of 3.2 is approximately **25,072**."
+    },
+    {
+      "id": "units",
+      "ok": false,
+      "ms": 1982,
+      "tools": [
+        "convert_units"
+      ],
+      "route": "jarvis-worker:latest",
+      "answer": "65 miles per hour is approximately **29.1 meters per second**."
+    },
+    {
+      "id": "escape",
+      "ok": true,
+      "ms": 13153,
+      "tools": [
+        "calculate"
+      ],
+      "route": "jarvis-worker:latest",
+      "answer": "The escape velocity from Earth's surface is approximately **11.2 km/s** (more precisely, **11.186 km/s**).\n\n**Calculation summary:**\n*   $v_e = \\sqrt{\\frac{2GM}{R}}$\n*   $v_e = 11185.73 \\, \\text{m/s}$\n*   $v_e \\approx 11.2 \\, \\text{km/s}$ (to 3 significant figures)\n\nThis is the speed needed for an object to escape Earth's gravitational field without further propulsion."
+    },
+    {
+      "id": "photon",
+      "ok": true,
+      "ms": 11564,
+      "tools": [
+        "calculate",
+        "convert_units"
+      ],
+      "route": "jarvis-worker:latest",
+      "answer": "The energy of a photon with a wavelength of 500 nm is approximately **2.48 eV**.\n\nThis falls in the green light region of the visible spectrum (green has wavelengths around 495-570 nm)."
+    },
+    {
+      "id": "integral",
+      "ok": true,
+      "ms": 3042,
+      "tools": [
+        "integrate"
+      ],
+      "route": "jarvis-worker:latest",
+      "answer": "The integral of x² × e^(-x) from 0 to infinity equals **2**.\n\nThis is the gamma function Γ(3), which equals (3-1)! = 2! = 2."
+    },
+    {
+      "id": "deriv",
+      "ok": true,
+      "ms": 7353,
+      "tools": [
+        "differentiate"
+      ],
+      "route": "jarvis-worker:latest",
+      "answer": "The derivative of $x^3 \\cdot \\sin(x)$ at $x = 2$ is approximately **7.58**.\n\n**Reasoning:**\n- The function is $f(x) = x^3 \\cdot \\sin(x)$.\n- Using the product rule: $\\frac{d}{dx}[u \\cdot v] = u'v + uv'$, where $u = x^3$ and $v = \\sin(x)$.\n- Derivatives: $u' = 3x^2$, $v' = \\cos(x)$.\n- So, $\\frac{df}{dx} = 3x^2 \\cdot \\sin(x) + x^3 \\cdot \\cos(x)$.\n- At $x = 2$:\n  - $3(2)^2 \\cdot \\sin(2) + (2)^3 \\cdot \\cos(2)$\n  - $12 \\cdot \\sin(2) + 8 \\cdot \\cos(2)$\n- Calculated value: **7.58** (to 3 significant figures)."
+    },
+    {
+      "id": "stats",
+      "ok": true,
+      "ms": 1904,
+      "tools": [
+        "statistics"
+      ],
+      "route": "jarvis-worker:latest",
+      "answer": "The sample standard deviation is approximately **13.49**."
+    },
+    {
+      "id": "dates",
+      "ok": true,
+      "ms": 2483,
+      "tools": [
+        "date_calc"
+      ],
+      "route": "jarvis-worker:latest",
+      "answer": "There are **981 days** between March 3, 2024 and November 9, 2026."
+    },
+    {
+      "id": "projectile",
+      "ok": true,
+      "ms": 9000,
+      "tools": [
+        "calculate"
+      ],
+      "route": "jarvis-worker:latest",
+      "answer": "The ball rises to a maximum height of **20.4 meters** (rounded to three significant figures).\n\n**Reasoning:**\n*   Used the kinematic equation $v_f^2 = v_i^2 + 2a\\Delta y$\n*   Set final velocity to zero at the peak\n*   Applied gravity as negative acceleration ($-9.81 \\text{ m/s}^2$)\n*   Result: $\\approx 20.4 \\text{ m}$"
+    },
+    {
+      "id": "bigint",
+      "ok": true,
+      "ms": 2482,
+      "tools": [
+        "calculate"
+      ],
+      "route": "jarvis-worker:latest",
+      "answer": "**2^100 = 1,267,650,600,228,229,401,496,703,205,376**\n\nThat is the exact value with every digit."
+    },
+    {
+      "id": "root",
+      "ok": true,
+      "ms": 2410,
+      "tools": [
+        "solve_equation"
+      ],
+      "route": "jarvis-worker:latest",
+      "answer": "The real root of the equation $x^3 - 2x - 5 = 0$ is approximately **2.094551** (to six decimal places)."
+    },
+    {
+      "id": "gpu",
+      "ok": true,
+      "ms": 1631,
+      "tools": [
+        "jarvis_status"
+      ],
+      "route": "jarvis-worker:latest",
+      "answer": "This PC has an **NVIDIA GeForce RTX 3050** with 8 GB of VRAM."
+    }
+  ]
+}

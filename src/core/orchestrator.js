@@ -6,9 +6,9 @@ function busyError() { return new Error('BUSY'); }
 
 // Newest messages whose content fits in contextMax tokens (chars/4 estimate).
 // The newest message is always sent, even when it alone is too big.
-function fitWindow(messages, contextMax) {
+function fitWindow(messages, contextMax, reserveChars = 0) {
   if (!contextMax) return messages;
-  const budget = contextMax * CHARS_PER_TOKEN;
+  const budget = contextMax * CHARS_PER_TOKEN - reserveChars;
   const out = [];
   let used = 0;
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -30,7 +30,10 @@ function forProvider(m) {
   return o;
 }
 
-function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5 }) {
+// systemPrompt(ctx) → string: sent first every round, never saved.
+// route(text, { source }) → { tier, think, ... }: per-turn hints for the provider.
+// promptInfo() → { hardware }: facts for the prompt.
+function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, route, promptInfo = () => ({}) }) {
   let current = null; // AbortController of the running turn
 
   function pickProvider() {
@@ -50,7 +53,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
   }
 
   // Stream one provider call. Resolves { text, toolCalls, usage }. Throws on abort/timeout/error.
-  async function streamRound(p, messages, toolSpecs, ac, onText) {
+  async function streamRound(p, messages, toolSpecs, ac, onText, hints) {
     const abortP = new Promise(res => {
       if (ac.signal.aborted) return res(ABORTED);
       ac.signal.addEventListener('abort', () => res(ABORTED), { once: true });
@@ -62,6 +65,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
     };
     const args = { messages, signal: ac.signal };
     if (toolSpecs) args.tools = toolSpecs;
+    if (hints) args.hints = hints;
     let it;
     const toolCalls = [];
     let usage;
@@ -117,20 +121,36 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       const toolSpecs = p.capabilities?.tools && tools ? tools.specs() : undefined;
       const useTools = toolSpecs && toolSpecs.length ? toolSpecs : undefined;
 
+      const hints = route ? route(String(text), { source }) : undefined;
+      let model = null;
+      try { model = p.resolveModel ? p.resolveModel(hints || {}) : null; } catch { model = null; }
+      if (hints) bus.emit('route', { tier: hints.tier, think: !!hints.think, reason: hints.reason, model });
+      let sys = null;
+      if (systemPrompt) {
+        let info = {};
+        try { info = promptInfo() || {}; } catch { info = {}; }
+        sys = systemPrompt({ source, now: new Date(), tools: (useTools || []).map(t => t.name), model, ...info });
+      }
+      const t0 = Date.now();
+      let firstTokenAt = 0;
+
       let reply = '';
       let error;
       let stopped = false;
       let toolRounds = 0;
       let sentChars = 0;
       let usage;
+      let completionTokens = 0;
+      let promptTokens = 0;
 
       for (;;) {
         reply = '';
-        const window = fitWindow(s.messages, st.contextMax).map(forProvider);
+        let window = fitWindow(s.messages, st.contextMax, sys ? sys.length : 0).map(forProvider);
+        if (sys) window = [{ role: 'system', content: sys }, ...window];
         sentChars = window.reduce((n, m) => n + String(m.content || '').length, 0);
         let round;
         try {
-          round = await streamRound(p, window, useTools, ac, t => { reply += t; });
+          round = await streamRound(p, window, useTools, ac, t => { if (!firstTokenAt) firstTokenAt = Date.now(); reply += t; }, hints);
         } catch (err) {
           if (ac.signal.aborted && ac.signal.reason === 'timeout') error = 'Model timed out';
           else if (ac.signal.aborted) stopped = true;
@@ -142,6 +162,10 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           break;
         }
         usage = round.usage;
+        if (usage) {
+          completionTokens += usage.completionTokens || 0;
+          promptTokens = usage.promptTokens || promptTokens;
+        }
         if (!round.toolCalls.length) {
           s.messages.push({ role: 'assistant', content: reply });
           break;
@@ -173,6 +197,13 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           ? usage.promptTokens + (usage.completionTokens || 0)
           : Math.ceil((sentChars + reply.length) / CHARS_PER_TOKEN);
         if (!stopped) bus.emit('context', { used, max: st.contextMax || null });
+        if (!stopped) {
+          const ms = Date.now() - t0;
+          const evalMs = usage?.evalMs || (firstTokenAt ? Date.now() - firstTokenAt : 0);
+          const lastTokens = usage?.completionTokens || 0;
+          const tps = evalMs > 0 && lastTokens ? Math.round(lastTokens / (evalMs / 1000) * 10) / 10 : null;
+          bus.emit('turn', { provider: p.id, model, tier: hints?.tier || null, think: !!hints?.think, promptTokens, completionTokens, ms, tps, toolRounds });
+        }
         if (stopped || source !== 'voice') bus.emit('state', { state: 'idle' });
       }
       const out = { reply, stopped, sessionId: s.id };

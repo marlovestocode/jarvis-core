@@ -4,7 +4,15 @@ const path = require('node:path');
 
 const DEFAULTS = Object.freeze({
   provider: 'null',
-  ollama: Object.freeze({ host: 'http://127.0.0.1:11434', model: 'jarvis-worker:latest', think: false }),
+  ollama: Object.freeze({
+    host: 'http://127.0.0.1:11434',
+    model: 'jarvis-worker:latest',      // main model: technical and long questions
+    fastModel: 'jarvis-router:latest',  // quick chat when auto routing is on
+    auto: true,                         // route per turn and decide thinking per question
+    think: false,                       // thinking when auto is off
+    keepAlive: '30m',                   // keep models in VRAM between questions
+  }),
+  startAtLogin: true,
   engines: Object.freeze({ stt: 'windows', tts: 'windows', wake: 'windows' }),
   wakeEnabled: false,
   micDeviceId: null,

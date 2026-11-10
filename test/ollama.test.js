@@ -244,3 +244,54 @@ test('ollama disallows HTTP redirects on metadata and chat requests', async () =
   assert.ok(calls.some(c => c.path === '/api/chat'));
   assert.ok(calls.every(c => c.redirect === 'error'));
 });
+// ---- routing, warm-up, keep-alive ----
+const AUTO = { ollama: { ...CFG.ollama, fastModel: 'jarvis-router:latest', auto: true, keepAlive: '30m' } };
+const TAGS2 = { models: [...TAGS.models, { name: 'jarvis-router:latest', capabilities: ['completion', 'tools', 'thinking'], details: { parameter_size: '1.9B' } }] };
+const routes2 = () => ({ ...standardRoutes(), '/api/tags': jsonRes(TAGS2), '/api/chat': () => ({ ok: true, status: 200, body: ndjson(chatLines) }) });
+
+test('ollama auto: fast turns use the fast model, deep turns the main one; think from hints', async () => {
+  const calls = [];
+  const p = createOllamaProvider({ getConfig: () => AUTO, fetch: fakeFetch(routes2(), calls) });
+  assert.equal(p.resolveModel({ tier: 'fast' }), 'jarvis-router:latest');
+  assert.equal(p.resolveModel({ tier: 'deep' }), 'jarvis-worker:latest');
+  await collect(p.chat({ messages: [], hints: { tier: 'fast', think: false } }));
+  await collect(p.chat({ messages: [], hints: { tier: 'deep', think: true } }));
+  const chats = calls.filter(c => c.path === '/api/chat').map(c => c.body);
+  assert.deepEqual(chats.map(b => [b.model, b.think, b.keep_alive]), [['jarvis-router:latest', false, '30m'], ['jarvis-worker:latest', true, '30m']]);
+});
+
+test('ollama auto off: always the main model and the think setting', async () => {
+  const calls = [];
+  const p = createOllamaProvider({ getConfig: () => ({ ollama: { ...AUTO.ollama, auto: false, think: true } }), fetch: fakeFetch(routes2(), calls) });
+  assert.equal(p.resolveModel({ tier: 'fast' }), 'jarvis-worker:latest');
+  await collect(p.chat({ messages: [], hints: { tier: 'fast', think: false } }));
+  const b = calls.find(c => c.path === '/api/chat').body;
+  assert.deepEqual([b.model, b.think], ['jarvis-worker:latest', true]);
+});
+
+test('ollama auto: a missing fast model falls back to the main model', async () => {
+  const calls = [];
+  const p = createOllamaProvider({ getConfig: () => ({ ollama: { ...AUTO.ollama, fastModel: 'gone:1' } }), fetch: fakeFetch(routes2(), calls) });
+  await collect(p.chat({ messages: [], hints: { tier: 'fast' } }));
+  assert.equal(calls.find(c => c.path === '/api/chat').body.model, 'jarvis-worker:latest');
+});
+
+test('ollama done usage includes evalMs for speed', async () => {
+  const lines = [{ message: { content: 'x' }, done: false }, { message: { content: '' }, done: true, prompt_eval_count: 3, eval_count: 30, eval_duration: 500e6 }];
+  const p = createOllamaProvider({ getConfig, fetch: fakeFetch({ ...standardRoutes(), '/api/chat': { ok: true, body: ndjson(lines) } }) });
+  const out = await collect(p.chat({ messages: [] }));
+  assert.deepEqual(out.at(-1).usage, { promptTokens: 3, completionTokens: 30, evalMs: 500 });
+});
+
+test('ollama warm: loads main and fast models with keep_alive, never throws', async () => {
+  const calls = [];
+  const p = createOllamaProvider({ getConfig: () => AUTO, fetch: fakeFetch({ ...routes2(), '/api/generate': jsonRes({ done: true }) }, calls) });
+  const r = await p.warm();
+  const gens = calls.filter(c => c.path === '/api/generate').map(c => c.body);
+  assert.deepEqual(gens.map(b => [b.model, b.keep_alive]), [['jarvis-worker:latest', '30m'], ['jarvis-router:latest', '30m']]);
+  assert.deepEqual(r.loaded, ['jarvis-worker:latest', 'jarvis-router:latest']);
+  const down = createOllamaProvider({ getConfig: () => AUTO, fetch: fakeFetch({ '/api/tags': new Error('down') }) });
+  const r2 = await down.warm();
+  assert.deepEqual(r2.loaded, []);
+  assert.match(r2.error, /not running/);
+});

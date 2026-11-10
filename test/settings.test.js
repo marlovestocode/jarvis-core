@@ -63,3 +63,17 @@ test('describe: a status() that throws or hangs does not break the panel', async
   assert.deepEqual(d.engines.stt.find(e => e.id === 'bad'), { id: 'bad', label: 'Bad', ready: false, detail: 'dead' });
   assert.equal(d.engines.wake.find(e => e.id === 'slow').ready, false);
 });
+
+test('applyPatch: routing (auto, fast model) and start with Windows', () => {
+  const { providers, engines } = regs();
+  const { config, errors } = applyPatch(DEFAULTS, { startAtLogin: false, ollama: { auto: false, fastModel: 'qwen3.5:2b' } }, { providers, engines });
+  assert.equal(config.startAtLogin, false);
+  assert.equal(config.ollama.auto, false);
+  assert.equal(config.ollama.fastModel, 'qwen3.5:2b');
+  assert.deepEqual(errors, []);
+  assert.equal(DEFAULTS.startAtLogin, true);
+  assert.equal(DEFAULTS.ollama.auto, true);
+  assert.equal(DEFAULTS.ollama.fastModel, 'jarvis-router:latest');
+  assert.equal(DEFAULTS.ollama.keepAlive, '30m');
+  assert.equal(applyPatch(DEFAULTS, { ollama: { fastModel: '' } }, { providers, engines }).errors.length, 1);
+});

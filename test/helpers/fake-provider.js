@@ -11,9 +11,9 @@ function createFakeProvider(script, { delayMs = 0, contextMax, tools = true, id 
     capabilities: { tools, logprobs: true, reasoning: true },
     calls,
     async status() { return { ready: true, detail: 'fake', ...(contextMax ? { contextMax } : {}) }; },
-    async *chat({ messages, tools: t, signal }) {
+    async *chat({ messages, tools: t, signal, hints }) {
       const n = calls.length;
-      calls.push({ messages: messages.map(m => ({ ...m })), tools: t });
+      calls.push({ messages: messages.map(m => ({ ...m })), tools: t, hints });
       const chunks = multi ? (script[n] || script[script.length - 1]) : script;
       for (const c of chunks) {
         if (signal?.aborted) throw abortError();

@@ -56,6 +56,9 @@ function appFactory() {
   const { createOrchestrator } = require('../src/core/orchestrator');
   const { loadConfig, DEFAULTS } = require('../src/core/config');
   const brain = require('../src/core/brain');
+  const { createHardwareProbe } = require('../src/core/brain/hardware');
+  const probe = createHardwareProbe();
+  probe.get();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-eval-'));
   const config = { ...DEFAULTS, provider: 'ollama', ollama: { ...DEFAULTS.ollama } };
   return () => {
@@ -66,10 +69,11 @@ function appFactory() {
     const providers = createRegistry();
     providers.add(NullProvider);
     providers.add(createOllamaProvider({ getConfig: () => config }));
-    const tools = createToolRunner(brain.defaultTools({ getStatus: async () => ({}) }));
+    const tools = createToolRunner(brain.defaultTools({ getStatus: async () => ({ ...(await probe.get()), model: config.ollama.model }) }));
     const orc = createOrchestrator({
       bus, sessions, providers, tools, getConfig: () => config,
       systemPrompt: brain.systemPrompt, route: brain.route, timeoutMs: 120000,
+      promptInfo: () => ({ hardware: probe.cached() }),
     });
     return { orc, sessions, events };
   };

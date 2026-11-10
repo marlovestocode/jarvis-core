@@ -22,6 +22,11 @@ function applyPatch(current, patch = {}, { providers, engines }) {
       else errors.push('Ollama host must be local (http://127.0.0.1:11434)');
     }
     if ('think' in patch.ollama) next.think = !!patch.ollama.think;
+    if ('auto' in patch.ollama) next.auto = !!patch.ollama.auto;
+    if ('fastModel' in patch.ollama) {
+      if (typeof patch.ollama.fastModel === 'string' && patch.ollama.fastModel.trim()) next.fastModel = patch.ollama.fastModel.trim();
+      else errors.push('Empty fast model');
+    }
     config.ollama = next;
   }
   if (isObj(patch.engines)) {
@@ -33,6 +38,7 @@ function applyPatch(current, patch = {}, { providers, engines }) {
     }
   }
   if ('wakeEnabled' in patch) config.wakeEnabled = !!patch.wakeEnabled;
+  if ('startAtLogin' in patch) config.startAtLogin = !!patch.startAtLogin;
   if ('micDeviceId' in patch) {
     if (patch.micDeviceId === null || typeof patch.micDeviceId === 'string') config.micDeviceId = patch.micDeviceId || null;
     else errors.push('Bad mic device');
