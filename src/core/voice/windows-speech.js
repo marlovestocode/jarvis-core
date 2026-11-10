@@ -9,7 +9,7 @@ const childProcess = require('node:child_process');
 
 const SCRIPT = path.join(__dirname, 'speech-host.ps1');
 
-function createSpeechHost({ spawn = childProcess.spawn, script = SCRIPT, log = () => {} } = {}) {
+function createSpeechHost({ spawn = childProcess.spawn, script = SCRIPT, log = () => {}, name = 'speech host' } = {}) {
   let proc = null;
   let starts = 0;
   let closed = false;
@@ -37,8 +37,8 @@ function createSpeechHost({ spawn = childProcess.spawn, script = SCRIPT, log = (
         if (line) onLine(line);
       }
     });
-    kid.stderr?.on('data', d => log('speech host:', String(d).trim()));
-    kid.on('error', err => { log('speech host error:', err.message); onExit(kid, err.code); });
+    kid.stderr?.on('data', d => log(name + ':', String(d).trim()));
+    kid.on('error', err => { log(name + ' error:', err.message); onExit(kid, err.code); });
     kid.on('exit', code => onExit(kid, code));
     kid.stdin.on?.('error', () => {});
   }
@@ -51,16 +51,16 @@ function createSpeechHost({ spawn = childProcess.spawn, script = SCRIPT, log = (
   function onExit(kid, code) {
     if (proc !== kid) return;
     proc = null;
-    failAll(new Error('speech host exited'));
+    failAll(new Error(name + ' exited'));
     if (closed) return;
-    log(`speech host exited (code ${code ?? 'none'})`);
-    if (starts >= 2) { log('speech host gave up after a restart; voice uses text only until the app restarts'); return; }
-    try { start(); emitLocal('restart'); } catch (err) { log('speech host restart failed:', err.message); }
+    log(`${name} exited (code ${code ?? 'none'})`);
+    if (starts >= 2) { log(name + ' gave up after a restart; ' + (name === 'speech host' ? 'voice uses text only' : 'it is off') + ' until the app restarts'); return; }
+    try { start(); emitLocal('restart'); } catch (err) { log(name + ' restart failed:', err.message); }
   }
 
   function onLine(line) {
     let msg;
-    try { msg = JSON.parse(line); } catch { log('speech host bad line:', line.slice(0, 200)); return; }
+    try { msg = JSON.parse(line); } catch { log(name + ' bad line:', line.slice(0, 200)); return; }
     if (msg.ev) {
       for (const fn of [...(handlers.get(msg.ev) || [])]) { try { fn(msg); } catch { /* listener bug */ } }
       return;
@@ -69,13 +69,13 @@ function createSpeechHost({ spawn = childProcess.spawn, script = SCRIPT, log = (
     if (!p) return;
     pending.delete(msg.id);
     if (msg.ok) p.resolve(msg.result);
-    else p.reject(new Error(msg.error || 'speech host error'));
+    else p.reject(new Error(msg.error || name + ' error'));
   }
 
   function request(cmd, args = {}) {
-    if (closed) return Promise.reject(new Error('speech host closed'));
+    if (closed) return Promise.reject(new Error(name + ' closed'));
     if (!proc) {
-      if (starts >= 2) return Promise.reject(new Error('speech host not running'));
+      if (starts >= 2) return Promise.reject(new Error(name + ' not running'));
       try { start(); } catch (err) { return Promise.reject(err); }
     }
     const id = nextId++;
@@ -95,7 +95,7 @@ function createSpeechHost({ spawn = childProcess.spawn, script = SCRIPT, log = (
 
   function close() {
     closed = true;
-    failAll(new Error('speech host closed'));
+    failAll(new Error(name + ' closed'));
     if (proc) { try { proc.kill(); } catch { /* gone */ } proc = null; }
   }
 

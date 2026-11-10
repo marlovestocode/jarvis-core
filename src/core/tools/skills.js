@@ -117,7 +117,7 @@ function createStatusTool({ getStatus }) {
     params: obj({}),
     async run() {
       const s = await getStatus();
-      const label = { cpu: 'CPU', ramGB: 'RAM', gpu: 'GPU', os: 'OS', model: 'AI model', sysmon: 'sysmon', wallpaper: 'wallpaper', voice: 'voice', hotkeys: 'hotkeys', uptime: 'uptime' };
+      const label = { cpu: 'CPU', ramGB: 'RAM', gpu: 'GPU', os: 'OS', model: 'AI model', sysmon: 'sysmon', youtubeMusic: 'YouTube Music', wallpaper: 'wallpaper', voice: 'voice', hotkeys: 'hotkeys', uptime: 'uptime' };
       return Object.entries(s).filter(([, v]) => v !== undefined && v !== null && v !== '')
         .map(([k, v]) => `${label[k] || k}: ${k === 'ramGB' ? v + ' GB' : v}`).join('; ') || 'No status available';
     },

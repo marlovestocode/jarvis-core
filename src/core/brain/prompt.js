@@ -15,7 +15,9 @@ const TOOL_HINTS = {
   get_time: 'get_time: the current time if the date line below is not enough.',
   jarvis_status: "jarvis_status: the user's PC (CPU, GPU, RAM) and JARVIS parts.",
   get_system_stats: 'get_system_stats: live CPU/GPU load, temperatures, memory, network, disk.',
-  media_control: 'media_control: play/pause, next, previous, volume, mute.',
+  media_control: 'media_control: play, pause, stop, skip, previous, seek, volume, mute, shuffle, repeat on the right player; it confirms the result.',
+  media_status: 'media_status: what is playing now, where, position, volume. Read it before answering about media.',
+  youtube_music: 'youtube_music: play any song, album, playlist or artist by name, play next, add to queue, up next, clear queue, like.',
   get_weather: 'get_weather: current weather and forecast; omit place for home. Use for rain tomorrow, temperatures, wind and air quality.',
   weather_alerts: 'weather_alerts: active US weather watches and warnings; omit place for home.',
   news_headlines: 'news_headlines: current news; optionally topic and count.',
@@ -24,8 +26,8 @@ const TOOL_HINTS = {
   read_article: 'read_article: follow-ups on an article title, optionally a section.',
 };
 
-function systemPrompt({ source = 'text', now = new Date(), tools = [], model, hardware, brief = false } = {}) {
-  if (brief) return briefPrompt({ source, now, hardware });
+function systemPrompt({ source = 'text', now = new Date(), tools = [], model, hardware, media, brief = false } = {}) {
+  if (brief) return briefPrompt({ source, now, hardware, media });
   const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${WEEKDAYS[now.getDay()]} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const L = [];
@@ -45,11 +47,14 @@ function systemPrompt({ source = 'text', now = new Date(), tools = [], model, ha
   L.push('- Code: give complete working code for Windows (PowerShell, Node, Python), then a short explanation.');
   L.push('- If you do not know or cannot check something (internet, news, live prices), say so plainly. Never invent numbers, sources or facts.');
   if (source === 'voice') {
-    L.push('- This reply will be spoken aloud: 1 to 3 short sentences, no markdown, no lists, no symbols or formulas; say units in words.');
+    L.push('- This reply will be spoken aloud: 1 to 3 short sentences of plain words. No markdown, lists, symbols, formulas or URLs. Write units, times and abbreviations as they should be said ("5 kilometers", "3:30 PM", "for example"). Round numbers sensibly unless asked for precision.');
   } else {
     L.push('- Format for a small chat window: short paragraphs, lists when useful, code blocks for code. Do not use LaTeX; write math in plain text with Unicode (x², √2, π, ∫, ≈, ×).');
   }
   const hints = tools.map(t => TOOL_HINTS[t]).filter(Boolean);
+  if (tools.includes('media_control')) {
+    L.push('- Media: work out which player and what the user means from the Media line, then call one control. After a control that worked, reply with at most two words (or nothing in voice). If it failed or the player cannot do it, say so plainly and name what is possible instead. Never claim a control worked unless the tool said so. To play something by name or work with the queue use youtube_music; without it you cannot pick songs, and Windows does not expose other players queues.');
+  }
   if (hints.length) {
     L.push('\nTools (call them; do not guess what they would return):');
     for (const h of hints) L.push('- ' + h);
@@ -64,11 +69,13 @@ function systemPrompt({ source = 'text', now = new Date(), tools = [], model, ha
 }
 
 // Quick chat: identity, time, style. Small prompt = fast first token.
-function briefPrompt({ source, now, hardware }) {
+function briefPrompt({ source, now, hardware, media }) {
   const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${WEEKDAYS[now.getDay()]} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
   const L = ['You are J.A.R.V.I.S., the personal AI of this Windows PC, running offline on its own GPU. Calm, witty, precise.', `Now: ${date}.`];
   if (hardware?.gpu) L.push(`This PC: ${[hardware.cpu, hardware.gpu, hardware.ramGB && hardware.ramGB + ' GB RAM'].filter(Boolean).join(', ')}.`);
-  L.push(source === 'voice' ? 'Reply in one or two short spoken sentences, no markdown.' : 'Reply briefly and naturally. No LaTeX.');
+  if (media) L.push(media);
+  L.push(source === 'voice' ? 'Reply in one or two short spoken sentences, no markdown or symbols.' : 'Reply briefly and naturally. No LaTeX.');
+  L.push('Answer first. No filler, no restating the question, no follow-up offers.');
   L.push('If the user needs numbers, facts about the PC, or real work, answer as well as you can; they can ask a follow-up for details.');
   return L.join('\n');
 }

@@ -10,5 +10,20 @@
   { "id": "projectile", "q": "A ball is thrown straight up at 20 m/s. How high does it rise? Use g = 9.81 m/s^2.", "num": 20.3874, "tol": 0.002 },
   { "id": "bigint", "q": "What is 2^100 exactly? Give every digit.", "text": "1267650600228229401496703205376" },
   { "id": "root", "q": "Find the real root of x^3 - 2x - 5 = 0 to six decimal places.", "num": 2.0945515, "tol": 0.000001 },
-  { "id": "gpu", "q": "What graphics card does this PC have?", "text": "3050" }
+  { "id": "gpu", "q": "What graphics card does this PC have?", "text": "3050" },
+  { "id": "westphalia", "group": "fact", "q": "In what year were the Peace of Westphalia treaties signed?", "num": 1648, "tol": 0 },
+  { "id": "ethanol", "group": "fact", "q": "What is the boiling point of ethanol at one atmosphere in degrees Celsius?", "num": 78.37, "tol": 0.005 },
+  { "id": "burkina", "group": "fact", "q": "What is the capital of Burkina Faso?", "text": "Ouagadougou" },
+  { "id": "middlemarch", "group": "fact", "q": "Who wrote the novel Middlemarch?", "text": "George Eliot" },
+  { "id": "sound", "group": "fact", "q": "What is the speed of sound in dry air at 20 degrees Celsius in meters per second?", "num": 343, "tol": 0.003 },
+  { "id": "penicillin", "group": "fact", "q": "Who discovered penicillin in 1928?", "text": "Alexander Fleming" },
+  { "id": "magna", "group": "fact", "q": "In what year was Magna Carta first issued?", "num": 1215, "tol": 0 },
+  { "id": "tungsten", "group": "fact", "q": "What is the atomic number of tungsten?", "num": 74, "tol": 0 },
+  { "id": "mitochondria", "group": "fact", "q": "Which organelle is the primary site of aerobic ATP production in eukaryotic cells?", "text": "mitochondri" },
+  { "id": "australia", "group": "fact", "q": "What is the capital of Australia?", "text": "Canberra" },
+  { "id": "weather-now", "group": "live", "q": "What's the weather like in Abilene, TX right now?", "tool": "get_weather" },
+  { "id": "rain", "group": "live", "q": "Will it rain tomorrow in Abilene, TX?", "tool": "get_weather" },
+  { "id": "alerts", "group": "live", "q": "Any severe weather alerts in Abilene, TX?", "tool": "weather_alerts" },
+  { "id": "headline", "group": "live", "q": "What is the latest top news headline?", "tool": "news_headlines" },
+  { "id": "cowboys", "group": "live", "q": "What was the last Dallas Cowboys score?", "tool": "sports_scores" }
 ]

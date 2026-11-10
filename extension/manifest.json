@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "JARVIS for YouTube Music",
+  "version": "1.0.0",
+  "description": "Lets JARVIS (running on this PC) search, play and queue songs in your YouTube Music tab. Talks only to 127.0.0.1.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAk+6UCU3kPGnINSJP/vzUxqbccJ65CqqIwsKyilImpFyHFr/D15EpMFTvMTkjY/KGcYo5TY0HK9+nEk7PdNS94wsQ2YzALKqcUB+m28Wsse3dBmUebH087NrdEF3/nXeawwM1HvOoQFyAx5RwEP7fwmLobIjtqhLa35BmUz5qcxzj73Hcn6Fnjlm3FxHR9QjhSZdXIXE/1MIVYGKjg3dir9Q4NaaHWLlTKWxkG51UnrZFOZdFlDXbCXRCFhn/CYpFhcyAUAKtySIwx8B6bk7FLsNKdra4OBLE5w32ZKVQ3RFQwSqvPIwBzhDwd33SCepniV9IAvezxUMo2UdhS+dK2QIDAQAB",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "scripting",
+    "tabs",
+    "alarms",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://music.youtube.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "JARVIS for YouTube Music",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  }
+}

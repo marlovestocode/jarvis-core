@@ -21,8 +21,9 @@ function numbers(text) {
   return out;
 }
 
-function grade(q, answer) {
-  if (q.text) return String(answer).replace(/[\s,]/g, '').includes(q.text);
+function grade(q, answer, result = {}) {
+  if (q.tool) return (result.toolResults || []).some(t => t.name === q.tool && t.ok) && !result.error;
+  if (q.text) return String(answer).toLowerCase().replace(/[\s,]/g, '').includes(q.text.toLowerCase().replace(/[\s,]/g, ''));
   const tol = q.tol === 0 ? 0.5 : Math.abs(q.num) * q.tol + 1e-12;
   return numbers(String(answer).slice(-300)).some(v => Math.abs(v - q.num) <= tol); // final answer, not working
 }
@@ -43,10 +44,31 @@ async function appAsk(make, q) {
   const tools = events.filter(e => e.type === 'tool' && e.phase === 'start').map(e => e.name);
   const route = events.find(e => e.type === 'route');
   const s = sessions.load(res.sessionId);
-  return { answer: res.reply || res.error || '', ms: Date.now() - t0, tools, route: route && `${route.model}${route.think ? '+think' : ''}`, steps: s.messages.length };
+  return { answer: res.reply || res.error || '', error: res.error, ms: Date.now() - t0, tools, route: route && `${route.model}${route.think ? '+think' : ''}`, steps: s.messages.length,
+    toolResults: events.filter(e => e.type === 'tool' && e.phase === 'end').map(e => ({ name: e.name, ok: e.ok })),
+    sources: events.filter(e => e.type === 'net'), evidence: s.messages.filter(m => m.role === 'tool').map(m => ({ name: m.name, text: m.content })) };
 }
 
-function appFactory() {
+function baselineBrain() {
+  const vm = require('node:vm');
+  const { execFileSync } = require('node:child_process');
+  const { createRequire } = require('node:module');
+  const root = path.resolve(__dirname, '..');
+  const cache = new Map();
+  const load = file => {
+    if (cache.has(file)) return cache.get(file);
+    const module = { exports: {} };
+    const local = createRequire(path.join(root, file));
+    const code = execFileSync('git', ['-C', root, 'show', 'main:' + file], { encoding: 'utf8' });
+    const requireAt = id => ['src/core/brain/prompt.js', 'src/core/brain/router.js'].includes(path.relative(root, local.resolve(id)).replace(/\\/g, '/')) ? load(path.relative(root, local.resolve(id)).replace(/\\/g, '/')) : local(id);
+    vm.runInThisContext('(function(require,module,exports){' + code + '\n})', { filename: 'baseline/' + file })(requireAt, module, module.exports);
+    cache.set(file, module.exports);
+    return module.exports;
+  };
+  return load('src/core/brain/index.js');
+}
+
+function appFactory({ before = false } = {}) {
   const { createBus } = require('../src/core/bus');
   const { createSessionStore } = require('../src/core/session');
   const { createRegistry } = require('../src/core/providers/provider');
@@ -55,13 +77,18 @@ function appFactory() {
   const { createToolRunner } = require('../src/core/tools/registry');
   const { createOrchestrator } = require('../src/core/orchestrator');
   const { loadConfig, DEFAULTS } = require('../src/core/config');
-  const brain = require('../src/core/brain');
+  const brain = before ? baselineBrain() : require('../src/core/brain');
+  const { createPolicy } = require('../src/core/net/policy');
+  const { createFetcher } = require('../src/core/net/fetcher');
+  const { createKiwix } = require('../src/core/knowledge/kiwix');
   const { createHardwareProbe } = require('../src/core/brain/hardware');
   const probe = createHardwareProbe();
   probe.get();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-eval-'));
-  const config = { ...DEFAULTS, provider: 'ollama', ollama: { ...DEFAULTS.ollama } };
-  return () => {
+  const config = loadConfig(process.env.JARVIS_DATA_DIR || path.join(os.homedir(), 'AppData', 'Roaming', 'jarvis-core'));
+  config.provider = 'ollama';
+  const kiwix = createKiwix({ exe: path.join(__dirname, '../engines/kiwix/kiwix-serve.exe'), zimDir: 'C:\\JarvisData\\library' });
+  const make = () => {
     const bus = createBus();
     const events = [];
     bus.on('*', e => events.push(e));
@@ -69,7 +96,8 @@ function appFactory() {
     const providers = createRegistry();
     providers.add(NullProvider);
     providers.add(createOllamaProvider({ getConfig: () => config }));
-    const tools = createToolRunner(brain.defaultTools({ getStatus: async () => ({ ...(await probe.get()), model: config.ollama.model }) }));
+    const fetcher = createFetcher({ policy: createPolicy(() => config), bus, cacheDir: path.join(dir, 'cache') });
+    const tools = createToolRunner(brain.defaultTools({ getStatus: async () => ({ ...(await probe.get()), model: config.ollama.model }), ...(!before ? { fetcher, kiwix, getConfig: () => config, bus } : {}) }));
     const orc = createOrchestrator({
       bus, sessions, providers, tools, getConfig: () => config,
       systemPrompt: brain.systemPrompt, route: brain.route, timeoutMs: 120000,
@@ -77,24 +105,38 @@ function appFactory() {
     });
     return { orc, sessions, events };
   };
+  make.close = () => kiwix.close();
+  make.model = config.ollama.model;
+  return make;
 }
 
-(async () => {
+async function run() {
   const mode = process.argv[2] || 'raw';
-  const model = process.argv[3] || 'jarvis-worker:latest';
-  const make = mode === 'app' ? appFactory() : null;
+  if (!['app', 'before', 'raw'].includes(mode)) throw new Error('Mode must be app, before or raw');
+  const make = mode === 'raw' ? null : appFactory({ before: mode === 'before' });
+  const model = make?.model || process.argv[3] || 'jarvis-worker:latest';
+  const questions = process.env.JARVIS_EVAL_GROUP ? QUESTIONS.filter(q => q.group === process.env.JARVIS_EVAL_GROUP || (process.env.JARVIS_EVAL_GROUP === 'knowledge' && q.group)) : QUESTIONS;
   const rows = [];
   let pass = 0, totalMs = 0;
-  for (const q of QUESTIONS) {
-    let r;
-    try { r = mode === 'app' ? await appAsk(make, q.q) : await rawAsk(model, q.q); } catch (err) { r = { answer: 'ERROR ' + err.message, ms: 0 }; }
-    const ok = grade(q, r.answer);
-    pass += ok; totalMs += r.ms || 0;
-    rows.push({ id: q.id, ok, ms: r.ms, tools: r.tools, route: r.route, answer: String(r.answer) });
-    console.log(`${ok ? 'PASS' : 'FAIL'} ${q.id.padEnd(10)} ${String(r.ms).padStart(6)} ms ${r.route ? '[' + r.route + '] ' : ''}${r.tools?.length ? '{' + r.tools.join(',') + '} ' : ''}${String(r.answer).replace(/\s+/g, ' ').slice(0, 110)}`);
-  }
-  console.log(`\nSCORE ${mode}: ${pass}/${QUESTIONS.length}, total ${(totalMs / 1000).toFixed(1)} s`);
-  fs.writeFileSync(path.join(__dirname, `results-${mode}.json`), JSON.stringify({ mode, model, pass, total: QUESTIONS.length, totalMs, rows }, null, 2));
-})();
+  try {
+    for (const q of questions) {
+      let r;
+      try { r = make ? await appAsk(make, q.q) : await rawAsk(model, q.q); } catch (err) { r = { answer: 'ERROR ' + err.message, error: err.message, ms: 0 }; }
+      const ok = grade(q, r.answer, r);
+      pass += ok; totalMs += r.ms || 0;
+      rows.push({ id: q.id, group: q.group || 'brain', ok, ...r, answer: String(r.answer) });
+      console.log(`${ok ? 'PASS' : 'FAIL'} ${q.id.padEnd(12)} ${String(r.ms).padStart(6)} ms ${r.route ? '[' + r.route + '] ' : ''}${r.tools?.length ? '{' + r.tools.join(',') + '} ' : ''}${String(r.answer).replace(/\s+/g, ' ').slice(0, 110)}`);
+    }
+  } finally { make?.close(); }
+  const groups = Object.fromEntries(['brain', 'fact', 'live'].map(group => {
+    const rs = rows.filter(r => r.group === group);
+    return [group, { pass: rs.filter(r => r.ok).length, total: rs.length, offlineRetrieved: rs.filter(r => r.sources?.some(s => s.offline)).length }];
+  }));
+  console.log(`\nSCORE ${mode}: ${pass}/${questions.length}, total ${(totalMs / 1000).toFixed(1)} s; ${JSON.stringify(groups)}`);
+  const file = path.join(__dirname, `results-${mode}.json`);
+  if (fs.existsSync(file)) fs.copyFileSync(file, file.replace('.json', `-previous-${Date.now()}.json`));
+  fs.writeFileSync(file, JSON.stringify({ mode, model, at: new Date().toISOString(), pass, total: questions.length, totalMs, groups, rows }, null, 2));
+}
 
-module.exports = { grade, numbers };
+if (require.main === module) run().catch(err => { console.error(err); process.exitCode = 1; });
+module.exports = { grade, numbers, baselineBrain, appFactory };

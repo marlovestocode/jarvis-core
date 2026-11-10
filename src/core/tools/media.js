@@ -1,34 +1,133 @@
-// media_control: presses a media key through sysmon (POST /media/<action>, needs an Origin header).
+// Media tools for the model.
+//   media_status  — what is playing right now, read fresh from Windows (title, artist, album, app, state,
+//                   position, duration, shuffle/repeat, system and app volume).
+//   media_control — one verified control on the right player (see core/media/service.js).
+// Without a media service (host off) media_control falls back to a media key through sysmon
+// (POST /media/<key>, needs an Origin header), which works but cannot be verified.
 const { SYSMON } = require('./sysmon');
+const { ack, failure, clarifyQuestion, nowPlaying, clock } = require('../media/say');
 
-const ACTIONS = ['playpause', 'next', 'prev', 'stop', 'mute', 'volup', 'voldown'];
+const ACTIONS = ['playpause', 'next', 'prev', 'stop', 'mute', 'volup', 'voldown'];   // sysmon media keys
 const DONE = { playpause: 'Toggled play/pause', next: 'Skipped to next track', prev: 'Went to previous track', stop: 'Stopped playback', mute: 'Toggled mute', volup: 'Volume up', voldown: 'Volume down' };
+const CONTROLS = ['play', 'pause', 'toggle', 'stop', 'next', 'prev', 'seek', 'volume', 'mute', 'unmute', 'shuffle', 'repeat', 'queue'];
 
-function createMediaTool({ fetch = globalThis.fetch, timeoutMs = 3000 } = {}) {
+async function pressKey(fetch, action, timeoutMs = 3000) {
+  if (!ACTIONS.includes(action)) throw new Error(`Unknown media action "${action}". Use one of: ${ACTIONS.join(', ')}`);
+  let r;
+  try {
+    r = await fetch(`${SYSMON}/media/${action}`, { method: 'POST', headers: { Origin: 'http://127.0.0.1' }, signal: AbortSignal.timeout(timeoutMs) });
+  } catch {
+    throw new Error('Sysmon is not running');
+  }
+  if (r.status === 204 || r.ok) return DONE[action];
+  if (r.status === 429) throw new Error('Too fast, try again in a moment');
+  if (r.status === 503) throw new Error('Media keys unavailable');
+  throw new Error(`Sysmon refused the media key (HTTP ${r.status})`);
+}
+
+function createMediaTool({ fetch = globalThis.fetch, timeoutMs = 3000, service } = {}) {
+  if (!service) {
+    return {
+      name: 'media_control',
+      description: 'Control media playback on this PC with media keys: play/pause, next, previous, stop, mute, volume up/down.',
+      params: { type: 'object', properties: { action: { type: 'string', enum: ACTIONS } }, required: ['action'], additionalProperties: false },
+      run: (args = {}) => pressKey(fetch, args.action, timeoutMs),
+    };
+  }
   return {
     name: 'media_control',
-    description: 'Control media playback on this PC: play/pause, next, previous, stop, mute, volume up/down.',
+    description: 'Control what is playing on this PC and confirm it worked. Actions: play, pause, toggle, stop, next, prev, seek (to or by seconds), volume (set 0-100 or by -100..100 percent points; system volume unless app is given), mute, unmute, shuffle (on), repeat (mode none|track|list), queue (not supported by Windows; returns why). app targets one player, e.g. "Spotify" or "Chrome".',
     params: {
       type: 'object',
-      properties: { action: { type: 'string', enum: ACTIONS } },
+      properties: {
+        action: { type: 'string', enum: [...CONTROLS, ...ACTIONS.filter(a => !CONTROLS.includes(a))] },
+        app: { type: 'string', description: 'player to control; omit for the one playing' },
+        to: { type: 'number', description: 'seek: absolute position in seconds' },
+        by: { type: 'number', description: 'seek: relative seconds (negative = back); volume: percent points' },
+        set: { type: 'number', description: 'volume: 0-100 percent' },
+        on: { type: 'boolean', description: 'shuffle on/off' },
+        mode: { type: 'string', enum: ['none', 'track', 'list'] },
+      },
       required: ['action'],
       additionalProperties: false,
     },
-    async run(args = {}) {
-      const action = args.action;
-      if (!ACTIONS.includes(action)) throw new Error(`Unknown media action "${action}". Use one of: ${ACTIONS.join(', ')}`);
-      let r;
-      try {
-        r = await fetch(`${SYSMON}/media/${action}`, { method: 'POST', headers: { Origin: 'http://127.0.0.1' }, signal: AbortSignal.timeout(timeoutMs) });
-      } catch {
-        throw new Error('Sysmon is not running');
+    async run(a = {}) {
+      const cmd = { action: a.action };
+      if (a.action === 'playpause') cmd.action = 'toggle';
+      if (a.action === 'volup' || a.action === 'voldown') { cmd.action = 'volume'; cmd.by = a.action === 'volup' ? 0.1 : -0.1; }
+      if (!CONTROLS.includes(cmd.action)) throw new Error(`Unknown media action "${a.action}"`);
+      if (a.app) cmd.app = a.app;
+      if (cmd.action === 'seek') { if (Number.isFinite(a.to)) cmd.to = a.to; else if (Number.isFinite(a.by)) cmd.by = a.by; else throw new Error('seek needs to or by'); }
+      if (cmd.action === 'volume' && cmd.by === undefined) {
+        if (Number.isFinite(a.set)) cmd.set = Math.max(0, Math.min(100, a.set)) / 100;
+        else if (Number.isFinite(a.by)) cmd.by = a.by / 100;
+        else throw new Error('volume needs set or by');
       }
-      if (r.status === 204 || r.ok) return DONE[action];
-      if (r.status === 429) throw new Error('Too fast, try again in a moment');
-      if (r.status === 503) throw new Error('Media keys unavailable');
-      throw new Error(`Sysmon refused the media key (HTTP ${r.status})`);
+      if (a.app && ['volume', 'mute', 'unmute'].includes(cmd.action)) cmd.target = 'app';
+      if (cmd.action === 'shuffle') cmd.on = a.on !== false;
+      if (cmd.action === 'repeat') cmd.mode = a.mode || 'track';
+      const r = await service.act(cmd);
+      if (r.clarify) throw new Error(`More than one player: ask the user ${clarifyQuestion(r.clarify)}`);
+      if (!r.ok) throw new Error(failure(r));
+      const now = r.session ? ` Now: ${r.session.status} ${r.session.title ? `"${r.session.title}"${r.session.artist ? ' by ' + r.session.artist : ''}` : ''} in ${r.session.app}${r.session.position !== null && r.session.duration ? ` at ${clock(r.session.position)} of ${clock(r.session.duration)}` : ''}.` : '';
+      return `${ack(r)}${r.via === 'keys' ? '' : ' Verified.'}${now}`;
     },
   };
 }
 
-module.exports = { createMediaTool, ACTIONS };
+function createMediaStatusTool({ service }) {
+  return {
+    name: 'media_status',
+    description: 'What is playing on this PC right now: title, artist, album or show, app, playing/paused, position and duration, shuffle/repeat, system and app volume. Windows does not expose the queue.',
+    params: { type: 'object', properties: {}, additionalProperties: false },
+    async run() {
+      const st = await service.state();
+      const lines = st.sessions.map(s => `${s.current ? '[current] ' : ''}${nowPlaying(s, false)}${s.shuffle !== null ? ` Shuffle ${s.shuffle ? 'on' : 'off'}.` : ''}${s.repeat ? ` Repeat ${s.repeat}.` : ''}${s.volume !== null ? ` ${s.app} volume ${Math.round(s.volume * 100)}%.` : ''}`);
+      const sys = st.system.volume !== null ? `System volume ${Math.round(st.system.volume * 100)}%${st.system.muted ? ', muted' : ''}.` : 'System volume unreadable.';
+      return (lines.length ? lines.join('\n') : 'Nothing is playing.') + '\n' + sys;
+    },
+  };
+}
+
+// youtube_music: search-and-play, the queue and likes in the user's YouTube Music tab (extension).
+function createYtMusicTool({ ytm }) {
+  const { named } = require('../media/ytmusic');
+  return {
+    name: 'youtube_music',
+    description: 'YouTube Music in Chrome: play a song, album, playlist or artist by name; play one next or add it to the queue; read what is up next; clear the queue; like or dislike the current song. query is what to search, e.g. "bohemian rhapsody by queen", "album american idiot", "some lofi".',
+    timeoutMs: 40000,
+    params: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['play', 'play_next', 'add_to_queue', 'up_next', 'clear_queue', 'like', 'dislike'] },
+        query: { type: 'string', description: 'for play / play_next / add_to_queue' },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+    async run({ action, query } = {}) {
+      if (!ytm.connected) throw new Error('The YouTube Music extension is not connected');
+      if (['play', 'play_next', 'add_to_queue'].includes(action) && !query) throw new Error('query is required');
+      if (action === 'play') {
+        const r = await ytm.play(query);
+        if (!r.ok) throw new Error(r.message);
+        return r.started ? `Playing ${named(r.item)} (verified).` : `Loaded ${named(r.item)}, but ${r.message}`;
+      }
+      if (action === 'play_next' || action === 'add_to_queue') {
+        const r = await ytm.enqueue(query, action === 'play_next' ? 'next' : 'end');
+        if (!r.ok) throw new Error(r.message);
+        return r.started ? `Queue was empty, so ${named(r.item)} is playing.` : `${action === 'play_next' ? 'Next up' : 'Added to the end of the queue'}: ${named(r.item)} (verified).`;
+      }
+      if (action === 'up_next') {
+        const q = await ytm.upNext(5);
+        if (q.none) return 'No YouTube Music tab is open.';
+        return q.next.length ? 'Up next: ' + q.next.map(x => `"${x.title}"${x.artist ? ' by ' + x.artist : ''}`).join('; ') + (q.repeat && q.repeat !== 'NONE' ? `. Repeat ${q.repeat}.` : '.') : 'Nothing is queued after this song.';
+      }
+      if (action === 'clear_queue') { const r = await ytm.clear(); return `Removed ${r.removed} songs after the current one.`; }
+      if (action === 'like' || action === 'dislike') { const r = await ytm.like(action === 'like' ? 'LIKE' : 'DISLIKE'); return `Song is now ${r.value.toLowerCase()}d.`; }
+      throw new Error(`Unknown action ${action}`);
+    },
+  };
+}
+
+module.exports = { createMediaTool, createMediaStatusTool, createYtMusicTool, pressKey, ACTIONS };

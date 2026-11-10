@@ -289,3 +289,32 @@ test('hints.tools === false: no tools sent and the prompt lists none', async () 
   assert.deepEqual(seen[0].tools, []);
   assert.equal(seen[0].brief, true);
 });
+
+test('skill fast path: answers without the model, records history, silent voice reply stays silent', async () => {
+  const fp = createFakeProvider([{ type: 'token', text: 'MODEL' }, { type: 'done' }]);
+  const fastPath = async (text, { source }) => (/^pause$/.test(text) ? { reply: source === 'voice' ? '' : 'Paused.', record: 'Paused.', tool: 'media_control', ok: true } : null);
+  const { events, sessions, orc, s } = setup(fp, { orc: { fastPath } });
+  const v = await orc.send(s.id, 'pause', { source: 'voice' });
+  assert.equal(v.reply, ''); assert.equal(v.skill, 'media_control');
+  assert.equal(of(events, 'token').length, 0);
+  assert.deepEqual(of(events, 'tool').map(e => [e.name, e.phase]), [['media_control', 'start'], ['media_control', 'end']]);
+  assert.deepEqual(sessions.load(s.id).messages.map(m => [m.role, m.content, !!m.silent]), [['user', 'pause', false], ['assistant', 'Paused.', true]]);
+  const t = await orc.send(s.id, 'pause', { source: 'text' });
+  assert.equal(t.reply, 'Paused.');
+  assert.deepEqual(of(events, 'token').map(e => e.text), ['Paused.']);
+  const m = await orc.send(s.id, 'hello there', { source: 'text' });
+  assert.equal(m.reply, 'MODEL');   // not a skill: the model answers
+});
+
+test('skill fast path that throws falls back to the model', async () => {
+  const fp = createFakeProvider([{ type: 'token', text: 'MODEL' }, { type: 'done' }]);
+  const { orc, s } = setup(fp, { orc: { fastPath: async () => { throw new Error('host down'); } } });
+  assert.equal((await orc.send(s.id, 'pause', { source: 'text' })).reply, 'MODEL');
+});
+
+test('promptInfo may be async (media line reaches the system prompt)', async () => {
+  const fp = createFakeProvider([{ type: 'token', text: 'ok' }, { type: 'done' }]);
+  const { orc, s } = setup(fp, { orc: { systemPrompt: ({ media }) => `SYS ${media}`, promptInfo: async () => ({ media: 'Media: playing X.' }) } });
+  await orc.send(s.id, 'hi', { source: 'text' });
+  assert.equal(fp.calls[0].messages[0].content, 'SYS Media: playing X.');
+});

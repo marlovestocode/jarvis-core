@@ -29,3 +29,13 @@ test('splitter: a long run without a full stop is cut at a comma so speech start
   assert.equal(out.length, 1);
   assert.match(out[0], /going,$/);
 });
+
+test('articulation: times, dates, money, ranges, abbreviations, acronyms, pauses', () => {
+  const { speakable } = require('../src/core/voice/speech-text');
+  assert.equal(speakable('Meeting at 3:05 PM, or 15:00, or 9am.'), 'Meeting at 3 oh 5 P M, or 15 hundred, or 9 A M.');
+  assert.equal(speakable('Released 2026-11-10 for $5.99, not $1.5 million.'), 'Released November 10, 2026 for 5 dollars 99 cents, not 1.5 million dollars.');
+  assert.equal(speakable('Takes 10-20 ms on the GPU (about 4 GB); e.g. Chrome vs. Edge — fine.'),
+    'Takes 10 to 20 milliseconds on the G P U, about 4 gigabytes. for example Chrome versus Edge, fine.');
+  assert.equal(speakable('Song by Scrim feat. Ghostemane, #1 hit.'), 'Song by Scrim featuring Ghostemane, number 1 hit.');
+  assert.equal(speakable('5 - 3 = 2'), '5 minus 3 equals 2');
+});

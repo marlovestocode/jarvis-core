@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { width: 260px; margin: 0; padding: 14px; background: #0b1118; color: #cfe9f5; font: 13px/1.4 "Segoe UI", sans-serif; }
+  h1 { font-size: 13px; letter-spacing: .12em; margin: 0 0 10px; color: #3fd7ff; }
+  .row { display: flex; justify-content: space-between; margin: 4px 0; }
+  .ok { color: #5df2a3; } .bad { color: #ff7b7b; }
+  .muted { color: #7f99a8; font-size: 12px; margin-top: 10px; }
+  button { margin-top: 10px; width: 100%; padding: 6px; background: #13212d; color: #cfe9f5; border: 1px solid #2a4556; border-radius: 4px; cursor: pointer; }
+  button:hover { border-color: #3fd7ff; }
+</style>
+</head>
+<body>
+  <h1>JARVIS · YOUTUBE MUSIC</h1>
+  <div class="row"><span>JARVIS link</span><span id="link">…</span></div>
+  <div class="row"><span>Music tab</span><span id="tab">…</span></div>
+  <div class="row"><span>Last command</span><span id="cmd">–</span></div>
+  <div class="muted" id="err"></div>
+  <button id="retry">Reconnect</button>
+  <script src="popup.js"></script>
+</body>
+</html>

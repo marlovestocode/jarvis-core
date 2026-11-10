@@ -32,8 +32,10 @@ function forProvider(m) {
 
 // systemPrompt(ctx) → string: sent first every round, never saved.
 // route(text, { source }) → { tier, think, ... }: per-turn hints for the provider.
-// promptInfo() → { hardware }: facts for the prompt.
-function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, route, promptInfo = () => ({}) }) {
+// promptInfo() → { hardware, media } (or a promise of it): facts for the prompt.
+// fastPath(text, { source }) → null | { reply, record?, tool, ok }: a skill that answers without the model
+// (media commands). An empty reply is silent; record is what the chat history keeps.
+function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, route, promptInfo = () => ({}), fastPath }) {
   let current = null; // AbortController of the running turn
 
   function pickProvider() {
@@ -120,6 +122,27 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       sessions.save(s);
       bus.emit('state', { state: 'thinking' });
 
+      if (fastPath) {
+        let fp = null;
+        try { fp = await fastPath(String(text), { source }); } catch (err) { bus.emit('log', { level: 'warn', text: `Skill failed, asking the model: ${err?.message || err}` }); }
+        if (fp && !ac.signal.aborted) {
+          const id = `skill${Date.now()}`;
+          bus.emit('route', { tier: 'skill', think: false, reason: 'skill', model: null });
+          if (fp.tool) {
+            bus.emit('tool', { id, name: fp.tool, phase: 'start' });
+            bus.emit('tool', { id, name: fp.tool, phase: 'end', ok: !!fp.ok });
+          }
+          const reply = String(fp.reply || '');
+          if (reply) bus.emit('token', { text: reply });
+          const msg = { role: 'assistant', content: String(fp.record ?? reply) };
+          if (!reply) msg.silent = true;
+          s.messages.push(msg);
+          sessions.save(s);
+          if (source !== 'voice') bus.emit('state', { state: 'idle' });
+          return { reply, stopped: false, sessionId: s.id, skill: fp.tool || true };
+        }
+      }
+
       const p = pickProvider();
       const st = await providerStatus(p);
       bus.emit('provider', { id: p.id, label: p.label, ready: !!st.ready });
@@ -132,7 +155,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       let sys = null;
       if (systemPrompt) {
         let info = {};
-        try { info = promptInfo() || {}; } catch { info = {}; }
+        try { info = (await promptInfo({ source, hints })) || {}; } catch { info = {}; }
         sys = systemPrompt({ source, now: new Date(), tools: (useTools || []).map(t => t.name), model, brief: hints?.tools === false, ...info });
       }
       const t0 = Date.now();

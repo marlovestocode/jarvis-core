@@ -38,6 +38,12 @@ const { createVoiceController } = require('../core/voice/controller');
 const { createWhisperStt } = require('../core/voice/whisper');
 const { createPiperTts } = require('../core/voice/piper');
 const { chime } = require('../core/voice/chime');
+const { createMediaService } = require('../core/media/service');
+const { createMediaSkill } = require('../core/media/skill');
+const { promptLine: mediaPromptLine } = require('../core/media/say');
+const { pressKey } = require('../core/tools/media');
+const { startYtMusicLink } = require('../core/media/ytmusic-link');
+const { createYtMusic } = require('../core/media/ytmusic');
 const os = require('node:os');
 const { registerHotkeys } = require('./hotkeys');
 const { createMic } = require('./mic');
@@ -89,6 +95,7 @@ async function jarvisStatus() {
     ...(await ctx.hardware.get()),
     model,
     sysmon,
+    youtubeMusic: ctx.ytmLink.connected ? 'extension connected' : 'extension not connected',
     wallpaper: ctx.bridge ? (ctx.bridge.clients() ? 'linked to the core' : 'not connected') : 'bridge off',
     voice: `speech-to-text ${c.engines.stt}, text-to-speech ${c.engines.tts}, wake word ${c.wakeEnabled ? 'on' : 'off'}`,
     hotkeys: ctx.hotkeys.failed.length ? `taken: ${ctx.hotkeys.failed.join(', ')}` : `chat ${c.hotkeys.chat}, voice ${c.hotkeys.voice}`,
@@ -96,11 +103,27 @@ async function jarvisStatus() {
 }
 ctx.fetcher = createFetcher({ policy: createPolicy(ctx.getConfig), bus: ctx.bus, cacheDir: path.join(DATA_DIR, 'cache') });
 ctx.kiwix = createKiwix({ exe: path.join(__dirname, '../../engines/kiwix/kiwix-serve.exe'), zimDir: 'C:\\JarvisData\\library', log: ctx.log });
-ctx.toolList = brain.defaultTools({ getStatus: jarvisStatus, fetcher: ctx.fetcher, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus });
+// Media: what is playing and its controls, read from Windows by one PowerShell host (src/core/media).
+// Media keys through sysmon remain the fallback when the host cannot run.
+ctx.mediaHost = createSpeechHost({ script: path.join(__dirname, '../core/media/media-host.ps1'), log: ctx.log, name: 'media host' });
+ctx.media = createMediaService({ request: (cmd, args) => ctx.mediaHost.request(cmd, args), keys: key => pressKey(fetch, key), log: ctx.log });
+// YouTube Music: the JARVIS Chrome extension connects here (127.0.0.1:47830, extension origin only)
+ctx.ytmLink = startYtMusicLink({ log: ctx.log });
+ctx.ytm = createYtMusic({ link: ctx.ytmLink });
+ctx.mediaSkill = createMediaSkill({ service: ctx.media, ytm: ctx.ytm });
+if (!DEV_RUN) ctx.media.state().catch(err => ctx.log('media host:', err.message));   // warm up: the first read compiles Core Audio (~0.8 s)
+ctx.toolList = brain.defaultTools({ getStatus: jarvisStatus, fetcher: ctx.fetcher, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm });
 ctx.tools = createToolRunner(ctx.toolList);
 ctx.orchestrator = createOrchestrator({
   bus: ctx.bus, sessions: ctx.sessions, providers: ctx.providers, tools: ctx.tools, getConfig: ctx.getConfig,
-  systemPrompt: brain.systemPrompt, route: brain.route, promptInfo: () => ({ hardware: ctx.hardware.cached() || undefined }),
+  systemPrompt: brain.systemPrompt, route: brain.route,
+  // the model always sees what is playing, read fresh for the turn (skipped if Windows is slow)
+  promptInfo: async () => {
+    let media;
+    try { media = mediaPromptLine(await Promise.race([ctx.media.state(), new Promise((_, rej) => setTimeout(() => rej(new Error('slow')), 600))])); } catch { media = undefined; }
+    return { hardware: ctx.hardware.cached() || undefined, media };
+  },
+  fastPath: (text, o) => ctx.mediaSkill.handle(text, o),
   timeoutMs: 120000, // a cold model load plus thinking can be slow on the first turn
 });
 
@@ -179,7 +202,7 @@ ctx.bus.on('state', () => {
   // with the wake word on, the mic stays open (local only) so "Jarvis, <command>" keeps its first words
   if (ctx.voice.active || ctx.config.wakeEnabled) ctx.mic.start(); else ctx.mic.stop();
 });
-ctx.onQuit = [() => ctx.speechHost.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close()];
+ctx.onQuit = [() => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close()];
 
 app.on('web-contents-created', (_e, wc) => guardWebContents(wc));
 app.on('second-instance', () => ctx.windows?.showChat());
