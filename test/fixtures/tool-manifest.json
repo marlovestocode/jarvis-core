@@ -1,0 +1,1007 @@
+[
+  {
+    "name": "calculate",
+    "description": "Evaluate a math expression exactly. Use it for ANY arithmetic instead of computing in your head. Supports + - * / % ^ !, parentheses, sqrt cbrt abs exp ln log10 log2 log(x, base), sin cos tan asin acos atan atan2 sinh cosh tanh (radians; write \"30 deg\" for degrees), floor ceil round(x, digits), min max hypot, nCr nPr gcd lcm factorial gamma, constants pi e tau phi. Whole-number math is exact for huge numbers.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "expression": {
+          "type": "string",
+          "description": "e.g. \"23.7^3.2\", \"2^100\", \"sqrt(2*6.674e-11*5.972e24/6.371e6)\""
+        }
+      },
+      "required": [
+        "expression"
+      ],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "cancel_timer",
+    "description": "Cancel a timer, alarm or reminder by label or id, or all of them with all: true.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "all": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "close_app",
+    "description": "Close an app by name. Asks the user first; a force close needs a second yes.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "risk": "confirm",
+    "timeoutMs": null
+  },
+  {
+    "name": "convert_units",
+    "description": "Convert a value between units of the same kind (length, mass, time, temperature, speed, area, volume, energy, power, pressure, force, frequency, data, angle, and compound units like \"m/s^2\", \"kWh\", \"mi/h\"). Temperatures: degC, degF, K.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "number",
+          "description": "amount"
+        },
+        "from": {
+          "type": "string",
+          "description": "unit, e.g. \"mph\""
+        },
+        "to": {
+          "type": "string",
+          "description": "unit, e.g. \"m/s\""
+        }
+      },
+      "required": [
+        "value",
+        "from",
+        "to"
+      ],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "date_calc",
+    "description": "Calendar math: days between two dates, a date plus/minus \"N days|weeks|months|years\", and weekdays. Dates as YYYY-MM-DD (or \"today\").",
+    "params": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "start date"
+        },
+        "to": {
+          "type": "string",
+          "description": "end date"
+        },
+        "add": {
+          "type": "string",
+          "description": "e.g. \"90 days\", \"-2 weeks\""
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "delete_to_recycle_bin",
+    "description": "Send files or folders in \tDesktop, \tDocuments, \tDownloads and \tProjects to the Recycle Bin (they can be restored). Asks the user first.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "paths": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "paths"
+      ],
+      "additionalProperties": false
+    },
+    "risk": "confirm",
+    "timeoutMs": null
+  },
+  {
+    "name": "differentiate",
+    "description": "Numerical derivative (order 1 or 2) of an expression at a point.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "expression": {
+          "type": "string",
+          "description": "e.g. \"x^3*sin(x)\""
+        },
+        "variable": {
+          "type": "string",
+          "description": "default x"
+        },
+        "at": {
+          "type": "number",
+          "description": "point"
+        },
+        "order": {
+          "type": "integer",
+          "enum": [
+            1,
+            2
+          ]
+        }
+      },
+      "required": [
+        "expression",
+        "at"
+      ],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "find_files",
+    "description": "Find files by name words or a pattern like \"*.pdf\" in \tDesktop, \tDocuments, \tDownloads and \tProjects. folder narrows it. Read-only, at most 10 results.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "folder": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "additionalProperties": false
+    },
+    "risk": "safe",
+    "timeoutMs": null
+  },
+  {
+    "name": "focus_window",
+    "description": "Bring an open window to the front, by app name or by words in its title.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "app": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "risk": "safe",
+    "timeoutMs": null
+  },
+  {
+    "name": "forget_memory",
+    "description": "Delete saved facts about the user that match the words given, when the user asks you to forget something.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "about": {
+          "type": "string",
+          "description": "Words from the fact to delete"
+        }
+      },
+      "required": [
+        "about"
+      ],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "get_system_stats",
+    "description": "Get current PC stats from the local system monitor: CPU, GPU, RAM, network, disk.",
+    "params": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "get_time",
+    "description": "Get the current local date, time, weekday and time zone.",
+    "params": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "get_weather",
+    "description": "Live weather: current conditions and up to a 7-day forecast (highs, lows, rain chance, wind, UV, air quality). Default place is the user's home.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "place": {
+          "type": "string",
+          "description": "City, e.g. \"Dallas\" or \"Springfield, IL\". Omit for home."
+        },
+        "days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 7
+        },
+        "hourly": {
+          "type": "boolean",
+          "description": "Include the next 12 hours."
+        }
+      },
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": 20000
+  },
+  {
+    "name": "integrate",
+    "description": "Definite integral of an expression. Bounds may be numbers, expressions like \"pi\", or \"inf\"/\"-inf\".",
+    "params": {
+      "type": "object",
+      "properties": {
+        "expression": {
+          "type": "string",
+          "description": "integrand, e.g. \"x^2 * e^(-x)\""
+        },
+        "variable": {
+          "type": "string",
+          "description": "default x"
+        },
+        "from": {
+          "type": "string",
+          "description": "lower bound"
+        },
+        "to": {
+          "type": "string",
+          "description": "upper bound"
+        }
+      },
+      "required": [
+        "expression",
+        "from",
+        "to"
+      ],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "jarvis_status",
+    "description": "Facts about this PC and JARVIS itself: CPU, RAM, GPU and VRAM, Windows version, the AI model in use, and whether sysmon, the wallpaper, voice and hotkeys are working. Use it for any question about the user's computer or JARVIS.",
+    "params": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "list_timers",
+    "description": "List the timers, alarms and reminders that are set.",
+    "params": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "list_windows",
+    "description": "List the open windows: app and title.",
+    "params": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "risk": "safe",
+    "timeoutMs": null
+  },
+  {
+    "name": "lock_screen",
+    "description": "Lock the PC (the Windows lock screen).",
+    "params": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "risk": "safe",
+    "timeoutMs": null
+  },
+  {
+    "name": "lookup_knowledge",
+    "description": "Look up facts about the world in Wikipedia (offline library first, then online). Returns cited passages. Use for who/what/when/where/why questions before answering.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "What to look up, e.g. \"Treaty of Westphalia year signed\"."
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": 30000
+  },
+  {
+    "name": "media_control",
+    "description": "Control what is playing on this PC and confirm it worked. Actions: play, pause, toggle, stop, next, prev, seek (to or by seconds), volume (set 0-100 or by -100..100 percent points; system volume unless app is given), mute, unmute, shuffle (on), repeat (mode none|track|list), queue (not supported by Windows; returns why). app targets one player, e.g. \"Spotify\" or \"Chrome\".",
+    "params": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "play",
+            "pause",
+            "toggle",
+            "stop",
+            "next",
+            "prev",
+            "seek",
+            "volume",
+            "mute",
+            "unmute",
+            "shuffle",
+            "repeat",
+            "queue",
+            "playpause",
+            "volup",
+            "voldown"
+          ]
+        },
+        "app": {
+          "type": "string",
+          "description": "player to control; omit for the one playing"
+        },
+        "to": {
+          "type": "number",
+          "description": "seek: absolute position in seconds"
+        },
+        "by": {
+          "type": "number",
+          "description": "seek: relative seconds (negative = back); volume: percent points"
+        },
+        "set": {
+          "type": "number",
+          "description": "volume: 0-100 percent"
+        },
+        "on": {
+          "type": "boolean",
+          "description": "shuffle on/off"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "none",
+            "track",
+            "list"
+          ]
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "media_status",
+    "description": "What is playing on this PC right now: title, artist, album or show, app, playing/paused, position and duration, shuffle/repeat, system and app volume. Windows does not expose the queue.",
+    "params": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "move_files",
+    "description": "Move files within \tDesktop, \tDocuments, \tDownloads and \tProjects. from: paths or a pattern like \"Downloads/*.pdf\"; to: a folder. Asks the user first.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "to": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ],
+      "additionalProperties": false
+    },
+    "risk": "confirm",
+    "timeoutMs": null
+  },
+  {
+    "name": "music_stats",
+    "description": "The user's own listening statistics from their play log (what they play, skip, repeat, when, and how their taste changes). Pick a report; reports: overview, top_artists, top_tracks, skips, time_of_day, weekday, sessions, repeats, trends, discovery, artist (needs name), sources, recent. Always call it for questions about their music taste or habits.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "report": {
+          "type": "string",
+          "enum": [
+            "overview",
+            "top_artists",
+            "top_tracks",
+            "skips",
+            "time_of_day",
+            "weekday",
+            "sessions",
+            "repeats",
+            "trends",
+            "discovery",
+            "artist",
+            "sources",
+            "recent"
+          ],
+          "description": "Which statistic. overview if unsure."
+        },
+        "period": {
+          "type": "string",
+          "description": "today, yesterday, week, month, year, all, or a number of days. Default month."
+        },
+        "limit": {
+          "type": "number",
+          "description": "How many rows for top lists (default 10)."
+        },
+        "name": {
+          "type": "string",
+          "description": "Artist name, for report=artist."
+        },
+        "by": {
+          "type": "string",
+          "enum": [
+            "plays",
+            "time"
+          ],
+          "description": "Rank top lists by play count or listening time."
+        }
+      },
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "news_headlines",
+    "description": "Latest news headlines from the user's news feeds, optionally about a topic.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "topic": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        }
+      },
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": 20000
+  },
+  {
+    "name": "open_app",
+    "description": "Open an installed app by name, e.g. \"Spotify\" or \"Visual Studio Code\". Only Start menu apps and apps listed in settings.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "risk": "safe",
+    "timeoutMs": null
+  },
+  {
+    "name": "open_path",
+    "description": "Open a file or folder in \tDesktop, \tDocuments, \tDownloads and \tProjects with its usual app. Programs are not opened this way.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false
+    },
+    "risk": "safe",
+    "timeoutMs": null
+  },
+  {
+    "name": "physics_constant",
+    "description": "Exact CODATA value of a physical constant by name or symbol (c, h, hbar, e, k_B, N_A, R, G, g, epsilon_0, mu_0, m_e, m_p, alpha, sigma, Earth mass, Sun mass, au, ...).",
+    "params": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "e.g. \"Planck\", \"G\", \"electron mass\""
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "power",
+    "description": "Shut down, restart or sleep the PC. Asks the user first.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "shutdown",
+            "restart",
+            "sleep"
+          ]
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "additionalProperties": false
+    },
+    "risk": "confirm",
+    "timeoutMs": null
+  },
+  {
+    "name": "read_article",
+    "description": "Read a longer extract of one Wikipedia article, optionally one section, for follow-up questions.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "section": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": 30000
+  },
+  {
+    "name": "remember",
+    "description": "Save one short lasting fact or preference about the user, only when they ask you to remember it. Never save passwords, keys or card numbers.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "fact": {
+          "type": "string",
+          "description": "One short sentence, e.g. \"User prefers Fahrenheit\""
+        }
+      },
+      "required": [
+        "fact"
+      ],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "set_alarm",
+    "description": "Set an alarm for a clock time, e.g. at \"7:30 am\" or \"tomorrow at 9\". label is optional.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "at": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "at"
+      ],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "set_reminder",
+    "description": "Remind the user of something. text is what to remind; give at (a clock time) or in (a delay like \"20 minutes\").",
+    "params": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        },
+        "in": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "set_system_volume",
+    "description": "Set the Windows system volume to a percent, 0 to 100.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "percent": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "percent"
+      ],
+      "additionalProperties": false
+    },
+    "risk": "safe",
+    "timeoutMs": null
+  },
+  {
+    "name": "set_timer",
+    "description": "Start a countdown timer. Give seconds, or duration_text like \"10 minutes\"; label is optional.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "seconds": {
+          "type": "number"
+        },
+        "duration_text": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "solve_equation",
+    "description": "Find all real roots of an equation in one variable numerically, e.g. \"x^3 - 2x - 5 = 0\" or \"cos(t) = t\". Searches from..to (default -100..100).",
+    "params": {
+      "type": "object",
+      "properties": {
+        "equation": {
+          "type": "string",
+          "description": "equation with one \"=\""
+        },
+        "variable": {
+          "type": "string",
+          "description": "variable name, default x"
+        },
+        "from": {
+          "type": "number",
+          "description": "search start"
+        },
+        "to": {
+          "type": "number",
+          "description": "search end"
+        }
+      },
+      "required": [
+        "equation"
+      ],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "sports_scores",
+    "description": "Live and final scores, and the next game, from ESPN. Leagues: nfl, nba, mlb, nhl, cfb, mls, epl. With no team or league: the user's followed teams.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "team": {
+          "type": "string",
+          "description": "Team name, city or abbreviation, e.g. \"Cowboys\"."
+        },
+        "league": {
+          "type": "string",
+          "enum": [
+            "nfl",
+            "nba",
+            "mlb",
+            "nhl",
+            "cfb",
+            "mls",
+            "epl"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": 20000
+  },
+  {
+    "name": "statistics",
+    "description": "Statistics of a list of numbers: count, sum, mean, median, mode, min, max, quartiles, sample and population variance/stdev. Give y too for a least-squares line (slope, intercept, r²).",
+    "params": {
+      "type": "object",
+      "properties": {
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "y": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        }
+      },
+      "required": [
+        "values"
+      ],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": null
+  },
+  {
+    "name": "undo_last",
+    "description": "Undo the last move_files: move those files back. Asks the user first.",
+    "params": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "risk": "confirm",
+    "timeoutMs": null
+  },
+  {
+    "name": "weather_alerts",
+    "description": "Active US National Weather Service watches, warnings and advisories for a place (default home).",
+    "params": {
+      "type": "object",
+      "properties": {
+        "place": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": 20000
+  },
+  {
+    "name": "youtube_music",
+    "description": "YouTube Music in Chrome: play a song, album, playlist or artist by name right now (action play; also for \"skip to <song>\"); play_next and add_to_queue only QUEUE it and do not start it; read what is up next; clear the queue; like or dislike the current song. query is what to search, e.g. \"bohemian rhapsody by queen\", \"album american idiot\", \"some lofi\".",
+    "params": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "play",
+            "play_next",
+            "add_to_queue",
+            "up_next",
+            "clear_queue",
+            "like",
+            "dislike"
+          ]
+        },
+        "query": {
+          "type": "string",
+          "description": "for play / play_next / add_to_queue"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": 40000
+  },
+  {
+    "name": "ytm_library",
+    "description": "The user's own YouTube Music playlists, read live: view=playlists lists them; view=playlist shows the songs in one (name as the user said it). query filters, limit/offset page.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "view": {
+          "type": "string",
+          "enum": [
+            "playlists",
+            "playlist"
+          ],
+          "description": "playlists = list all, playlist = songs in one (default: playlist when a name is given)"
+        },
+        "playlist": {
+          "type": "string",
+          "description": "playlist name or id, for view=playlist"
+        },
+        "query": {
+          "type": "string",
+          "description": "only songs or playlists whose title or artist contains this"
+        },
+        "limit": {
+          "type": "integer",
+          "description": "rows to show (default 25 songs, 40 playlists)"
+        },
+        "offset": {
+          "type": "integer",
+          "description": "rows to skip, to page through"
+        },
+        "refresh": {
+          "type": "boolean",
+          "description": "force a fresh read instead of the short cache"
+        }
+      },
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": 90000
+  },
+  {
+    "name": "ytm_play_library",
+    "description": "Play one of the user's OWN YouTube Music playlists, or one song of it (track), optionally shuffled, and confirm it started.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "playlist": {
+          "type": "string",
+          "description": "playlist name or id"
+        },
+        "track": {
+          "type": "string",
+          "description": "a song inside that playlist to start from, e.g. \"lose yourself\" or \"stronger by kanye west\""
+        },
+        "shuffle": {
+          "type": "boolean",
+          "description": "shuffle the playlist (not with track)"
+        }
+      },
+      "required": [
+        "playlist"
+      ],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": 90000
+  },
+  {
+    "name": "ytm_playlist_edit",
+    "description": "Change the user's OWN YouTube Music playlists. op=add: add songs by name to a playlist (songs: [\"title by artist\"]). op=add_current: add the song playing now. op=undo: take back the last add. The playlist is the one the user named; if they did not name one, ask. Duplicates are skipped.",
+    "params": {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": [
+            "add",
+            "add_current",
+            "undo"
+          ]
+        },
+        "playlist": {
+          "type": "string",
+          "description": "playlist name or id (not for undo)"
+        },
+        "songs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "for add: songs as the user said them, e.g. \"stronger by kanye west\""
+        },
+        "allowDuplicate": {
+          "type": "boolean",
+          "description": "only when the user asks for a second copy"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "additionalProperties": false
+    },
+    "risk": null,
+    "timeoutMs": 90000
+  }
+]
