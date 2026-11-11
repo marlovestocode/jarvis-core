@@ -5,6 +5,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { matchText, norm, parseRequest } = require('./rank');
+const { memoryJournal } = require('./ytjournal');
 
 const MIN_EXTENSION = '1.1.0';
 const MIN_FOR = { playlist_edit: '1.2.0' };   // commands added after 1.1.0
@@ -34,7 +35,9 @@ function cleanName(text) {
 const ORDINALS = [[/^(?:1|one|first|1st)\b/, 0], [/^(?:2|two|second|2nd)\b/, 1], [/^(?:3|three|third|3rd)\b/, 2]];
 const YES = /^(?:yes|yeah|yep|yup|sure|ok|okay|correct|right|that one|that's it|do it|please)\b/;
 
-function createYtPlaylists({ link, ytm = null, getConfig = () => ({}), now = Date.now, sleep = delay, file = null, journalFile = null, log = () => {} }) {
+// journal: where the undo journal lives (ytjournal.js; the cortex in the app). mirror: the cortex copy of the playlists
+// (mirror.js), told about fresh reads only; its errors are logged, never thrown.
+function createYtPlaylists({ link, ytm = null, getConfig = () => ({}), now = Date.now, sleep = delay, file = null, journal: journalStore = memoryJournal(), mirror = null, log = () => {} }) {
   const cfg = () => ({ ...DEFAULT_MUSIC, ...(getConfig()?.music || {}) });
   let library = { at: 0, list: [] };        // at = 0 means "hint from disk or never fetched": refetch before use
   const tracks = new Map();                  // playlist id → { at, data }
@@ -80,6 +83,8 @@ function createYtPlaylists({ link, ytm = null, getConfig = () => ({}), now = Dat
     return p;
   }
 
+  function mirrored(fn) { if (!mirror) return; try { fn(); } catch (err) { log('ytplaylists: playlist mirror:', err.message); } }
+
   // ---- library ----
   async function getLibrary({ refresh = false } = {}) {
     const ttl = cfg().libraryTtlSec * 1000;
@@ -89,6 +94,7 @@ function createYtPlaylists({ link, ytm = null, getConfig = () => ({}), now = Dat
       if (r?.noTab) throw fail('NO_TAB', 'The YouTube Music extension did not open a tab, so it is probably out of date: reload it in chrome://extensions');
       library = { at: now(), list: Array.isArray(r?.playlists) ? r.playlists : [] };
       persist();
+      mirrored(() => mirror.library(library.list));
       return { playlists: library.list, at: library.at, stale: false };
     } catch (err) {
       if (err.code === 'AUTH') throw err;   // never present old data as current when the account is signed out
@@ -137,6 +143,7 @@ function createYtPlaylists({ link, ytm = null, getConfig = () => ({}), now = Dat
       truncated: !!r.truncated, tracks: Array.isArray(r.tracks) ? r.tracks : [],
     };
     tracks.set(meta.id, { at: now(), data });
+    mirrored(() => mirror.playlist(data));
     return { ...data, at: now(), cached: false };
   }
 
@@ -192,20 +199,18 @@ function createYtPlaylists({ link, ytm = null, getConfig = () => ({}), now = Dat
 
   // ---- journal: every change JARVIS makes, so it can be taken back ----
   let journal = [];
-  let entrySeq = 0;
-  if (journalFile) {
-    try { const d = JSON.parse(fs.readFileSync(journalFile, 'utf8')); if (Array.isArray(d)) { journal = d.slice(-JOURNAL_MAX); entrySeq = journal.reduce((n, e) => Math.max(n, e.id || 0), 0); } } catch { /* none yet */ }
-  }
-  function saveJournal() {
-    if (!journalFile) return;
-    try { fs.mkdirSync(path.dirname(journalFile), { recursive: true }); fs.writeFileSync(journalFile + '.tmp', JSON.stringify(journal)); fs.renameSync(journalFile + '.tmp', journalFile); } catch (err) { log('ytplaylists: could not save the undo journal:', err.message); }
-  }
+  try { journal = journalStore.load().slice(-JOURNAL_MAX); } catch (err) { log('ytplaylists: could not read the undo journal:', err.message); }
+  let entrySeq = journal.reduce((n, e) => Math.max(n, e.id || 0), 0);
   function record(entry) {
     const e = { id: ++entrySeq, at: now(), undone: false, ...entry };
     journal.push(e);
     journal = journal.slice(-JOURNAL_MAX);
-    saveJournal();
+    try { journalStore.append(e); } catch (err) { log('ytplaylists: could not save the undo journal:', err.message); }
     return e;
+  }
+  function markUndone(e) {
+    e.undone = true;
+    try { journalStore.markUndone(e); } catch (err) { log('ytplaylists: could not save the undo journal:', err.message); }
   }
 
   // ---- adding songs ----
@@ -297,12 +302,12 @@ function createYtPlaylists({ link, ytm = null, getConfig = () => ({}), now = Dat
     const meta = library.list.find(p => p.id === e.playlistId) || { id: e.playlistId, title: e.playlistTitle, editable: true };
     const data = await getPlaylist(meta, { refresh: true });
     const live = e.items.map(it => data.tracks.find(x => x.setVideoId && x.setVideoId === it.setVideoId)).filter(Boolean);
-    if (!live.length) { e.undone = true; saveJournal(); return { status: 'gone', entry: e }; }
+    if (!live.length) { markUndone(e); return { status: 'gone', entry: e }; }
     const res = await call('playlist_edit', { id: e.playlistId, actions: live.map(x => ({ action: 'REMOVE_VIDEO', videoId: x.videoId, setVideoId: x.setVideoId })) }, 30000);
     tracks.delete(e.playlistId);
     if (!res?.ok) return { status: 'failed', entry: e };
     const gone = await confirmed(meta, list => live.every(x => !list.some(y => y.setVideoId === x.setVideoId)));
-    e.undone = true; saveJournal();
+    markUndone(e);
     return { status: 'ok', entry: e, removed: live, verified: gone.ok };
   }
 

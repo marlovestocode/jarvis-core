@@ -60,4 +60,4 @@ function recordPlay(cortex, p, { prev, source = musicSource(cortex) } = {}) {
 // the plays as stats.js wants them, ordered by `at`
 const playsFrom = (cortex, { since = null, until = null } = {}) => cortex.event.query({ kind: 'play', since, until, limit: 1e6 }).map(e => e.payload);
 
-module.exports = { recordPlay, playsFrom, musicSource, trackKey, artistKey, trackText, SESSION_GAP, ETA_NEXT, SKIP_FACTOR };
+module.exports = { recordPlay, playsFrom, musicSource, ensureTrack, trackKey, artistKey, trackText, SESSION_GAP, ETA_NEXT, SKIP_FACTOR };

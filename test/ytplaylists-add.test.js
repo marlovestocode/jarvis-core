@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { cortexOn } = require('./helpers/cortex');
+const { createJournalStore } = require('../src/core/media/ytjournal');
 const { createYtPlaylists } = require('../src/core/media/ytplaylists');
 const { createYtMusic } = require('../src/core/media/ytmusic');
 const { createYtEditTool } = require('../src/core/tools/ytplaylists');
@@ -113,7 +115,7 @@ function world({ lag = 0, editStatus = 'STATUS_SUCCEEDED', playing = SONGS.lose 
       return k ? { item: SONGS[k], sure: true, alts: [] } : { error: `I couldn't find ${q} on YouTube Music.`, notFound: true }; },
   };
   let t = 1_000_000;
-  const svcFor = (opts = {}) => createYtPlaylists({ link, ytm, getConfig: () => opts.config || {}, now: () => t, sleep: async ms => { t += ms; }, journalFile: opts.journalFile });
+  const svcFor = (opts = {}) => createYtPlaylists({ link, ytm, getConfig: () => opts.config || {}, now: () => t, sleep: async ms => { t += ms; }, journal: opts.journal });
   return { store, calls, link, ytm, finds, svcFor, svc: svcFor(), tick: ms => { t += ms; } };
 }
 const edits = w => w.calls.filter(c => c.cmd === 'playlist_edit');
@@ -256,14 +258,14 @@ test('undo: songs already gone are not touched; other copies of the same song ar
 
 test('undo journal survives a restart', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jc-undo-'));
-  const journalFile = path.join(dir, 'x', 'undo.json');
+  const journal = () => createJournalStore({ cortex: cortexOn(dir) });
   const w = world();
-  await w.svcFor({ journalFile }).addSongs('gym', [SONGS.lose]);
-  assert.ok(fs.existsSync(journalFile));
-  const after = w.svcFor({ journalFile });
+  await w.svcFor({ journal: journal() }).addSongs('gym', [SONGS.lose]);
+  assert.equal(journal().load().length, 1);
+  const after = w.svcFor({ journal: journal() });
   assert.equal((await after.undo()).status, 'ok');
   assert.equal(w.store.get('PLgym0000001').length, 1);
-  assert.equal((await w.svcFor({ journalFile }).undo()).status, 'nothing');
+  assert.equal((await w.svcFor({ journal: journal() }).undo()).status, 'nothing');
 });
 
 // ---- the model tool ----
