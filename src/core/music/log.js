@@ -1,8 +1,7 @@
-// The listening log: one line per finished play, in <data>/music-plays.jsonl. Local only.
+// The listening log: one `play` event per finished play in the cortex (W2), local only. The old <data>/music-plays.jsonl is imported once (import.js).
 // The extension sends raw facts (how long it was heard, how far it got, how it ended); this module
 // turns them into a play with an outcome, so the thresholds can change later without touching the extension.
-const fs = require('node:fs');
-const path = require('node:path');
+const { recordPlay, playsFrom } = require('./adapter');
 
 const FINISH_RATIO = 0.85;        // heard at least this much of the track = finished
 const SKIP_RATIO = 0.5;           // left before this = skipped
@@ -35,34 +34,39 @@ function normalize(e, { now = Date.now() } = {}) {
   };
 }
 
-function createPlayLog({ file, getConfig = () => ({}), now = Date.now, log = () => {} } = {}) {
-  const plays = [];
-  const ids = new Set();
-  try {
-    for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
-      if (!line.trim()) continue;
-      try { const p = JSON.parse(line); if (p?.id && !ids.has(p.id)) { ids.add(p.id); plays.push(p); } } catch { /* a torn last line: skip it */ }
-    }
-    plays.sort((a, b) => a.at - b.at);
-  } catch { /* no log yet */ }
+// The play log on the cortex (W2 §3): same surface as the old file log. all() is cached in memory once read (plan E7),
+// kept in time order on add, and dropped by trim(). importing is set by the one-time import (music/import.js).
+function createPlayLog({ cortex, getConfig = () => ({}), now = Date.now, log = () => {} } = {}) {
+  let cache = null;
+  const importing = { active: false, pct: 0 };
 
   // add(rawEvent) → the stored play, or null (logging off, junk, or already stored)
   function add(raw) {
-    if (getConfig().music?.logPlays === false) return null;
+    if (getConfig()?.music?.logPlays === false) return null;
     const p = normalize(raw, { now: now() });
-    if (!p || ids.has(p.id)) return null;
-    ids.add(p.id);
-    // late events (sent after JARVIS was down) keep time order
-    let i = plays.length;
-    while (i > 0 && plays[i - 1].at > p.at) i--;
-    plays.splice(i, 0, p);
-    try { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.appendFileSync(file, JSON.stringify(p) + '\n'); } catch (err) { log('play log write failed: ' + err.message); }
+    if (!p) return null;
+    let r;
+    try { r = recordPlay(cortex, p); } catch (err) { log('play log write failed: ' + err.message); return null; }
+    if (!r) return null;
+    if (cache) {
+      // late events (sent after JARVIS was down) keep time order
+      let i = cache.length;
+      while (i > 0 && cache[i - 1].at > p.at) i--;
+      cache.splice(i, 0, p);
+    }
     return p;
   }
 
-  function clear() { plays.length = 0; ids.clear(); try { fs.rmSync(file, { force: true }); } catch { /* gone */ } }
+  function all() { if (!cache) cache = playsFrom(cortex); return cache; }
+  const range = ({ since = null, until = null } = {}) => playsFrom(cortex, { since, until });
+  const count = () => cortex.event.count({ kind: 'play' });
+  const since = () => cortex.event.query({ kind: 'play', limit: 1 })[0]?.at ?? null;
+  function clear() { cortex.event.deleteWhere({ kind: 'play' }); cache = []; }
+  function trim() { cache = null; }
+  // after an import the cache is stale
+  function reload() { cache = null; }
 
-  return { add, clear, all: () => plays, count: () => plays.length, since: () => plays[0]?.at ?? null };
+  return { add, clear, all, count, since, range, trim, reload, importing, stats: () => ({ plays: count(), cached: cache ? cache.length : 0 }) };
 }
 
 module.exports = { createPlayLog, normalize, FINISH_RATIO, SKIP_RATIO, QUICK_SEC };

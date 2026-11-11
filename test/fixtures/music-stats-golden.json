@@ -1,0 +1,162 @@
+{
+ "tz": "UTC",
+ "stored": 601,
+ "cases": [
+  {
+   "name": "overview/all",
+   "text": "Listening, all time: 601 plays, 30.1 hours over 52 active days (0.6 h per active day).\n144 different tracks by 40 artists. Finished 60.1%, skipped 24.6% (16.3% within 30 s), the rest partly heard.\nMost time on Artist 0 (3.3 h, 56 plays). Peak hour 1am, busiest weekday Monday. 26.8% of listening is between midnight and 5am.\n74 sessions, average 24 min; longest 142 min on Aug 17, 2026 (42 tracks).\n34 tracks liked while playing."
+  },
+  {
+   "name": "overview/week",
+   "text": "Listening, the last 7 days: 61 plays, 3.3 hours over 6 active days (0.6 h per active day).\n50 different tracks by 30 artists. Finished 61%, skipped 20.3% (15.3% within 30 s), the rest partly heard.\nMost time on Artist 0 (0.7 h, 10 plays). Peak hour 2pm, busiest weekday Friday. 17.2% of listening is between midnight and 5am.\n9 sessions, average 22 min; longest 75 min on Aug 28, 2026 (22 tracks).\n5 tracks liked while playing."
+  },
+  {
+   "name": "overview/30",
+   "text": "Listening, the last 30 days: 307 plays, 15.4 hours over 26 active days (0.6 h per active day).\n126 different tracks by 40 artists. Finished 58.6%, skipped 23.6% (15.2% within 30 s), the rest partly heard.\nMost time on Artist 0 (1.6 h, 26 plays). Peak hour 10pm, busiest weekday Monday. 30.6% of listening is between midnight and 5am.\n36 sessions, average 26 min; longest 142 min on Aug 17, 2026 (42 tracks).\n17 tracks liked while playing."
+  },
+  {
+   "name": "top_artists/all",
+   "text": "Top artists by plays, all time:\n1. Artist 0: 56 plays, 3.3 h (11.1%), skipped 19.6%\n2. Artist 1: 37 plays, 1.8 h (5.9%), skipped 27%\n3. Artist 4: 36 plays, 2.1 h (6.9%), skipped 19.4%\n4. Artist 2: 33 plays, 1.5 h (5.1%), skipped 33.3%\n5. Artist 7: 31 plays, 1.2 h (3.9%), skipped 16.1%\n6. Artist 17: 25 plays, 1.3 h (4.2%), skipped 28%\n7. Artist 3: 22 plays, 1.1 h (3.8%), skipped 18.2%\n8. Guest 3: 22 plays, 1.1 h (3.8%), skipped 18.2%\n9. Artist 38: 21 plays, 1 h (3.3%), skipped 23.8%\n10. Artist 32: 21 plays, 1 h (3.3%), skipped 23.8%"
+  },
+  {
+   "name": "top_artists/week",
+   "text": "Top artists by plays, the last 7 days:\n1. Artist 0: 10 plays, 0.7 h (20.8%), skipped 10%\n2. Artist 1: 7 plays, 0.4 h (10.8%), skipped 28.6%\n3. Artist 24: 5 plays, 0.3 h (9.9%), skipped 20%\n4. Artist 4: 4 plays, 0.1 h (2.5%), skipped 75%\n5. Artist 6: 4 plays, 0.3 h (8.1%), skipped 25%\n6. Artist 7: 2 plays, 0.1 h (2.5%), skipped 0%\n7. Artist 19: 2 plays, 0.1 h (2.3%), skipped 50%\n8. Artist 10: 2 plays, 0.1 h (3.2%), skipped 0%\n9. Artist 3: 2 plays, 0.2 h (4.8%), skipped 0%\n10. Guest 3: 2 plays, 0.2 h (4.8%), skipped 0%"
+  },
+  {
+   "name": "top_artists/30",
+   "text": "Top artists by plays, the last 30 days:\n1. Artist 0: 26 plays, 1.6 h (10.1%), skipped 19.2%\n2. Artist 1: 20 plays, 1 h (6.4%), skipped 25%\n3. Artist 7: 16 plays, 0.6 h (3.6%), skipped 12.5%\n4. Artist 2: 16 plays, 1 h (6.6%), skipped 12.5%\n5. Artist 4: 14 plays, 0.6 h (4.1%), skipped 28.6%\n6. Artist 32: 13 plays, 0.7 h (4.2%), skipped 23.1%\n7. Artist 17: 13 plays, 0.7 h (4.6%), skipped 30.8%\n8. Artist 22: 12 plays, 0.5 h (3.2%), skipped 25%\n9. Artist 24: 12 plays, 0.6 h (4%), skipped 41.7%\n10. Artist 6: 11 plays, 0.6 h (3.7%), skipped 27.3%"
+  },
+  {
+   "name": "top_tracks/all",
+   "text": "Top tracks by plays, all time:\n1. Song 1 - Artist 18: 23 plays, 99 min, skipped 13%\n2. Song 3 - Artist 7: 15 plays, 28 min, skipped 26.7%\n3. Song 0 - Artist 4: 13 plays, 65 min, skipped 0%\n4. Song 4 - Artist 0: 13 plays, 61 min, skipped 15.4%\n5. Song 9 - Artist 12, Guest 0: 10 plays, 29 min, skipped 40%\n6. Song 23 - Artist 32: 9 plays, 32 min, skipped 22.2%\n7. Secret - Artist 17: 9 plays, 29 min, skipped 33.3%\n8. Song 28 - Artist 2: 9 plays, 18 min, skipped 44.4%\n9. Song 30 - Artist 22: 8 plays, 26 min, skipped 12.5%\n10. Song 38 - Artist 3, Guest 3: 8 plays, 17 min, skipped 25%"
+  },
+  {
+   "name": "top_tracks/week",
+   "text": "Top tracks by plays, the last 7 days:\n1. Song 4 - Artist 0: 3 plays, 18 min, skipped 0%\n2. Song 124 - Artist 24: 3 plays, 11 min, skipped 33.3%\n3. Song 50 - Artist 1: 3 plays, 7 min, skipped 33.3%\n4. Song 90 - Artist 0: 3 plays, 7 min, skipped 33.3%\n5. Song 37 - Artist 6: 2 plays, 11 min, skipped 0%\n6. Song 55 - Artist 24: 2 plays, 9 min, skipped 0%\n7. Song 119 - Artist 27: 2 plays, 5 min, skipped 0%\n8. Song 97 - Artist 1: 1 plays, 6 min, skipped 0%\n9. Song 18 - Artist 17: 1 plays, 6 min, skipped 0%\n10. Song 2 - Artist 0: 1 plays, 5 min, skipped 0%"
+  },
+  {
+   "name": "top_tracks/30",
+   "text": "Top tracks by plays, the last 30 days:\n1. Song 1 - Artist 18: 13 plays, 50 min, skipped 23.1%\n2. Song 3 - Artist 7: 10 plays, 21 min, skipped 20%\n3. Song 4 - Artist 0: 8 plays, 36 min, skipped 25%\n4. Secret - Artist 17: 6 plays, 24 min, skipped 16.7%\n5. Song 145 - Artist 9: 6 plays, 21 min, skipped 0%\n6. Song 55 - Artist 24: 6 plays, 20 min, skipped 33.3%\n7. Song 124 - Artist 24: 6 plays, 17 min, skipped 50%\n8. Song 9 - Artist 12, Guest 0: 6 plays, 16 min, skipped 50%\n9. Song 23 - Artist 32: 5 plays, 19 min, skipped 20%\n10. Song 30 - Artist 22: 5 plays, 11 min, skipped 20%"
+  },
+  {
+   "name": "skips/all",
+   "text": "Skips, all time: overall 24.6% skipped, 16.3% quick skips (under 30 s).\nMost skipped artists (3+ plays): Artist 31 50% of 6; Artist 14 45.5% of 11; Artist 28 40% of 10; Artist 27 38.5% of 13; Artist 11 37.5% of 16; Artist 12 36.8% of 19; Guest 0 36.8% of 19; Artist 24 35.7% of 14; Artist 2 33.3% of 33; Artist 19 33.3% of 12\nMost skipped tracks: Song 71 - Artist 12, Guest 0 66.7% of 3; Song 12 - Artist 29 66.7% of 3; Song 115 - Artist 8 66.7% of 3; Song 36 - Artist 27 66.7% of 3; Song 52 - Artist 31 66.7% of 3; Song 83 - Artist 4 66.7% of 3; Song 117 - Artist 0 66.7% of 3; Song 34 - Artist 19 60% of 5; Song 111 - Artist 22 57.1% of 7; Song 13 - Artist 2 50% of 6\nNever skipped: Artist 21 (10); Guest 1 (10); Artist 26 (7); Artist 16 (6)"
+  },
+  {
+   "name": "skips/week",
+   "text": "Skips, the last 7 days: overall 20.3% skipped, 15.3% quick skips (under 30 s).\nMost skipped artists (3+ plays): Artist 4 75% of 4; Artist 1 28.6% of 7; Artist 6 25% of 4; Artist 24 20% of 5; Artist 0 10% of 10\nMost skipped tracks: Song 50 - Artist 1 33.3% of 3; Song 90 - Artist 0 33.3% of 3; Song 124 - Artist 24 33.3% of 3; Song 4 - Artist 0 0% of 3\nNever skipped: none"
+  },
+  {
+   "name": "skips/30",
+   "text": "Skips, the last 30 days: overall 23.6% skipped, 15.2% quick skips (under 30 s).\nMost skipped artists (3+ plays): Artist 14 75% of 4; Artist 28 50% of 4; Artist 19 50% of 4; Artist 8 42.9% of 7; Artist 24 41.7% of 12; Artist 10 40% of 5; Artist 12 36.4% of 11; Guest 0 36.4% of 11; Artist 25 33.3% of 6; Artist 34 33.3% of 3\nMost skipped tracks: Song 18 - Artist 17 66.7% of 3; Song 9 - Artist 12, Guest 0 50% of 6; Song 124 - Artist 24 50% of 6; Song 111 - Artist 22 50% of 4; Song 50 - Artist 1 50% of 4; Song 138 - Artist 38 50% of 4; Song 22 - Artist 6 40% of 5; Song 55 - Artist 24 33.3% of 6; Song 96 - Artist 36 33.3% of 3; Song 126 - Artist 4 33.3% of 3\nNever skipped: Artist 9 (9); Artist 30 (8); Guest 2 (8); Artist 16 (4); Artist 21 (4); Guest 1 (4); Artist 15 (3); Artist 26 (3)"
+  },
+  {
+   "name": "time_of_day/all",
+   "text": "When you listen, all time: night 12-5am 26.8%, morning 5-12 26%, afternoon 12-6pm 10.8%, evening 6pm-12 36.4%. Peak hours: 1am (2.7 h), 9pm (2.7 h), 8pm (2.6 h)."
+  },
+  {
+   "name": "time_of_day/week",
+   "text": "When you listen, the last 7 days: night 12-5am 17.2%, morning 5-12 38%, afternoon 12-6pm 23.2%, evening 6pm-12 21.6%. Peak hours: 2pm (0.8 h), 10am (0.7 h), 9am (0.6 h)."
+  },
+  {
+   "name": "time_of_day/30",
+   "text": "When you listen, the last 30 days: night 12-5am 30.6%, morning 5-12 27.9%, afternoon 12-6pm 14.7%, evening 6pm-12 26.8%. Peak hours: 10pm (1.9 h), 5am (1.8 h), 2am (1.7 h)."
+  },
+  {
+   "name": "weekday/all",
+   "text": "By weekday, all time: Sunday 2.2 h (7.4%), Monday 9 h (29.8%), Tuesday 2.8 h (9.4%), Wednesday 2.7 h (9%), Thursday 4 h (13.2%), Friday 4.5 h (14.8%), Saturday 4.9 h (16.3%)."
+  },
+  {
+   "name": "weekday/week",
+   "text": "By weekday, the last 7 days: Sunday 0.1 h (1.9%), Monday 0.6 h (17.4%), Tuesday 0.7 h (19.7%), Wednesday 0 h (0%), Thursday 0.3 h (8.8%), Friday 1.5 h (46.2%), Saturday 0.2 h (5.9%)."
+  },
+  {
+   "name": "weekday/30",
+   "text": "By weekday, the last 30 days: Sunday 1.7 h (10.8%), Monday 5.3 h (34.2%), Tuesday 2.2 h (14.4%), Wednesday 0.3 h (1.9%), Thursday 1.8 h (11.7%), Friday 2.7 h (17.7%), Saturday 1.5 h (9.4%)."
+  },
+  {
+   "name": "sessions/all",
+   "text": "Sessions (a break over 30 min starts a new one), all time: 74 sessions, average 24 min and 8.1 tracks, usually starting around 5am.\nLongest binges: Aug 17, 2026 142 min, 42 tracks, mostly Artist 32; Jul 20, 2026 99 min, 30 tracks, mostly Artist 8; Aug 1, 2026 75 min, 22 tracks, mostly Artist 19."
+  },
+  {
+   "name": "sessions/week",
+   "text": "Sessions (a break over 30 min starts a new one), the last 7 days: 9 sessions, average 22 min and 6.8 tracks, usually starting around 3am.\nLongest binges: Aug 28, 2026 75 min, 22 tracks, mostly Artist 0; Aug 31, 2026 34 min, 11 tracks, mostly Artist 24; Aug 25, 2026 30 min, 8 tracks, mostly Artist 0."
+  },
+  {
+   "name": "sessions/30",
+   "text": "Sessions (a break over 30 min starts a new one), the last 30 days: 36 sessions, average 26 min and 8.5 tracks, usually starting around 5am.\nLongest binges: Aug 17, 2026 142 min, 42 tracks, mostly Artist 32; Aug 28, 2026 75 min, 22 tracks, mostly Artist 0; Aug 11, 2026 51 min, 17 tracks, mostly Artist 2."
+  },
+  {
+   "name": "repeats/all",
+   "text": "Repeats, all time: most played in a single day: Song 1 - Artist 18 x4 on Aug 17, 2026; Song 1 - Artist 18 x3 on Jul 6, 2026; Song 141 - Artist 27 x3 on Aug 17, 2026; Song 55 - Artist 24 x3 on Aug 17, 2026. Obsessions (5+ plays): Song 1 - Artist 18 x23; Song 3 - Artist 7 x15; Song 0 - Artist 4 x13; Song 4 - Artist 0 x13; Song 9 - Artist 12, Guest 0 x10; Secret - Artist 17 x9; Song 28 - Artist 2 x9; Song 23 - Artist 32 x9; Song 30 - Artist 22 x8; Song 38 - Artist 3, Guest 3 x8."
+  },
+  {
+   "name": "repeats/week",
+   "text": "Repeats, the last 7 days: no track played 3+ times in one day. "
+  },
+  {
+   "name": "repeats/30",
+   "text": "Repeats, the last 30 days: most played in a single day: Song 1 - Artist 18 x4 on Aug 17, 2026; Song 141 - Artist 27 x3 on Aug 17, 2026; Song 55 - Artist 24 x3 on Aug 17, 2026. Obsessions (5+ plays): Song 1 - Artist 18 x13; Song 3 - Artist 7 x10; Song 4 - Artist 0 x8; Song 145 - Artist 9 x6; Song 9 - Artist 12, Guest 0 x6; Song 124 - Artist 24 x6; Secret - Artist 17 x6; Song 55 - Artist 24 x6; Song 23 - Artist 32 x5; Song 22 - Artist 6 x5."
+  },
+  {
+   "name": "trends/all",
+   "text": "Taste over time (similarity 100% = same artists in the same proportions):\n2026-07: 13.1 h, 38 artists (38 new), top Artist 0, Artist 4, Artist 1\n2026-08: 17 h, 40 artists (2 new), top Artist 0, Artist 2, Artist 1, similarity to last month 90%"
+  },
+  {
+   "name": "trends/week",
+   "text": "Trends need at least two months of plays; there is 1 month so far (the last 7 days)."
+  },
+  {
+   "name": "trends/30",
+   "text": "Trends need at least two months of plays; there is 1 month so far (the last 30 days)."
+  },
+  {
+   "name": "discovery/all",
+   "text": "Discovery, all time: 40 artists heard for the first time (100% of the artists you played). New artists you kept playing: Artist 0 (56), Artist 1 (37), Artist 4 (36), Artist 2 (33), Artist 7 (31), Artist 17 (25), Artist 3 (22), Guest 3 (22)."
+  },
+  {
+   "name": "discovery/week",
+   "text": "Discovery, the last 7 days: 0 artists heard for the first time (0% of the artists you played). New artists you kept playing: none yet."
+  },
+  {
+   "name": "discovery/30",
+   "text": "Discovery, the last 30 days: 2 artists heard for the first time (5% of the artists you played). New artists you kept playing: Artist 35 (4), Artist 37 (1)."
+  },
+  {
+   "name": "artist/all",
+   "text": "Artist 0, all time: 56 plays, 3.3 h, 15 different tracks. First heard Jul 1, 2026, last Aug 31, 2026. Finished 65.5%, skipped 20%. Usually around 8pm.\nTop tracks: Song 4 x13; Song 11 x6; Song 68 x5; Song 2 x5; Song 85 x4. Most skipped: Song 117 (66.7%)."
+  },
+  {
+   "name": "artist/week",
+   "text": "Artist 0, the last 7 days: 10 plays, 0.7 h, 6 different tracks. First heard Aug 25, 2026, last Aug 31, 2026. Finished 80%, skipped 10%. Usually around 2pm.\nTop tracks: Song 4 x3; Song 90 x3; Song 11 x1; Song 70 x1; Song 2 x1. Most skipped: Song 90 (33.3%)."
+  },
+  {
+   "name": "artist/30",
+   "text": "Artist 0, the last 30 days: 26 plays, 1.6 h, 11 different tracks. First heard Aug 3, 2026, last Aug 31, 2026. Finished 68%, skipped 20%. Usually around 10pm.\nTop tracks: Song 4 x8; Song 11 x3; Song 2 x3; Song 90 x3; Song 70 x2. Most skipped: Song 11 (33.3%)."
+  },
+  {
+   "name": "sources/all",
+   "text": "Where plays came from, all time: PLchill: 132 plays, 6.3 h; RDAMVM: 123 plays, 6.5 h; Gym: 111 plays, 5.5 h. 235 plays were not from a playlist or radio."
+  },
+  {
+   "name": "sources/week",
+   "text": "Where plays came from, the last 7 days: RDAMVM: 18 plays, 1.1 h; PLchill: 12 plays, 0.6 h; Gym: 11 plays, 0.7 h. 20 plays were not from a playlist or radio."
+  },
+  {
+   "name": "sources/30",
+   "text": "Where plays came from, the last 30 days: PLchill: 78 plays, 3.9 h; RDAMVM: 62 plays, 3.5 h; Gym: 56 plays, 2.8 h. 111 plays were not from a playlist or radio."
+  },
+  {
+   "name": "recent/all",
+   "text": "Recent plays:\nAug 31, 2:36 PM - Song 18 - Artist 17 (finished)\nAug 31, 2:35 PM - Song 74 - Artist 14 (skipped, quick skip)\nAug 31, 2:32 PM - Song 55 - Artist 24 (partial)\nAug 31, 2:31 PM - Song 115 - Artist 8 (skipped, quick skip)\nAug 31, 2:30 PM - Song 26 - Artist 4 (skipped)\nAug 31, 2:25 PM - Song 124 - Artist 24 (finished)\nAug 31, 2:21 PM - Song 27 - Artist 17 (finished)\nAug 31, 2:15 PM - Song 4 - Artist 0 (finished)\nAug 31, 2:09 PM - Song 55 - Artist 24 (finished)\nAug 31, 2:09 PM - Song 50 - Artist 1 (skipped, quick skip)"
+  },
+  {
+   "name": "recent/week",
+   "text": "Recent plays:\nAug 31, 2:36 PM - Song 18 - Artist 17 (finished)\nAug 31, 2:35 PM - Song 74 - Artist 14 (skipped, quick skip)\nAug 31, 2:32 PM - Song 55 - Artist 24 (partial)\nAug 31, 2:31 PM - Song 115 - Artist 8 (skipped, quick skip)\nAug 31, 2:30 PM - Song 26 - Artist 4 (skipped)\nAug 31, 2:25 PM - Song 124 - Artist 24 (finished)\nAug 31, 2:21 PM - Song 27 - Artist 17 (finished)\nAug 31, 2:15 PM - Song 4 - Artist 0 (finished)\nAug 31, 2:09 PM - Song 55 - Artist 24 (finished)\nAug 31, 2:09 PM - Song 50 - Artist 1 (skipped, quick skip)"
+  },
+  {
+   "name": "recent/30",
+   "text": "Recent plays:\nAug 31, 2:36 PM - Song 18 - Artist 17 (finished)\nAug 31, 2:35 PM - Song 74 - Artist 14 (skipped, quick skip)\nAug 31, 2:32 PM - Song 55 - Artist 24 (partial)\nAug 31, 2:31 PM - Song 115 - Artist 8 (skipped, quick skip)\nAug 31, 2:30 PM - Song 26 - Artist 4 (skipped)\nAug 31, 2:25 PM - Song 124 - Artist 24 (finished)\nAug 31, 2:21 PM - Song 27 - Artist 17 (finished)\nAug 31, 2:15 PM - Song 4 - Artist 0 (finished)\nAug 31, 2:09 PM - Song 55 - Artist 24 (finished)\nAug 31, 2:09 PM - Song 50 - Artist 1 (skipped, quick skip)"
+  }
+ ]
+}

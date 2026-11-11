@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { createTracker } = require('../extension/tracker');
 const { createPlayLog, normalize } = require('../src/core/music/log');
+const { cortexOn } = require('./helpers/cortex');
 const { report, periodRange } = require('../src/core/music/stats');
 const { createMusicStatsTool } = require('../src/core/tools/musicstats');
 const { route } = require('../src/core/brain/router');
@@ -76,7 +77,7 @@ test('log: outcomes, quick skips, artists; junk rejected', () => {
 test('log: stores once, keeps time order, survives restart, honours the off switch and clear', () => {
   const file = tmp();
   let cfg = { music: { logPlays: true } };
-  const log = createPlayLog({ file, getConfig: () => cfg, now: () => T0 + 1e7 });
+  const log = createPlayLog({ cortex: cortexOn(file), getConfig: () => cfg, now: () => T0 + 1e7 });
   assert.ok(log.add(ev({ id: 'b', startedAt: T0 + 5000, videoId: 'bbbbbbbbbbb' })));
   assert.ok(log.add(ev({ id: 'a', startedAt: T0, videoId: 'aaaaaaaaaaa' })));
   assert.equal(log.add(ev({ id: 'a' })), null, 'same id twice');
@@ -84,17 +85,17 @@ test('log: stores once, keeps time order, survives restart, honours the off swit
   cfg = { music: { logPlays: false } };
   assert.equal(log.add(ev({ id: 'c', startedAt: T0 + 9000 })), null);
   cfg = { music: { logPlays: true } };
-  fs.appendFileSync(file, '{"torn');
-  const again = createPlayLog({ file, getConfig: () => cfg });
+  log.all(); // (a torn line in the old file is the import's business now: music-import.test.js)
+  const again = createPlayLog({ cortex: cortexOn(file), getConfig: () => cfg });
   assert.equal(again.count(), 2); assert.equal(again.since(), T0);
   again.clear();
-  assert.equal(fs.existsSync(file), false); assert.equal(again.count(), 0);
+  assert.equal(again.count(), 0);
   assert.equal(DEFAULTS.music.logPlays, true);
 });
 
 // ---- stats ----
 function lib() {
-  const log = createPlayLog({ file: tmp(), now: () => T0 + 400 * 86400000 });
+  const log = createPlayLog({ cortex: cortexOn(tmp()), now: () => T0 + 400 * 86400000 });
   let n = 0;
   const add = (artist, title, day, hour, listened, duration = 200, o = {}) => log.add(ev({ id: `p${n++}`, videoId: ('v' + title.replace(/\W/g, '')).padEnd(11, 'x').slice(0, 11), title, artist, startedAt: new Date(2026, 10, day, hour, n % 50).getTime(), listenedMs: listened * 1000, duration, reason: listened >= duration ? 'ended' : 'track-change', ...o }));
   for (let d = 1; d <= 8; d++) { add('Scrim', 'Cortisol', d, 22, 200); add('Scrim', 'Via Crucis', d, 22, 200); }
@@ -139,7 +140,7 @@ test('stats: overview, top lists, skips, time of day, repeats, sessions, artist,
 });
 
 test('stats: trends compare months and count new artists', () => {
-  const log = createPlayLog({ file: tmp(), now: () => T0 + 1e10 });
+  const log = createPlayLog({ cortex: cortexOn(tmp()), now: () => T0 + 1e10 });
   const m = (artist, month, i) => log.add(ev({ id: `${artist}${month}${i}`, videoId: ('v' + artist + month + i).replace(/\W/g, '').padEnd(11, 'x').slice(0, 11), artist, startedAt: new Date(2026, month, 5 + i, 12).getTime() }));
   for (let i = 0; i < 3; i++) { m('A', 8, i); m('A', 9, i); }
   m('B', 9, 5);
@@ -149,7 +150,7 @@ test('stats: trends compare months and count new artists', () => {
 });
 
 test('tool: music_stats answers from the log, caps limits, and the router sends taste questions to tools', async () => {
-  const log = createPlayLog({ file: tmp(), now: () => T0 + 1e9 });
+  const log = createPlayLog({ cortex: cortexOn(tmp()), now: () => T0 + 1e9 });
   for (const p of lib()) log.add({ ...p, startedAt: p.at, listenedMs: p.listenedSec * 1000, duration: p.durationSec, like: null });
   const tool = createMusicStatsTool({ playLog: log });
   assert.equal(tool.name, 'music_stats');
