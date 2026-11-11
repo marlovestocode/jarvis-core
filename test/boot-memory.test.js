@@ -133,3 +133,10 @@ test('boot-memory (wave 3): the knowledge store is built on the same cortex', as
   assert.equal((await sys.knowledge.find('capital of italy rome'))?.id, r.id);
   sys.close();
 });
+
+test('boot-memory (wave 3): main.js takes the timer store and knowledge from the memory system', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'main.js'), 'utf8');
+  assert.doesNotMatch(main, /require\('\.\.\/core\/timers\/store'\)/, 'timers.json is no longer opened by main');
+  assert.match(main, /ctx\.timerStore = ctx\.memorySystem\.timerStore;/);
+  assert.match(main, /defaultCatalog\(\{[^\n]*knowledge: ctx\.memorySystem\.knowledge/);
+});

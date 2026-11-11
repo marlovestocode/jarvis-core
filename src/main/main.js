@@ -29,7 +29,6 @@ const brain = require('../core/brain');
 const skills = require('../core/skills');
 const { createHardwareProbe } = require('../core/brain/hardware');
 const { runBoot } = require('../core/boot');
-const { createTimerStore } = require('../core/timers/store');
 const { createScheduler } = require('../core/timers/scheduler');
 const { createProactiveEngine } = require('../core/proactive/engine');
 const { createPcHost, SCRIPT: PC_HOST_SCRIPT } = require('../core/pc/host');
@@ -215,7 +214,7 @@ function userInfo() {
     teams: c.sports.follow.map(f => f.team), playlists: ctx.ytPlaylists.count?.() || 0, voiceEnrolled: ctx.speaker.enrolled(),
   };
 }
-// timers, alarms and reminders: <data>/timers.json; firing puts 'timer' on the bus (started in the boot stage)
+// timers, alarms and reminders: reminder nodes in the cortex (timers.json imported once); firing puts 'timer' on the bus (started in the boot stage)
 // PC control: one PowerShell host for apps/windows/Recycle Bin; risky actions wait for the user's yes
 ctx.pcHostProc = createSpeechHost({ script: PC_HOST_SCRIPT, log: ctx.log, name: 'pc host' });
 ctx.pcHost = createPcHost({ request: (cmd, args, o) => ctx.pcHostProc.request(cmd, args, o) });
@@ -232,11 +231,11 @@ ctx.pcAllowlist = pcAllowlist;
 ctx.pcRoots = [app.getPath('desktop'), app.getPath('documents'), app.getPath('downloads'), path.join(app.getPath('home'), 'Projects')];
 ctx.actionLog = createActionLog({ file: path.join(DATA_DIR, 'actions.log'), log: ctx.log });
 ctx.confirm = createConfirm({ actionLog: ctx.actionLog });
-ctx.timerStore = createTimerStore({ file: path.join(DATA_DIR, 'timers.json'), log: ctx.log });
+ctx.timerStore = ctx.memorySystem.timerStore;
 ctx.scheduler = createScheduler({ store: ctx.timerStore, bus: ctx.bus, log: ctx.log });
 // JARVIS's own introspection tools: the checks read ctx live each time they run (src/main/checks.js)
 const self = { getChecks: () => selfChecks(ctx), about: () => ({ version, electron: process.versions.electron, node: process.versions.node, startedAt: ctx.startedAt, dataDir: DATA_DIR }), logFile: LOG_FILE, dataDir: DATA_DIR };
-ctx.catalog = brain.defaultCatalog({ self, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog } });
+ctx.catalog = brain.defaultCatalog({ self, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, knowledge: ctx.memorySystem.knowledge, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog } });
 ctx.toolList = ctx.catalog.tools;
 for (const m of ctx.catalog.missing) if (m.error) ctx.log(`skill group ${m.id} failed to load: ${m.error}`);
 ctx.tools = createToolRunner(ctx.toolList, { groups: ctx.catalog.groups });
