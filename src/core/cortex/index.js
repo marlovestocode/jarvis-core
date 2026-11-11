@@ -58,7 +58,7 @@ function open({ file = ':memory:', log = () => {}, bus = null, embedder = null, 
     CortexError,
     source: { add: safe(sources.add), get: safe(sources.get) },
     node: {
-      upsert: safe(nodes.upsert), get: safe(nodes.get), find: safe(nodes.find), list: safe(nodes.list),
+      upsert: safe(nodes.upsert), update: safe(nodes.update), get: safe(nodes.get), find: safe(nodes.find), list: safe(nodes.list),
       archive: safe(nodes.archive),
       remove: safe(id => { const r = nodes.remove(id); vectors.forget(id); return r; }),
     },

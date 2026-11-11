@@ -101,6 +101,29 @@ function createNodes(db, { now = Date.now, sources, onWrite = () => {} } = {}) {
       .all(kind, status, lim, off).map(n => ({ ...n, data: parse(n.data) }));
   }
 
+  // edit or approve an existing node in place (W1 E1): same checks as upsert, provenance for `source`,
+  // onWrite (re-embed) only when the text changed. A keyed node keeps its key.
+  function update(id, { text, data, status, importance } = {}, { source, tainted = false } = {}) {
+    const cur = row(id);
+    if (!cur) throw new CortexError('not_found');
+    const src = sources.get(source);
+    if (!src) throw new CortexError('no_source', 'every node needs a source');
+    if (tainted && (src.kind === 'user' || src.kind === 'tool')) throw new CortexError('tainted', 'a turn that read outside text cannot write ' + src.kind + ' trust');
+    const set = {};
+    if (text !== undefined) { const t = checkText(cur.kind, text); if (t !== cur.text) set.text = t; }
+    if (data !== undefined) { const j = checkData(data); if (j !== cur.data) set.data = j; }
+    if (status !== undefined) { if (!STATUSES.has(status)) throw new CortexError('status'); if (status !== cur.status) set.status = status; }
+    if (importance !== undefined) { const i = Math.max(0, Math.min(1, Number(importance) || 0)); if (i !== cur.importance) set.importance = i; }
+    const cols = Object.keys(set);
+    if (!cols.length) return { id, changed: false };
+    db.tx(() => {
+      db.stmt(`UPDATE node SET ${cols.map(c => c + ' = ?').join(', ')}, updated = ? WHERE id = ?`).run(...cols.map(c => set[c]), now(), id);
+      addProvenance(id, src.id, null); refreshConfidence(id);
+    });
+    if (set.text !== undefined) { try { onWrite(id, cur.kind); } catch { /* a listener must not undo a committed write */ } }
+    return { id, changed: true };
+  }
+
   const archive = id => db.stmt("UPDATE node SET status = 'archived', updated = ? WHERE id = ? AND status != 'archived'").run(now(), id).changes > 0;
   const remove = id => db.stmt('DELETE FROM node WHERE id = ?').run(id).changes > 0;
 
@@ -115,7 +138,7 @@ function createNodes(db, { now = Date.now, sources, onWrite = () => {} } = {}) {
     return batch.length;
   }
 
-  return { upsert, get, find, list, archive, remove, touch, flushUses, topTrust, pendingUses: () => pending.size };
+  return { upsert, update, get, find, list, archive, remove, touch, flushUses, topTrust, pendingUses: () => pending.size };
 }
 
 module.exports = { createNodes };

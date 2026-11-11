@@ -218,3 +218,20 @@ test('cortex-recall: debug returns the stages', async () => {
   const r = await recall('Rex vet', { debug: true });
   assert.ok(Array.isArray(r.stages.seeds) && Array.isArray(r.stages.spread) && Array.isArray(r.stages.packed));
 });
+
+test('cortex-recall: exclude keeps an id out of items but its neighbor still comes through', async () => {
+  const { recall, add, edges } = setup();
+  const vet = add('fact', 'Rex has a vet visit in March');
+  const rex = add('entity', 'Rex', { key: 'entity:rex' });
+  const walk = add('fact', 'my dog loves long walks on the beach');
+  edges.link(vet, rex, 'mentions', { weight: 0.9 });
+  edges.link(walk, rex, 'mentions', { weight: 0.9 });
+  const all = await recall('vet visit', { kinds: ['fact', 'entity'] });
+  assert.ok(all.items.some(i => i.id === vet));
+  const r = await recall('vet visit', { kinds: ['fact', 'entity'], exclude: new Set([vet]) });
+  assert.ok(!r.items.some(i => i.id === vet));
+  assert.ok(!r.text.includes('vet visit'));
+  assert.ok(r.items.some(i => i.id === walk), 'the excluded seed still spreads to its neighbor');
+  const r2 = await recall('vet visit', { kinds: ['fact', 'entity'], exclude: [vet] });
+  assert.ok(!r2.items.some(i => i.id === vet));
+});

@@ -180,3 +180,51 @@ test('cortex-nodes: touch is lazy until flush', () => {
   const byUses = nodes.list({ kind: 'fact', order: 'uses' });
   assert.equal(byUses[0].id, id);
 });
+
+test('cortex-nodes: update edits text and FTS follows', () => {
+  const { db, nodes, src } = setup();
+  const s = src('user');
+  const { id } = nodes.upsert({ kind: 'fact', text: 'Rex is my dog', source: s });
+  const r = nodes.update(id, { text: 'Rex is my old beagle' }, { source: s });
+  assert.deepEqual(r, { id, changed: true });
+  assert.equal(nodes.get(id).text, 'Rex is my old beagle');
+  assert.equal(count(db, "SELECT count(*) n FROM node_fts WHERE node_fts MATCH 'beagle'"), 1);
+  assert.equal(count(db, "SELECT count(*) n FROM node_fts WHERE node_fts MATCH 'dog'"), 0);
+});
+
+test('cortex-nodes: update approve pending→active keeps the key', () => {
+  const { nodes, src } = setup();
+  const s = src('user');
+  const { id } = nodes.upsert({ kind: 'entity', key: 'entity:rex', text: 'Rex', status: 'pending', source: s });
+  const r = nodes.update(id, { status: 'active', data: { type: 'pet' } }, { source: s });
+  assert.equal(r.changed, true);
+  const n = nodes.get(id);
+  assert.equal(n.status, 'active');
+  assert.equal(n.key, 'entity:rex');
+  assert.deepEqual(n.data, { type: 'pet' });
+});
+
+test('cortex-nodes: update refuses secret, tainted user source and unknown id', () => {
+  const { nodes, src } = setup();
+  const s = src('user');
+  const { id } = nodes.upsert({ kind: 'fact', text: 'Rex is my dog', source: s });
+  assert.equal(code(() => nodes.update(id, { text: 'my password is hunter2' }, { source: s })), 'secret');
+  assert.equal(code(() => nodes.update(id, { text: 'Rex is a cat' }, { source: s, tainted: true })), 'tainted');
+  assert.equal(code(() => nodes.update(9999, { text: 'Rex is a cat' }, { source: s })), 'not_found');
+  assert.equal(code(() => nodes.update(id, { status: 'gone' }, { source: s })), 'status');
+  assert.equal(nodes.get(id).text, 'Rex is my dog');
+});
+
+test('cortex-nodes: update queues re-embed only when text changed', () => {
+  const { nodes, src, written } = setup();
+  const s = src('user'), m = src('model');
+  const { id } = nodes.upsert({ kind: 'fact', text: 'Rex is my dog', status: 'pending', source: s });
+  written.length = 0;
+  nodes.update(id, { status: 'active', importance: 0.9 }, { source: s });
+  assert.deepEqual(written, []);
+  assert.deepEqual(nodes.update(id, { text: 'Rex is my dog' }, { source: s }), { id, changed: false });
+  assert.deepEqual(written, []);
+  nodes.update(id, { text: 'Rex is my beagle' }, { source: m });
+  assert.deepEqual(written, [[id, 'fact']]);
+  assert.ok(nodes.get(id).sources.some(x => x.kind === 'model'));
+});

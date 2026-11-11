@@ -51,8 +51,9 @@ function createRecall({ db, edges, vectors, queryVector = async () => null, now 
     }
   }
 
-  async function run(query, { budget = 1000, kinds, brief = false, quotas, now: at, debug = false }, t0) {
+  async function run(query, { budget = 1000, kinds, brief = false, quotas, exclude, now: at, debug = false }, t0) {
     const tNow = at ?? now();
+    const skip = exclude ? new Set(exclude) : null;   // spread through, never packed (W1 E2: profile facts already in the prompt)
     let kindSet = kinds?.length ? new Set(kinds) : null;
     if (brief) { budget = Math.floor(budget / 2); kindSet = new Set([...(kindSet || ['fact', 'entity', 'knowledge', 'reminder', 'track', 'artist', 'playlist', 'file', 'folder'])].filter(k => k !== 'chat')); }
     const kindJson = kindSet ? JSON.stringify([...kindSet]) : null;
@@ -100,7 +101,7 @@ function createRecall({ db, edges, vectors, queryVector = async () => null, now 
     const labels = labelsFor(ids);
     const cands = [];
     for (const r of rowsFor(ids)) {
-      if (r.status !== 'active' || (kindSet && !kindSet.has(r.kind))) continue;
+      if (r.status !== 'active' || (kindSet && !kindSet.has(r.kind)) || skip?.has(r.id)) continue;
       const score = a.get(r.id) * (0.6 + 0.4 * r.confidence / 100) * (1 + 0.3 * r.importance) * recency(r.last_used ?? r.updated, tNow);
       cands.push({ r, score });
     }
