@@ -94,7 +94,7 @@ function createYtPlaylists({ link, ytm = null, getConfig = () => ({}), now = Dat
       if (r?.noTab) throw fail('NO_TAB', 'The YouTube Music extension did not open a tab, so it is probably out of date: reload it in chrome://extensions');
       library = { at: now(), list: Array.isArray(r?.playlists) ? r.playlists : [] };
       persist();
-      mirrored(() => mirror.library(library.list));
+      if (Array.isArray(r?.playlists)) mirrored(() => mirror.library(library.list));   // a garbled read never reaches the mirror
       return { playlists: library.list, at: library.at, stale: false };
     } catch (err) {
       if (err.code === 'AUTH') throw err;   // never present old data as current when the account is signed out
@@ -143,7 +143,7 @@ function createYtPlaylists({ link, ytm = null, getConfig = () => ({}), now = Dat
       truncated: !!r.truncated, tracks: Array.isArray(r.tracks) ? r.tracks : [],
     };
     tracks.set(meta.id, { at: now(), data });
-    mirrored(() => mirror.playlist(data));
+    if (Array.isArray(r.tracks)) mirrored(() => mirror.playlist(data));
     return { ...data, at: now(), cached: false };
   }
 

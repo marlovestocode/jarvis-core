@@ -95,6 +95,7 @@ function createMediaStatusTool({ service }) {
 // taste (W2 §4, plan E13): play_random / queue_random with no artist, or a phrase like "songs you think I'd like",
 // pick from the user's own play graph first; picks are played by searching "<title> by <artist>" (the verified path).
 // With no graph they fall back to today's artist search. current() → { title, artist } of what plays now, or null.
+const TASTE_FILLER = /\b(?:i'?d|i would|i'?ll|i will|i|probably|like|love|enjoy|for me|my taste|surprise me|you think|you|think|recommend\w*|some|songs?|tracks?|music|something|stuff|random|a|an|the|that|please|play|queue|by|me|my)\b|[?!.,']/gi;
 const TASTE_PHRASE = /\b(?:i'?d|i would|i'?ll|i will|i)\s+(?:probably\s+)?(?:like|love|enjoy)\b|\bfor me\b|\bmy taste\b|\bsurprise me\b|\byou think\b|\brecommend/i;
 
 function createYtMusicTool({ ytm, taste = null, current = async () => null }) {
@@ -102,7 +103,9 @@ function createYtMusicTool({ ytm, taste = null, current = async () => null }) {
   // → picks, or null when taste cannot answer (none wired, empty graph, an error)
   async function tastePicks(query, n) {
     if (!taste) return null;
-    const artist = query && !TASTE_PHRASE.test(query) ? query : null;
+    // "Queen for me" keeps Queen: the taste words and fillers are dropped, what is left (if anything) is the artist
+    const rest = String(query || '').replace(TASTE_FILLER, ' ').replace(/\s+/g, ' ').trim();
+    const artist = !query ? null : !TASTE_PHRASE.test(query) ? query : rest.length >= 2 ? rest.toLowerCase() : null;
     let now = null;
     try { now = await current(); } catch { /* no media state */ }
     try { const picks = taste.suggest({ n, artist, current: now }); return picks.length ? picks : null; } catch { return null; }
@@ -152,7 +155,7 @@ function createYtMusicTool({ ytm, taste = null, current = async () => null }) {
             return `Added ${added.length} songs from their history to the end of the queue (verified): ${added.map(a => `${named(a.item)} (${a.why})`).join('; ')}${failed ? `. ${failed} could not be queued` : ''}.`;
           }
         }
-        if (!query || TASTE_PHRASE.test(query)) throw new Error(taste ? "I don't know your taste yet. Name an artist." : 'query is required');
+        if (!query || (TASTE_PHRASE.test(query) && String(query).replace(TASTE_FILLER, ' ').trim().length < 2)) throw new Error(taste ? "I don't know your taste yet. Name an artist." : 'query is required');
       }
       if (action === 'play_random') {
         const r = await ytm.playRandom(query);

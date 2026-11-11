@@ -96,3 +96,12 @@ test('orchestrator: a throwing onToolCall leaves the turn intact', async () => {
   const r = await orc.send(s.id, 'what time is it', { source: 'text' });
   assert.equal(r.reply, 'It is noon.');
 });
+
+test('tool-events: a youtube_music call with a secret flag is recorded (the key is hidden, not the event lost)', () => {
+  const c = cortexOn();
+  createToolHistory({ cortex: c }).record({ name: 'youtube_music', ok: true, ms: 5, args: { action: 'play', query: 'abba', secret: false } });
+  const [e] = c.event.query({ kind: 'tool' });
+  assert.ok(e, 'event written');
+  assert.equal(e.payload.args.action, 'play');
+  assert.ok(!JSON.stringify(e.payload).match(/secret/i));
+});

@@ -101,3 +101,14 @@ test('music-import: playLog.importing is on until done, then all() has the impor
   assert.equal(w.playLog.importing.active, false);
   assert.equal(w.playLog.all().length, w.plays.length);
 });
+
+test('music-import: a line the cortex refuses is counted bad; the import still finishes', () => {
+  const plays = makePlays().slice(0, 50);
+  plays[10] = { ...plays[10], album: 'x'.repeat(5000) };   // passes the shape check, too big for the cortex
+  const w = world({ plays });
+  const r = run(w.imp({ chunkLines: 20 }));
+  assert.equal(r.done, true);
+  assert.equal(r.bad, 1);
+  assert.equal(r.imported, 49);
+  assert.equal(fs.existsSync(w.file), false);
+});

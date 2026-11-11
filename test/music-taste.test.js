@@ -143,3 +143,22 @@ test('youtube_music: no taste and no artist says so', async () => {
   await assert.rejects(tool.run({ action: 'play_random' }), /I don't know your taste yet\. Name an artist\./);
   await assert.rejects(createYtMusicTool({ ytm: fakeYtm() }).run({ action: 'play_random' }), /query is required|Name an artist/);
 });
+
+test('music-taste: an artist seed reaches all of its tracks, not five', () => {
+  const cortex = cortexOn();
+  const playLog = createPlayLog({ cortex, now: () => NOW });
+  for (let i = 0; i < 30; i++) playLog.add({ videoId: id11('q' + i), title: 'Queen Song ' + i, artist: 'Queen', startedAt: NOW - (10 + i) * DAY, listenedMs: 200000, duration: 200, reason: 'ended' });
+  const out = createTaste({ cortex, playLog, now: () => NOW }).suggest({ n: 10 });
+  assert.equal(new Set(ids(out)).size, 10);
+  assert.ok(out.every(x => x.artist === 'Queen' && x.why === 'you like Queen'));
+  assert.equal(createTaste({ cortex, playLog, now: () => NOW }).suggest({ n: 25, artist: 'queen' }).length, 25);
+});
+
+test('youtube_music: "Queen for me" keeps the artist', async () => {
+  let asked;
+  const tool = createYtMusicTool({ ytm: fakeYtm(), taste: { suggest: o => { asked = o; return picks; } } });
+  await tool.run({ action: 'play_random', query: 'Queen for me' });
+  assert.equal(asked.artist, 'queen');
+  await tool.run({ action: 'play_random', query: "songs you think I'd like" });
+  assert.equal(asked.artist, null);
+});

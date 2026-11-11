@@ -16,8 +16,8 @@ function createTaste({ cortex, playLog, now = Date.now }) {
     const m = new Map();
     for (const p of plays) {
       let s = m.get(p.videoId);
-      if (!s) { s = { last: 0, plays: 0, skips: 0, title: p.title, artist: p.artist, artists: p.artists || [] }; m.set(p.videoId, s); }
-      s.plays++; if (p.outcome === 'skipped') s.skips++;
+      if (!s) { s = { last: 0, plays: 0, skips: 0, fin: 0, title: p.title, artist: p.artist, artists: p.artists || [] }; m.set(p.videoId, s); }
+      s.plays++; if (p.outcome === 'skipped') s.skips++; if (p.outcome === 'finished') s.fin++;
       if (p.at >= s.last) { s.last = p.at; s.title = p.title; s.artist = p.artist; s.artists = p.artists || []; }
     }
     return m;
@@ -44,7 +44,7 @@ function createTaste({ cortex, playLog, now = Date.now }) {
     const t = now();
     const plays = playLog.all();
     const stats = playStats(plays);
-    const seedList = [];
+    const seedList = [], direct = [];   // direct: artists whose tracks are seeded from the play log, not through `by`
     if (Array.isArray(seeds) && seeds.length) for (const id of seeds) seedList.push({ id, w: 1 });
     else {
       if (current && (current.title || current.artist)) {
@@ -58,9 +58,11 @@ function createTaste({ cortex, playLog, now = Date.now }) {
           }
         }
       }
-      topArtists(plays, t).forEach((a, i) => { const id = cortex.node.find({ kind: 'artist', key: artistKey(a) })?.id; if (id) seedList.push({ id, w: ARTIST_SEEDS[i] }); });
+      topArtists(plays, t).forEach((a, i) => { const id = cortex.node.find({ kind: 'artist', key: artistKey(a) })?.id; if (id) { seedList.push({ id, w: ARTIST_SEEDS[i] }); direct.push({ name: a, w: ARTIST_SEEDS[i] }); } });
     }
-    if (!seedList.length) return [];
+    // an asked-for artist is seeded too, so "a random song by X" can reach every track of X the user has heard
+    if (artist && !direct.some(d => norm(d.name) === norm(artist))) direct.push({ name: artist, w: 0.5 });
+    if (!seedList.length && !direct.length) return [];
 
     const nodes = new Map();
     const nodeOf = id => { if (!nodes.has(id)) nodes.set(id, cortex.node.get(id)); return nodes.get(id); };
@@ -78,6 +80,21 @@ function createTaste({ cortex, playLog, now = Date.now }) {
         score.set(nb.id, cur);
       }
     }
+    // the `by` fan-out cap (5 per node) would let an artist seed reach only five of its tracks: seed every track of
+    // that artist the user has heard, more for the ones they finish more often
+    for (const d of direct) {
+      const mine = [...stats].filter(([, s]) => s.artists.some(a => norm(a) === norm(d.name)));
+      const top = Math.max(1, ...mine.map(([, s]) => s.fin));
+      for (const [v, s] of mine) {
+        const id = cortex.node.find({ kind: 'track', key: trackKey(v) })?.id;
+        if (!id || seedIds.has(id)) continue;
+        const c = d.w * (0.5 + 0.5 * s.fin / top);
+        const cur = score.get(id) || { s: 0, best: null };
+        cur.s += c;
+        if (!cur.best || cur.best.rank < WHY_RANK.by || (cur.best.rank === WHY_RANK.by && c > cur.best.c)) cur.best = { c, rank: WHY_RANK.by, text: `you like ${s.artists.find(a => norm(a) === norm(d.name)) || d.name}` };
+        score.set(id, cur);
+      }
+    }
 
     const skip = new Set(exclude || []);
     const want = artist ? norm(artist) : null;
@@ -93,7 +110,7 @@ function createTaste({ cortex, playLog, now = Date.now }) {
       const [tTitle, tArtist = ''] = String(node.text).split(' — ');
       const title = st?.title || tTitle, by = st?.artist ?? tArtist;
       if (want && !(st?.artists || by.split(/,\s*/)).some(a => norm(a) === want)) continue;
-      out.push({ videoId, title, artist: by, why: why(sc.best.n, nodeOf) });
+      out.push({ videoId, title, artist: by, why: sc.best.text || why(sc.best.n, nodeOf) });
     }
     return out;
   }

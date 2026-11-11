@@ -88,3 +88,20 @@ test('mirror: contains edges reach a playlist from its tracks', () => {
   const tr = c.node.find({ kind: 'track', key: 'track:aaaaaaaaaaa' });
   assert.equal(c.node.get(c.neighbors(tr.id, { types: ['contains'] })[0].id).kind, 'playlist');
 });
+
+test('mirror: a fresh but empty or garbled library read does not wipe the mirror', async () => {
+  const c = cortexOn();
+  const link = fakeLink();
+  const { svc, mirror, tick } = service({ cortex: c, link });
+  await svc.open('gym');
+  const real = link.request.bind(link);
+  link.request = async (cmd, args) => (cmd === 'playlists' ? { oops: true } : cmd === 'playlist' ? { id: args.id, editable: true } : real(cmd, args));
+  tick(10 * 60e3);
+  await svc.library({ refresh: true });
+  await svc.playlist({ id: 'PLa' }, { refresh: true });
+  assert.equal(mirror.get('PLa').status, 'active');
+  assert.deepEqual(members(c, 'PLa'), ['aaaaaaaaaaa']);
+  mirror.library([]);
+  assert.equal(mirror.get('PLa').status, 'active');
+  assert.deepEqual(members(c, 'PLa'), ['aaaaaaaaaaa']);
+});

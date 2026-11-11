@@ -71,7 +71,8 @@ function createMusicImport({ cortex, file, playLog = null, log = () => {}, now =
         let p = null;
         try { p = JSON.parse(l.text); } catch { /* counted below */ }
         if (!valid(p)) { bad++; continue; }
-        if (recordPlay(cortex, p, { prev, source, ids })) imported++;
+        // a line the cortex refuses (too big, odd data) rolls back alone and counts as bad, so it cannot stall the import
+        try { if (recordPlay(cortex, p, { prev, source, ids })) imported++; } catch { bad++; ids.delete(p.videoId); continue; }
         prev = p;
       }
       cortex.meta.set('import_music_pos', String(pos));

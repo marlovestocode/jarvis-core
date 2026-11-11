@@ -9,12 +9,14 @@ const KEEP_DAYS = 90, MAX_KEYS = 10, MAX_VALUE = 200;
 function redactArgs(args) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) return {};
   const out = {};
-  for (const [k, v] of Object.entries(args).slice(0, MAX_KEYS)) {
+  Object.entries(args).slice(0, MAX_KEYS).forEach(([k, v], i) => {
     let s;
     if (typeof v === 'string') s = v;
     else { try { s = JSON.stringify(v) ?? String(v); } catch { s = String(v); } }
-    out[String(k).slice(0, 40)] = SECRET.test(s) ? '[hidden]' : s.slice(0, MAX_VALUE);
-  }
+    // a key can trip the guard too (youtube_music's `secret` flag): it becomes hidden<i>, so the event is still written
+    const key = SECRET.test(String(k)) ? `hidden${i}` : String(k).slice(0, 40);
+    out[key] = SECRET.test(s) || key !== String(k).slice(0, 40) ? '[hidden]' : s.slice(0, MAX_VALUE);
+  });
   return out;
 }
 

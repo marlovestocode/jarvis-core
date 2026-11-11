@@ -20,11 +20,14 @@ function createPlaylistMirror({ cortex, now = Date.now }) {
     return found.id;
   }
 
-  // the library list (a fresh read): every playlist upserted; mirrored ones that are gone are archived and emptied
+  // the library list (a fresh read): every playlist upserted; mirrored ones that are gone are archived and emptied.
+  // An empty list archives nothing: a glitch that returns no playlists must not strip every membership.
   function library(list) {
     const ids = new Set();
+    const fresh = (Array.isArray(list) ? list : []).filter(x => x && x.id);
+    if (!fresh.length) return;
     cortex.transaction(() => {
-      for (const p of (Array.isArray(list) ? list : []).filter(x => x && x.id)) {
+      for (const p of fresh) {
         ids.add(key(p.id));
         put(p, Number.isFinite(p.count) ? p.count : null);
       }
