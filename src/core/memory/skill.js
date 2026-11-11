@@ -42,7 +42,7 @@ function createMemorySkill({ memory, setName = null, about = null }) {
     if (m) {
       const r = memory.add(m[1]);
       if (r.ok) return say(r.duplicate ? 'I already had that.' : `Got it. I'll remember that ${r.text.replace(/^i\b/i, 'you').replace(/\bmy\b/gi, 'your')}.`);
-      return say({ secret: "I won't store passwords, keys or card numbers.", long: 'That is too long to remember. Make it shorter.', empty: 'Remember what?' }[r.reason] || 'I could not save that.', false);
+      return say({ secret: "I won't store passwords, keys or card numbers.", long: 'That is too long to remember. Make it shorter.', empty: 'Remember what?', incomplete: 'That sounded cut off, so I did not save it. Say all of it again?' }[r.reason] || 'I could not save that.', false);
     }
     m = FORGET.exec(t.replace(TAIL, '').replace(TAIL, '').trim());
     if (m && !/^(?:it|this|that|him|her|them)$/i.test(m[1].trim())) {

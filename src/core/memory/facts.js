@@ -17,10 +17,14 @@ const clean = text => String(text ?? '').replace(/\s+/g, ' ').trim().replace(/[.
 const entityKey = name => 'entity:' + String(name ?? '').toLowerCase().replace(/[^\p{L}]+/gu, ' ').trim();
 
 // text → null when fine, else the old store's reason
+// a sentence cut off before its point (a voice phrase ended early: "my favorite color is…") is not a fact
+const CUT_OFF = /\b(?:is|are|was|were|am|be|been|being|'s|’s|called|named|to|of|for|at|in|with|from|like|likes|and|or|but|the|a|an|my|your|our|their|his|her|that|than|as)$/i;
+
 function invalid(t) {
   if (t.length < 3) return 'empty';
   if (t.length > MAX_LEN) return 'long';
   if (SECRET.test(t)) return 'secret';
+  if (CUT_OFF.test(t.replace(/[\s.…,;:!?-]+$/u, ''))) return 'incomplete';
   return null;
 }
 
@@ -204,8 +208,11 @@ function createMemory({ cortex, now = Date.now, caps = {}, addTier = 'profile' }
 
   // forget(query) → { removed: [text], ambiguous?: [text] }; several matches are not deleted unless all=true
   function forget(query, { all = false } = {}) {
-    const m = find(query);
+    let m = find(query);
     if (!m.length) return { removed: [] };
+    // the user's words are exactly one saved fact: that one, not every fact that shares its words
+    const exact = m.filter(f => norm(f.text) === norm(query));
+    if (m.length > 1 && exact.length === 1) m = exact;
     if (m.length > 1 && !all) return { removed: [], ambiguous: m.map(f => f.text) };
     for (const f of m) cortex.node.remove(f.id);
     return { removed: m.map(f => f.text) };

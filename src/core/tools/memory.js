@@ -42,7 +42,7 @@ function createMemoryTools({ memory, chats = null, cortex = null, getConfig = ()
     async run({ fact } = {}) {
       const r = memory.add(fact);
       if (r.ok) return r.duplicate ? `Already saved: ${r.text}` : `Saved: ${r.text}`;
-      return { secret: 'Refused: not storing passwords, keys or card numbers.', long: 'Refused: too long; save a shorter fact.', empty: 'Nothing to save.' }[r.reason] || 'Could not save.';
+      return { secret: 'Refused: not storing passwords, keys or card numbers.', long: 'Refused: too long; save a shorter fact.', empty: 'Nothing to save.', incomplete: 'Not saved: the fact sounds cut off. Ask the user to say all of it.' }[r.reason] || 'Could not save.';
     },
   };
   const forget = {
