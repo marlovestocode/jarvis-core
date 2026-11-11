@@ -12,7 +12,7 @@ const { createVectors } = require('./vectors');
 const { withQueryCache } = require('./embedder');
 const { createRecall } = require('./recall');
 const { createConsolidate } = require('./consolidate');
-const { openChecked, createMaintenance } = require('./maintenance');
+const { openChecked, createMaintenance, setMeta } = require('./maintenance');
 
 const { CortexError } = guard;
 const FLUSH_MS = 60000;
@@ -99,6 +99,7 @@ function open({ file = ':memory:', log = () => {}, bus = null, embedder = null, 
       closed = true;
       clearInterval(flushTimer);
       try { nodes.flushUses(); } catch (err) { log('cortex flush: ' + err.message); }
+      if (!db.readOnly) { try { setMeta(db, 'clean_close', '1'); } catch { /* next boot runs the full check */ } }
       db.close();
     },
   };

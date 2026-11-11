@@ -95,6 +95,13 @@ function createConsolidate({ db, vectors, edges, maintenance = null, embedder = 
     const t0 = performance.now(), t = now();
     const due = (key, every) => { const last = Number(getMeta(db, key)) || 0; return !last || t - last >= every; };
     if (due('hk_optimize', DAY)) { db.raw.exec('PRAGMA optimize'); setMeta(db, 'hk_optimize', t); did.push('optimize'); }
+    if (maintenance && due('hk_check', DAY)) {
+      // boot skips the full scan after a clean close, so it runs here instead; a failure forces it at the next boot
+      const qc = maintenance.quickCheck();
+      if (qc === 'ok') db.stmt("DELETE FROM meta WHERE key = 'check_failed'").run();
+      else { setMeta(db, 'check_failed', t); log('cortex: daily quick_check failed: ' + qc); }
+      setMeta(db, 'hk_check', t); did.push('check');
+    }
     if (due('hk_checkpoint', HOUR)) { db.raw.exec('PRAGMA wal_checkpoint(TRUNCATE)'); setMeta(db, 'hk_checkpoint', t); did.push('checkpoint'); }
     if (maintenance && due('hk_backup', DAY)) {
       try { if (maintenance.backup()) did.push('backup'); } catch (err) { log('cortex backup failed: ' + err.message); }

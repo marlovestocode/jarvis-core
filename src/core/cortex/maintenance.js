@@ -26,8 +26,17 @@ function openChecked({ file, log = () => {}, now = Date.now }) {
   const exists = fs.existsSync(file);
   if (exists && !fs.statSync(file).isFile()) throw new CortexError('not_a_file', file);
   let db = null, qc;
-  try { db = openDb({ file, log }); qc = quickCheck(db); } catch (err) { qc = err.message; }
-  if (qc === 'ok') return { db, quickCheck: qc, restoredFrom: null, recoveredEmpty: null };
+  try {
+    db = openDb({ file, log });
+    // after a clean close (and no failed daily check) the full scan is skipped: it is the slowest part of boot.
+    // After a crash it runs here; the idle job also runs it once a day.
+    const clean = getMeta(db, 'clean_close') === '1' && getMeta(db, 'check_failed') === null;
+    qc = clean ? 'skipped' : quickCheck(db);
+  } catch (err) { qc = err.message; }
+  if (qc === 'ok' || qc === 'skipped') {
+    if (!db.readOnly) setMeta(db, 'clean_close', '0');
+    return { db, quickCheck: qc, restoredFrom: null, recoveredEmpty: null };
+  }
 
   try { db?.close(); } catch { /* broken anyway */ }
   log(`cortex: ${file} failed quick_check (${qc}); quarantining`);

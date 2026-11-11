@@ -141,7 +141,7 @@ test('cortex-consolidate: housekeeping runs once per period', async () => {
   c.node.upsert({ kind: 'fact', text: 'Rex is my dog', source: src('user') });
   const backups = () => fs.readdirSync(dir).filter(f => /backup/.test(f)).length;
   let r = await c.consolidate.tick({ deadlineMs: 1000 });
-  assert.ok(r.did.includes('backup') && r.did.includes('optimize') && r.did.includes('checkpoint'));
+  assert.ok(r.did.includes('backup') && r.did.includes('optimize') && r.did.includes('checkpoint') && r.did.includes('check'));
   r = await c.consolidate.tick({ deadlineMs: 1000 });
   assert.ok(!r.did.includes('backup') && !r.did.includes('checkpoint'));
   assert.equal(backups(), 1);

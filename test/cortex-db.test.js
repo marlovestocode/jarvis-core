@@ -118,6 +118,29 @@ test('cortex-db: corrupt file with no backup starts empty and marks it', () => {
   c.close();
 });
 
+test('cortex-db: after a clean close the full check is skipped; after a crash it runs', () => {
+  const cortexLib = require('../src/core/cortex');
+  const file = tmpFile();
+  cortexLib.open({ file }).close();
+  const a = cortexLib.open({ file });
+  assert.equal(a.health().quickCheck, 'skipped');           // clean close before
+  const b = cortexLib.open({ file });                       // a is still open: as after a crash
+  assert.equal(b.health().quickCheck, 'ok');
+  b.close(); a.close();
+});
+
+test('cortex-db: a failed daily check forces the full check at the next boot', () => {
+  const cortexLib = require('../src/core/cortex');
+  const file = tmpFile();
+  cortexLib.open({ file }).close();
+  const raw = openDb({ file });
+  raw.stmt("INSERT INTO meta(key, value) VALUES ('check_failed', '1')").run();
+  raw.close();
+  const c = cortexLib.open({ file });
+  assert.equal(c.health().quickCheck, 'ok');
+  c.close();
+});
+
 test('cortex-db: open never throws on an unusable path', () => {
   const cortexLib = require('../src/core/cortex');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jcortex-'));
