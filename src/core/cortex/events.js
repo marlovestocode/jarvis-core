@@ -14,12 +14,17 @@ function createEvents(db, { now = Date.now } = {}) {
       .run(Number.isFinite(at) ? at : now(), kind, nodeId, json).lastInsertRowid);
   }
 
+  // only the conditions given, so SQLite can use (node_id, at) or (kind, at) for the range; with a node the kind
+  // test is kept off the index (+kind), since a node's events are few and the kind index would scan every event of it
   function query({ kind, since = null, until = null, nodeId = null, limit = 100, order = 'asc' } = {}) {
     checkKind(kind);
     const dir = order === 'desc' ? 'DESC' : 'ASC';
     const lim = Math.max(1, Math.min(1e6, Number(limit) || 100));
-    return db.stmt(`SELECT * FROM event WHERE kind = ?1 AND (?2 IS NULL OR at >= ?2) AND (?3 IS NULL OR at < ?3) AND (?4 IS NULL OR node_id = ?4)
-                    ORDER BY at ${dir}, id ${dir} LIMIT ?5`).all(kind, since, until, nodeId, lim).map(out);
+    const where = [nodeId !== null && nodeId !== undefined ? '+kind = ?' : 'kind = ?'], args = [kind];
+    if (nodeId !== null && nodeId !== undefined) { where.push('node_id = ?'); args.push(nodeId); }
+    if (since !== null && since !== undefined) { where.push('at >= ?'); args.push(since); }
+    if (until !== null && until !== undefined) { where.push('at < ?'); args.push(until); }
+    return db.stmt(`SELECT * FROM event WHERE ${where.join(' AND ')} ORDER BY at ${dir}, id ${dir} LIMIT ?`).all(...args, lim).map(out);
   }
 
   const count = ({ kind = null } = {}) => db.stmt('SELECT count(*) n FROM event WHERE (?1 IS NULL OR kind = ?1)').get(kind).n;

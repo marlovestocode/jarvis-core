@@ -44,15 +44,18 @@ function transition(cortex, prev, prevId, p, id) {
 }
 
 // one play → event + nodes + next, in one transaction. prev: the play before it (undefined = look it up), null = none.
-// → { eventId, trackId } | null when the same track already has a play at that moment (a re-sent event, E6)
-function recordPlay(cortex, p, { prev, source = musicSource(cortex) } = {}) {
+// → { eventId, trackId } | null when the same track already has a play at that moment (a re-sent event, E6).
+// ids: an optional Map videoId → track node id the caller keeps (the importer), so a known track costs no lookup.
+function recordPlay(cortex, p, { prev, source = musicSource(cortex), ids = null } = {}) {
+  const idOf = v => { let id = ids?.get(v); if (id === undefined) { id = cortex.node.find({ kind: 'track', key: trackKey(v) })?.id; if (id !== undefined) ids?.set(v, id); } return id; };
   return cortex.transaction(() => {
-    const existing = cortex.node.find({ kind: 'track', key: trackKey(p.videoId) });
-    if (existing && cortex.event.query({ kind: 'play', nodeId: existing.id, since: p.at, until: p.at + 1, limit: 1 }).length) return null;
+    const existing = idOf(p.videoId);
+    if (existing !== undefined && cortex.event.query({ kind: 'play', nodeId: existing, since: p.at, until: p.at + 1, limit: 1 }).length) return null;
     const before = prev !== undefined ? prev : cortex.event.query({ kind: 'play', until: p.at, order: 'desc', limit: 1 })[0]?.payload || null;
-    const trackId = existing ? existing.id : ensureTrack(cortex, p, source);
+    const trackId = existing !== undefined ? existing : ensureTrack(cortex, p, source);
+    ids?.set(p.videoId, trackId);
     const eventId = cortex.event.add({ kind: 'play', nodeId: trackId, payload: p, at: p.at });
-    if (before) transition(cortex, before, cortex.node.find({ kind: 'track', key: trackKey(before.videoId) })?.id, p, trackId);
+    if (before) transition(cortex, before, idOf(before.videoId), p, trackId);
     return { eventId, trackId };
   });
 }

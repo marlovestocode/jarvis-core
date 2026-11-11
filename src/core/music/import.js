@@ -11,7 +11,8 @@ const valid = p => p && typeof p === 'object' && /^[\w-]{6,20}$/.test(String(p.v
 
 function createMusicImport({ cortex, file, playLog = null, log = () => {}, now = Date.now, chunkLines = 2000 }) {
   let done = false, fd = null, size = 0, pos = 0, bad = 0, imported = 0, prev = null, source = null;
-  let carry = Buffer.alloc(0), carryAt = 0;   // bytes read past the last full line, and the offset they start at
+  let carry = Buffer.alloc(0), carryAt = 0;
+  const ids = new Map();   // videoId → track node id, for this import only   // bytes read past the last full line, and the offset they start at
 
   const pct = () => (size ? Math.min(100, Math.round((100 * pos) / size)) : 100);
   const state = () => ({ done, pct: pct(), imported, bad });
@@ -70,7 +71,7 @@ function createMusicImport({ cortex, file, playLog = null, log = () => {}, now =
         let p = null;
         try { p = JSON.parse(l.text); } catch { /* counted below */ }
         if (!valid(p)) { bad++; continue; }
-        if (recordPlay(cortex, p, { prev, source })) imported++;
+        if (recordPlay(cortex, p, { prev, source, ids })) imported++;
         prev = p;
       }
       cortex.meta.set('import_music_pos', String(pos));

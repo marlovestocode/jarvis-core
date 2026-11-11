@@ -75,3 +75,19 @@ test('cortex-w2: free text keeps the secret pattern', () => {
   assert.throws(() => c.node.upsert({ kind: 'fact', text: 'my password is hunter2', source: src }), { code: 'secret' });
   assert.throws(() => c.event.add({ kind: 'tool', payload: { name: 'x', args: { n: 1234567890123 } } }), { code: 'secret' });
 });
+
+test('cortex-w2: event.query by node and time uses an index, not a scan of the kind', () => {
+  const { openDb } = require('../src/core/cortex/db');
+  const { createEvents } = require('../src/core/cortex/events');
+  const db = openDb({ file: ':memory:' });
+  const ev = createEvents(db, { now: () => 1 });
+  const seen = [];
+  const stmt = db.stmt;
+  db.stmt = sql => { const st = stmt(sql); return { all: (...args) => { seen.push([sql, args]); return st.all(...args); } }; };
+  ev.query({ kind: 'play', nodeId: 5, since: 10, until: 11, limit: 1 });
+  ev.query({ kind: 'play', until: 10, order: 'desc', limit: 1 });
+  db.stmt = stmt;
+  const plans = seen.map(([sql, args]) => db.raw.prepare('EXPLAIN QUERY PLAN ' + sql).all(...args).map(r => r.detail).join(' | '));
+  assert.match(plans[0], /USING INDEX \S*node\S* \(node_id=\? AND at>\? AND at<\?\)/, plans[0]);
+  assert.match(plans[1], /USING INDEX \S* \(kind=\? AND at<\?\)/, plans[1]);
+});
