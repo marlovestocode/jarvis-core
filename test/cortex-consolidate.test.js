@@ -135,6 +135,19 @@ test('cortex-consolidate: each synchronous step stays short on 2,000 nodes', asy
   c.close();
 });
 
+test('cortex-consolidate: a cold matrix is warmed in slices before any linking', async () => {
+  const { c, src } = setup({ embedder: createFakeEmbedder({ dim: 16 }) });
+  const s = src('user');
+  for (let i = 0; i < 20; i++) c.node.upsert({ kind: 'fact', text: `fact number ${i} about things`, source: s });
+  await drain(c);
+  c.trim();                                                       // matrix dropped
+  c.node.upsert({ kind: 'fact', text: 'one more fact about things', source: s });
+  const r = await c.consolidate.tick({ deadlineMs: 1000 });
+  assert.ok(r.did.includes('embed'));
+  assert.ok(r.did.includes('warm'));
+  c.close();
+});
+
 test('cortex-consolidate: housekeeping runs once per period', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jcortex-hk-'));
   const { c, src, advance } = setup({ file: path.join(dir, 'cortex.db') });

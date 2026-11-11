@@ -51,16 +51,22 @@ function createVectors(db, { dim = 256, model = 'none' } = {}) {
   function append(id, scale, v) {
     if (m.n === m.ids.length) {
       const bigger = alloc(Math.max(64, m.ids.length * 2));
-      bigger.ids.set(m.ids); bigger.scales.set(m.scales); bigger.data.set(m.data); bigger.n = m.n; bigger.row = m.row;
+      bigger.ids.set(m.ids); bigger.scales.set(m.scales); bigger.data.set(m.data); bigger.n = m.n; bigger.row = m.row; bigger.upTo = m.upTo; bigger.complete = m.complete;
       m = bigger;
     }
     m.ids[m.n] = id; m.scales[m.n] = scale; m.data.set(v, m.n * dim); m.row.set(id, m.n); m.n++;
   }
-  function load() {
-    const rows = db.stmt('SELECT node_id, scale, v FROM vec WHERE dim = ?').all(dim);
-    m = alloc(Math.max(64, rows.length));
-    for (const r of rows) append(r.node_id, r.scale, asI8(r.v));
+  // The matrix loads in node-id order, a slice at a time (warm), so the idle job never stalls on all of it at once;
+  // search() completes a partial load. `upTo` = highest node id loaded so far.
+  function loadSome(rows) {
+    if (!m) { m = alloc(Math.max(64, db.stmt('SELECT count(*) n FROM vec WHERE dim = ?').get(dim).n)); m.upTo = 0; m.complete = false; }
+    if (m.complete) return;
+    const got = db.stmt('SELECT node_id, scale, v FROM vec WHERE dim = ? AND node_id > ? ORDER BY node_id LIMIT ?').all(dim, m.upTo, rows);
+    for (const r of got) { if (!m.row.has(r.node_id)) append(r.node_id, r.scale, asI8(r.v)); m.upTo = r.node_id; }
+    if (got.length < rows) m.complete = true;
   }
+  function load() { while (!m || !m.complete) loadSome(5000); }
+  function warm({ rows = 2000 } = {}) { loadSome(rows); return { done: m.complete, loaded: m.n }; }
 
   function put(nodeId, f32) {
     if (!f32 || f32.length !== dim) throw new CortexError('dim', `vector has ${f32?.length} dims, store uses ${dim}`);
@@ -69,8 +75,8 @@ function createVectors(db, { dim = 256, model = 'none' } = {}) {
       .run(nodeId, dim, scale, asBytes(v), model);
     if (!m) return;
     const i = m.row.get(nodeId);
-    if (i === undefined) append(nodeId, scale, v);
-    else { m.scales[i] = scale; m.data.set(v, i * dim); }
+    if (i !== undefined) { m.scales[i] = scale; m.data.set(v, i * dim); } else if (m.complete || nodeId <= m.upTo) append(nodeId, scale, v);
+    // else: past the loaded slice; the next slice reads it from the table
   }
 
   function dropRow(nodeId) {
@@ -87,7 +93,7 @@ function createVectors(db, { dim = 256, model = 'none' } = {}) {
   // → [{ id, score }] best first; score is the cosine estimate from int8
   function search(qF32, k = 20) {
     if (!qF32 || qF32.length !== dim) return [];
-    if (!m) load();
+    if (!m || !m.complete) load();
     const { scale: qs, v: q } = quantize(l2normalize(qF32));
     if (!qs || !m.n) return [];
     const topS = [], topI = [];
@@ -123,7 +129,7 @@ function createVectors(db, { dim = 256, model = 'none' } = {}) {
   }
   function trim() { m = null; }
 
-  return { dim, model, put, remove, search, has, markStaleIfModelChanged, staleCount, staleIds, stats, trim, forget: dropRow };
+  return { dim, model, put, remove, search, has, warm, isWarm: () => !!m?.complete, markStaleIfModelChanged, staleCount, staleIds, stats, trim, forget: dropRow };
 }
 
 module.exports = { l2normalize, truncate, quantize, dequantize, dotI8, createVectors };

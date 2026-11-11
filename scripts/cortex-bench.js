@@ -14,10 +14,14 @@ const DIM = 256;
 const GATES = { recallP95: 15, upsertMean: 1, bootMs: 300, memMB: 64, dbMB: 100 };
 
 function rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 2 ** 32; }; }
-// vocabulary of pseudo-words with a Zipf-like draw, so common words match many nodes like real text
+// Vocabulary drawn by Zipf (exponent 1, like natural language). As in real English, the most frequent ranks are
+// function words ("the", "my", "is"...), so they come first; the rest are pseudo-words.
+const ENGLISH_TOP = ['the', 'of', 'and', 'to', 'in', 'is', 'it', 'you', 'that', 'he', 'was', 'for', 'on', 'are', 'with', 'as', 'his', 'they', 'at', 'be',
+  'this', 'have', 'from', 'or', 'one', 'had', 'by', 'but', 'not', 'what', 'all', 'were', 'we', 'when', 'your', 'can', 'said', 'there', 'an', 'each',
+  'which', 'she', 'do', 'how', 'their', 'if', 'will', 'up', 'about', 'out', 'many', 'then', 'them', 'so', 'some', 'her', 'would', 'my', 'me', 'has'];
 function vocab(r, n = 20000) {
   const syl = ['ka', 'lo', 'mi', 're', 'su', 'ta', 'ne', 'po', 'vi', 'da', 'ri', 'go', 'be', 'fu', 'shi', 'an', 'el', 'or', 'un', 'is'];
-  const out = new Set();
+  const out = new Set(ENGLISH_TOP);
   while (out.size < n) { let w = ''; const k = 2 + Math.floor(r() * 3); for (let i = 0; i < k; i++) w += syl[Math.floor(r() * syl.length)]; out.add(w); }
   return [...out];
 }
@@ -47,7 +51,7 @@ async function build(dir) {
   const vectors = createVectors(db, { dim: DIM, model: emb.id });
   vectors.markStaleIfModelChanged();
   const src = Object.fromEntries(['user', 'tool', 'wiki', 'model'].map(k => [k, sources.add({ kind: k, ref: 'bench-' + k })]));
-  const ids = [], embeddable = [];
+  const ids = [], embeddable = [], hubKinds = [];
   const t0 = performance.now();
   db.tx(() => {
     for (let i = 0; i < N.nodes; i++) {
@@ -57,10 +61,15 @@ async function build(dir) {
       const text = sentence(r, words, Math.max(2, Math.round(LEN[kind] * (0.6 + r() * 0.8)))).slice(0, cap);
       const { id } = nodes.upsert({ kind, text: text.length >= 3 ? text : text + ' item', source: src[SRC[kind]], importance: r() });
       ids.push(id);
+      hubKinds.push(kind === 'entity' || kind === 'artist' || kind === 'playlist');
       if (['fact', 'entity', 'chat', 'knowledge', 'reminder'].includes(kind)) embeddable.push([id, text]);
     }
+    // 70% of edges between random nodes; 30% into hubs (entities, artists, playlists) with a skewed draw, so the
+    // biggest hub gets a few hundred links: an artist with hundreds of tracks, a pet mentioned in hundreds of facts
+    const hubs = ids.filter((_, i) => hubKinds[i]);
     for (let e = 0; e < N.edges; e++) {
-      const a = ids[Math.floor(r() * ids.length)], b = ids[zipf(r, ids.length)];   // Zipf on dst makes hubs
+      const a = ids[Math.floor(r() * ids.length)];
+      const b = r() < 0.3 ? hubs[Math.floor(hubs.length * Math.pow(r(), 1.5))] : ids[Math.floor(r() * ids.length)];
       if (a !== b) edges.link(a, b, EDGE_TYPES[Math.floor(r() * EDGE_TYPES.length)], { weight: 0.05 + r() * 0.9 });
     }
   });
@@ -69,8 +78,9 @@ async function build(dir) {
   const vs = await emb.embed(chosen.map(x => x[1]), { role: 'doc' });
   db.tx(() => { chosen.forEach(([id], i) => vectors.put(id, vs[i])); });
   db.raw.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+  const maxInDegree = db.raw.prepare('SELECT max(c) m FROM (SELECT dst, count(*) c FROM edge GROUP BY dst)').get().m;
   db.close();
-  return { buildNodesEdgesS: ((tVec - t0) / 1000).toFixed(1), buildVectorsS: ((performance.now() - tVec) / 1000).toFixed(1), vectors: chosen.length };
+  return { buildNodesEdgesS: ((tVec - t0) / 1000).toFixed(1), buildVectorsS: ((performance.now() - tVec) / 1000).toFixed(1), vectors: chosen.length, maxInDegree };
 }
 
 const pct = (xs, p) => { const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p / 100 * s.length))]; };
@@ -110,10 +120,14 @@ async function phase(name, dir) {
     return { mean: ms.reduce((a, b) => a + b, 0) / ms.length, p95: pct(ms, 95), max: Math.max(...ms) };
   }
   if (name === 'mem') {
+    // code is loaded first (node:sqlite's native library and the JS modules are process cost, not cortex data);
+    // the delta is what opening and using the cortex adds: page cache, FTS, statements, the vector matrix
+    const { createFakeEmbedder } = require('../src/core/cortex/embedder');
+    const cortexLib = require('../src/core/cortex');
+    cortexLib.open({}).close();
     gc();
     const before = process.memoryUsage();
-    const { createFakeEmbedder } = require('../src/core/cortex/embedder');
-    const c = require('../src/core/cortex').open({ file, embedder: createFakeEmbedder({ dim: DIM }) });
+    const c = cortexLib.open({ file, embedder: createFakeEmbedder({ dim: DIM }) });
     const ms = [];
     for (let i = 0; i < 300; i++) { const t = performance.now(); await c.recall(query() + ' ' + query()); ms.push(performance.now() - t); }
     gc();
@@ -152,7 +166,7 @@ async function main() {
   fs.mkdirSync(dir, { recursive: true });
   console.log(`corpus: ${N.nodes} nodes, ${N.edges} edges, ${N.vectors} vectors (dim ${DIM}) in ${dir}`);
   const b = await build(dir);
-  console.log(`built: nodes+edges ${b.buildNodesEdgesS} s, vectors ${b.buildVectorsS} s`);
+  console.log(`built: nodes+edges ${b.buildNodesEdgesS} s, vectors ${b.buildVectorsS} s, biggest hub ${b.maxInDegree} incoming links`);
   const file = path.join(dir, 'cortex.db');
   const dbMB = fs.statSync(file).size / 1048576;
 

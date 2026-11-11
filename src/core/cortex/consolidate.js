@@ -6,7 +6,7 @@ const { getMeta, setMeta } = require('./maintenance');
 const EMBED_KINDS = new Set(['fact', 'entity', 'chat', 'knowledge', 'reminder']);
 const BATCH = 16, SIMILAR = 0.82, DUPLICATE = 0.95, NEIGHBORS = 5;
 const STALE_DAYS = 180, DAY = 864e5, HOUR = 36e5;
-const PRUNE_SRCS = 500, ARCHIVE_ROWS = 200;
+const PRUNE_SRCS = 500, ARCHIVE_ROWS = 200, WARM_ROWS = 2000;
 const yieldNow = () => new Promise(r => setImmediate(r));
 
 function createConsolidate({ db, vectors, edges, maintenance = null, embedder = null, isIdle = () => true, now = Date.now, log = () => {} }) {
@@ -49,8 +49,16 @@ function createConsolidate({ db, vectors, edges, maintenance = null, embedder = 
   const nodeRow = id => db.stmt('SELECT id, kind, status, created FROM node WHERE id = ?').get(id);
 
   // 2 + 3. link and dedupe from one search per freshly embedded node, until the slice is spent
+  // the matrix loads a slice per tick, so no step pays for all of it at once
+  function warm() {
+    if (!embedder || vectors.isWarm() || (!toLink.length && !vectors.stats().vectors)) return null;
+    const t0 = performance.now();
+    vectors.warm({ rows: WARM_ROWS });
+    return performance.now() - t0;
+  }
+
   function link(deadline) {
-    if (!toLink.length) return null;
+    if (!toLink.length || !vectors.isWarm()) return null;
     const t0 = performance.now();
     let deduped = false;
     while (toLink.length && (performance.now() - t0 < deadline || performance.now() === t0)) {
@@ -127,7 +135,7 @@ function createConsolidate({ db, vectors, edges, maintenance = null, embedder = 
       return 'ok';
     };
     try {
-      for (const [name, fn] of [['embed', embed], ['link', () => link(Math.max(1, deadlineMs - spent))], ['prune', prune], ['housekeeping', () => housekeeping(did)]]) {
+      for (const [name, fn] of [['embed', embed], ['warm', warm], ['link', () => link(Math.max(1, deadlineMs - spent))], ['prune', prune], ['housekeeping', () => housekeeping(did)]]) {
         const r = await step(name, fn);
         if (r === 'abort') return { did: did.filter(d => d !== 'housekeeping'), aborted: true, steps };
         if (r === 'stop') break;

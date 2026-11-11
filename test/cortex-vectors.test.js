@@ -61,6 +61,33 @@ test('cortex-vectors: trim drops the matrix and the next search reloads', () => 
   assert.equal(vectors.stats().vectors, 1);
 });
 
+test('cortex-vectors: warm loads the matrix in slices; search finishes a partial load', () => {
+  const { addNode, vectors } = setup();
+  const r = rng(11), vs = [];
+  for (let i = 0; i < 50; i++) { const id = addNode('n' + i); const v = randomUnit(r, 64); vs.push([id, v]); vectors.put(id, v); }
+  vectors.trim();
+  assert.deepEqual(vectors.warm({ rows: 20 }), { done: false, loaded: 20 });
+  assert.deepEqual(vectors.warm({ rows: 20 }), { done: false, loaded: 40 });
+  const last = vs[49];
+  assert.equal(vectors.search(last[1], 1)[0].id, last[0]);   // row 50 was not warmed yet: search loads the rest
+  assert.deepEqual(vectors.warm({ rows: 20 }), { done: true, loaded: 50 });
+  const late = addNode('late'); const lv = randomUnit(r, 64); vectors.put(late, lv);
+  assert.equal(vectors.search(lv, 1)[0].id, late);
+});
+
+test('cortex-vectors: matrix growth keeps the loaded state', () => {
+  const { addNode, vectors } = setup();
+  const r = rng(13);
+  const first = addNode('a'); vectors.put(first, randomUnit(r, 64));
+  vectors.search(randomUnit(r, 64), 1);                  // loaded, capacity 64
+  let last, lv;
+  for (let i = 0; i < 200; i++) { last = addNode('n' + i); lv = randomUnit(r, 64); vectors.put(last, lv); }   // grows past 64
+  const hit = vectors.search(lv, 1)[0];
+  assert.equal(hit.id, last);
+  assert.equal(vectors.isWarm(), true);
+  assert.equal(new Set(vectors.search(lv, 300).map(x => x.id)).size, 201);   // every vector once, none duplicated
+});
+
 test('cortex-vectors: wrong dim refused', () => {
   const { addNode, vectors } = setup();
   assert.throws(() => vectors.put(addNode('a'), new Float32Array(10)), e => e.code === 'dim');
