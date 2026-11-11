@@ -85,7 +85,7 @@ test('clipboard_read: results do not count as backing an action claim', async ()
     [{ type: 'token', text: 'I opened Chrome for you.' }, { type: 'done' }],
   ]);
   const res = await orc.send(s.id, 'read the clipboard', { source: 'text' });
-  assert.match(res.reply, /Correction: I didn't actually do that/);
+  assert.match(res.reply, /I haven't actually done that/);
 });
 
 test('clipboard_write: refused in a tainted turn', async () => {

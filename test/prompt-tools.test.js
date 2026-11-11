@@ -49,3 +49,17 @@ test('prompt: group hints and the more_skills hint are rendered', () => {
   assert.match(p, /HINT-FROM-GROUP/);
   assert.match(p, /more_skills: load another skill group/);
 });
+
+test('prompt: JARVIS has a voice of his own, and the spoken version carries the speaking habits', () => {
+  const { systemPrompt } = require('../src/core/brain/prompt');
+  for (const brief of [false, true]) {
+    const p = systemPrompt({ source: 'voice', brief, tools: [] });
+    assert.match(p, /Character: J\.A\.R\.V\.I\.S\. as in the films/, `brief=${brief}`);
+    assert.match(p, /grammatically impeccable/, `brief=${brief}`);
+    assert.match(p, /never "yeah"/, `brief=${brief}`);
+    assert.match(p, /Never open with "Certainly!"/, `brief=${brief}`);
+  }
+  const text = systemPrompt({ source: 'text', tools: [] });
+  assert.match(text, /Character: J\.A\.R\.V\.I\.S\. as in the films/);
+  assert.doesNotMatch(text, /grammatically impeccable/, 'typed chat is not told to speak');
+});

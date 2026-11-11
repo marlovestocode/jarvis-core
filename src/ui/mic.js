@@ -43,7 +43,10 @@
   let out = null, current = null;
   function play({ id, pcm, rate }) {
     try {
-      if (!out) out = new AudioContext({ latencyHint: 'interactive' });
+      // The context runs at the speech's own rate: a buffer at another rate is resampled by the browser with plain linear
+      // interpolation (hissy, aliased), while a context at the buffer's rate leaves the one resample to the audio output path.
+      if (out && out.sampleRate !== rate) { try { out.close(); } catch (e) { /* already closed */ } out = null; }
+      if (!out) { try { out = new AudioContext({ latencyHint: 'interactive', sampleRate: rate }); } catch (e) { out = new AudioContext({ latencyHint: 'interactive' }); } }
       if (out.state === 'suspended') out.resume();
       const samples = pcm instanceof Int16Array ? pcm : new Int16Array(pcm.buffer || pcm);
       const buf = out.createBuffer(1, samples.length, rate);

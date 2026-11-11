@@ -34,7 +34,7 @@ function setup({ table, config = cfg(), now, cacheDir = tmp(), timeoutMs, maxByt
 const W = 'https://api.open-meteo.com/v1/forecast?latitude=32.45&longitude=-99.73';
 
 test('config: online, location, news, sports defaults', () => {
-  assert.deepEqual(DEFAULTS.online, { enabled: true, weather: true, news: true, sports: true, wiki: true });
+  assert.deepEqual(DEFAULTS.online, { enabled: true, weather: true, news: true, sports: true, wiki: true, web: true });
   assert.deepEqual(DEFAULTS.location, { city: 'Abilene, TX', lat: 32.4487, lon: -99.7331, country: 'US', units: 'F' });
   assert.equal(DEFAULTS.news.feeds.length, 4);
   assert.ok(DEFAULTS.news.feeds.every(u => u.startsWith('https://')));

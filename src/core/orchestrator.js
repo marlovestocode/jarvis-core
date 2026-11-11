@@ -44,7 +44,31 @@ function forProvider(m) {
 // promptInfo() → { hardware, media } (or a promise of it): facts for the prompt.
 // fastPath(text, { source }) → null | { reply, record?, tool, ok }: a skill that answers without the model
 // (media commands). An empty reply is silent; record is what the chat history keeps.
-const { unbackedClaim, UNBACKED_FIX, UNTRUSTED_TOOLS, NEEDS_OK } = require('./brain/guard');
+const { unbackedClaim, stripClaims, UNBACKED_FIX, UNTRUSTED_TOOLS, NEEDS_OK } = require('./brain/guard');
+
+// A tool result the model sees is capped: a log dump or a long list swamps a small context window and the model loses the thread.
+// This turn's results keep more (the model is answering from them); results from earlier turns are only a reminder.
+const TOOL_CHARS_NOW = 2500;
+const TOOL_CHARS_OLD = 400;
+function capText(text, max) {
+  const t = String(text ?? '');
+  return t.length <= max ? t : t.slice(0, max).replace(/\s+\S*$/, '') + ` … [${t.length - max} more characters cut]`;
+}
+// What the chat lists above a reply for a tool call: "youtube_music · play · “cortisol”". A secret pick never shows its query.
+function toolLabel(name, args) {
+  const a = args && typeof args === 'object' ? args : {};
+  const parts = [name];
+  if (typeof a.action === 'string' && a.action) parts.push(a.action);
+  if (!a.secret) {
+    const q = [a.query, a.name, a.title, a.app, a.playlist, a.place, a.topic].find(v => typeof v === 'string' && v.trim());
+    if (q) parts.push(`“${q.trim().slice(0, 40)}”`);
+  }
+  return parts.join(' · ');
+}
+// Asked of a model that answered nothing: say it once more, plainly. Never saved to the chat.
+const NUDGE_AFTER_TOOL = 'Answer the user now, in one or two sentences, using the tool results above.';
+const NUDGE_CLAIM = 'Your last reply said something was done, or stated what is playing, without calling a tool. Call the tool that does it or checks it now, then answer only from its result. If no tool fits, say you cannot do that.';
+const NUDGE_PLAIN ="Reply to the user's last message in one or two sentences.";
 
 function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, onQuestionLost = () => {} }) {
   let current = null; // AbortController of the running turn
@@ -131,6 +155,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       let s = sessionId ? sessions.load(sessionId) : null;
       if (!s) s = sessions.create();
       s.messages.push({ role: 'user', content: String(text), at: Date.now() });
+      const turnStart = s.messages.length - 1;   // tool results before this message are old
       sessions.save(s);
       bus.emit('state', { state: 'thinking' });
 
@@ -147,6 +172,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           const reply = String(fp.reply || '');
           if (reply) bus.emit('token', { text: reply });
           const msg = { role: 'assistant', content: String(fp.record ?? reply) };
+          if (fp.tool) msg.skill = String(fp.tool);   // the chat lists the skill above the reply, like a tool call
           if (!reply) msg.silent = true;
           s.messages.push(msg);
           sessions.save(s);
@@ -193,6 +219,9 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       let error;
       let stopped = false;
       let toolRounds = 0;
+      let nudge = null;        // set when the model answered nothing: one more try with this added
+      let emptyRetries = 0;
+      let claimRetried = false;
       const seenCalls = new Set();   // name+args of every call this turn
       let okTools = 0;   // tools that ran, did not fail and can back an action claim (lookups cannot)
       const turn = { source, tainted: false };   // tainted: text from outside (pages, files) came in this turn
@@ -214,12 +243,13 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
         // the tool definitions are part of the prompt too; JSON costs more tokens per char than prose.
         // When they were left out, a full window made Ollama cut the start of the prompt (system prompt and tools), and the model answered nothing.
         const toolChars = useTools ? Math.ceil(JSON.stringify(useTools).length * TOOL_CHAR_WEIGHT) : 0;
-        let window = fitWindow(s.messages, st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min(REPLY_CHARS, Math.floor((st.contextMax || 0) * CHARS_PER_TOKEN * REPLY_SHARE)), stamp ? stamp(turnNow).length + 2 : 0).map(m => {
+        let window = fitWindow(s.messages.map((m, i) => (m.role === 'tool' ? { ...m, content: capText(m.content, i < turnStart ? TOOL_CHARS_OLD : TOOL_CHARS_NOW) } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min(REPLY_CHARS, Math.floor((st.contextMax || 0) * CHARS_PER_TOKEN * REPLY_SHARE)), stamp ? stamp(turnNow).length + 2 : 0).map(m => {
           const o = forProvider(m);
           if (stamp && m.role === 'user' && m.at) o.content = `${o.content}\n\n${stamp(new Date(m.at))}`;   // its own send time, the same text every turn
           return o;
         });
         if (sys) window = [{ role: 'system', content: sys }, ...window];
+        if (nudge) { window = [...window, { role: 'user', content: nudge }]; nudge = null; }
         sentChars = window.reduce((n, m) => n + String(m.content || '').length, 0);
         let round;
         try {
@@ -240,6 +270,29 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           promptTokens = usage.promptTokens || promptTokens;
         }
         if (!round.toolCalls.length) {
+          // an empty answer (often right after a tool) is a model hiccup, not a reply: ask once more, then fall back to the last tool result
+          if (!reply.trim() && !question) {
+            if (emptyRetries < 1 && !ac.signal.aborted) {
+              emptyRetries++;
+              nudge = toolRounds > 0 ? NUDGE_AFTER_TOOL : NUDGE_PLAIN;
+              bus.emit('log', { level: 'warn', text: 'Model answered nothing; asking again' });
+              continue;
+            }
+            const lastTool = [...s.messages].reverse().find(m => m.role === 'tool');
+            if (toolRounds > 0 && lastTool && !/^error/i.test(String(lastTool.content))) {
+              reply = capText(lastTool.content, 400);
+              bus.emit('token', { text: reply });
+            }
+          }
+          // text chat: the model claimed an action or a media state without calling any tool. Take that reply back and make it use a tool,
+          // rather than leave a claim (voice has already spoken it, so voice only gets the correction below).
+          if (source !== 'voice' && !claimRetried && useTools && toolRounds === 0 && !error && unbackedClaim(reply, okTools)) {
+            claimRetried = true;
+            nudge = NUDGE_CLAIM;
+            bus.emit('retract', {});
+            bus.emit('log', { level: 'warn', text: 'Reply claimed an action no tool confirmed; asking again with a tool' });
+            continue;
+          }
           s.messages.push({ role: 'assistant', content: reply });
           break;
         }
@@ -251,7 +304,8 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
         toolRounds++;
         s.messages.push({ role: 'assistant', content: reply, toolCalls: round.toolCalls });
         for (const call of round.toolCalls) {
-          bus.emit('tool', { id: call.id, name: call.name, phase: 'start' });
+          const label = toolLabel(call.name, call.args);
+          bus.emit('tool', { id: call.id, name: call.name, label, phase: 'start' });
           inTool = true;
           let res;
           // the model re-sent a call it already made this turn: do not run it again, tell it to answer
@@ -268,7 +322,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           if (res.untrusted || UNTRUSTED_TOOLS.has(call.name)) turn.tainted = true;
           if (res.ok && String(res.text).startsWith(NEEDS_OK)) question = String(res.text).slice(NEEDS_OK.length);
           else if (res.ok && !/^error/i.test(String(res.text)) && !res.untrusted && !UNTRUSTED_TOOLS.has(call.name) && call.name !== 'more_skills') okTools++;   // loading a skill is not an action
-          s.messages.push({ role: 'tool', content: res.text, toolCallId: call.id, name: call.name });
+          s.messages.push({ role: 'tool', content: capText(res.text, 6000), toolCallId: call.id, name: call.name, label });
           if (ac.signal.aborted) break;
         }
         sessions.save(s);
@@ -294,8 +348,11 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       const last = s.messages.at(-1);
       // the model said it DID something but no tool confirmed it: say so instead of leaving a false claim
       if (!error && !stopped && last?.role === 'assistant' && unbackedClaim(reply, okTools)) {
-        bus.emit('token', { text: UNBACKED_FIX });
-        reply += UNBACKED_FIX; last.content = reply;
+        // text chat: the saved message (what the chat redraws when the turn ends) loses the false claim; voice already spoke it, so it hears the correction
+        const fixed = stripClaims(reply);
+        if (source === 'voice') bus.emit('token', { text: ' ' + UNBACKED_FIX });
+        reply = source === 'voice' ? reply + ' ' + UNBACKED_FIX : fixed;
+        last.content = reply;
         bus.emit('log', { level: 'warn', text: 'Reply claimed an action no tool confirmed' });
       }
       if (last?.role === 'assistant' && lookups.size) last.lookups = [...lookups.values()];
@@ -339,4 +396,4 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
   };
 }
 
-module.exports = { createOrchestrator, fitWindow };
+module.exports = { toolLabel, createOrchestrator, fitWindow };

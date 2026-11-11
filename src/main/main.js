@@ -1,7 +1,7 @@
 // JARVIS core: Electron shell around src/core. Local only.
 const path = require('node:path');
 const fs = require('node:fs');
-const { app, globalShortcut, session, Notification } = require('electron');
+const { app, globalShortcut, session, Notification, clipboard, shell } = require('electron');
 
 // Data in %APPDATA%\jarvis-core (JARVIS_DATA_DIR overrides it, for self-tests).
 const DATA_DIR = process.env.JARVIS_DATA_DIR || path.join(app.getPath('appData'), 'jarvis-core');
@@ -39,6 +39,9 @@ const { createActionLog } = require('../core/pc/actions-log');
 const { createOrchestrator } = require('../core/orchestrator');
 const { createPolicy } = require('../core/net/policy');
 const { createFetcher } = require('../core/net/fetcher');
+const { createPublicFetch } = require('../core/net/public-fetch');
+const { createWebAudit } = require('../core/web/audit');
+const { createWeb } = require('../core/web/service');
 const { createKiwix } = require('../core/knowledge/kiwix');
 const { startBridge } = require('../core/bridge');
 const { createEngineRegistries } = require('../core/voice/engines');
@@ -56,6 +59,7 @@ const { createMediaSkill } = require('../core/media/skill');
 const { promptLine: mediaPromptLine } = require('../core/media/say');
 const { pressKey } = require('../core/tools/media');
 const { startYtMusicLink } = require('../core/media/ytmusic-link');
+const { loadOrCreateLinkKey } = require('../core/media/link-key');
 const { createYtMusic } = require('../core/media/ytmusic');
 const { createYtPlaylists } = require('../core/media/ytplaylists');
 const { createSpeaker } = require('../core/voice/speaker/speaker');
@@ -130,6 +134,10 @@ async function jarvisStatus() {
   };
 }
 ctx.fetcher = createFetcher({ policy: createPolicy(ctx.getConfig), bus: ctx.bus, cacheDir: path.join(DATA_DIR, 'cache') });
+// general web search: every search and page goes into web-activity.jsonl (tray → Web activity log) and shows as a source chip in the chat
+ctx.webAudit = createWebAudit({ file: path.join(DATA_DIR, 'web-activity.jsonl'), bus: ctx.bus, log: ctx.log });
+ctx.web = createWeb({ publicFetch: createPublicFetch(), audit: ctx.webAudit, getConfig: ctx.getConfig });
+ctx.bus.on('web', e => { if (e.ok) ctx.bus.emit('net', { source: 'web', host: e.host || 'duckduckgo.com', ok: true, ms: e.ms || 0, cached: false, ageMs: 0 }); });
 ctx.kiwix = createKiwix({ exe: path.join(__dirname, '../../engines/kiwix/kiwix-serve.exe'), zimDir: 'C:\\JarvisData\\library', log: ctx.log });
 // Media: what is playing and its controls, read from Windows by one PowerShell host (src/core/media).
 // Media keys through sysmon remain the fallback when the host cannot run.
@@ -138,7 +146,14 @@ ctx.media = createMediaService({ request: (cmd, args, o) => ctx.mediaHost.reques
 // YouTube Music: the JARVIS Chrome extension connects here (127.0.0.1:47830, extension origin only)
 // every finished play the extension reports goes into the local listening log (music_stats)
 ctx.playLog = createPlayLog({ file: path.join(DATA_DIR, 'music-plays.jsonl'), getConfig: ctx.getConfig, log: ctx.log });
-ctx.ytmLink = startYtMusicLink({ log: ctx.log, onChange: connected => ctx.ytPlaylists?.onLink(connected), onPlay: e => ctx.playLog.add(e) });
+let lastLinkToast = 0;
+ctx.notify = (title, body) => {
+  if (Date.now() - lastLinkToast < 10 * 60 * 1000) return;   // a stale extension retries all day: one toast per ten minutes
+  lastLinkToast = Date.now();
+  if (Notification.isSupported()) new Notification({ title, body, silent: true }).show();
+};
+ctx.linkKey = loadOrCreateLinkKey(path.join(DATA_DIR, 'link.key'), { log: ctx.log });
+ctx.ytmLink = startYtMusicLink({ log: ctx.log, secret: ctx.linkKey, onReject: r => ctx.notify?.('YouTube Music extension is not connected', r.legacy ? 'It is an old version. Reload it in chrome://extensions, then paste the link key from the JARVIS tray menu into its popup.' : 'Its link key does not match. Copy it again from the JARVIS tray menu into the extension popup.'), onChange: connected => ctx.ytPlaylists?.onLink(connected), onPlay: e => ctx.playLog.add(e) });
 ctx.ytm = createYtMusic({ link: ctx.ytmLink });
 // the user's own playlists, read live through the extension (library hint kept on disk for the prompt)
 ctx.ytPlaylists = createYtPlaylists({ link: ctx.ytmLink, ytm: ctx.ytm, getConfig: ctx.getConfig, file: path.join(DATA_DIR, 'cache', 'ytm-library.json'), journalFile: path.join(DATA_DIR, 'ytm-undo.json'), log: ctx.log });
@@ -186,7 +201,7 @@ ctx.timerStore = createTimerStore({ file: path.join(DATA_DIR, 'timers.json'), lo
 ctx.scheduler = createScheduler({ store: ctx.timerStore, bus: ctx.bus, log: ctx.log });
 // JARVIS's own introspection tools: the checks read ctx live each time they run (src/main/checks.js)
 const self = { getChecks: () => selfChecks(ctx), about: () => ({ version, electron: process.versions.electron, node: process.versions.node, startedAt: ctx.startedAt, dataDir: DATA_DIR }), logFile: LOG_FILE, dataDir: DATA_DIR };
-ctx.catalog = brain.defaultCatalog({ self, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog } });
+ctx.catalog = brain.defaultCatalog({ self, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog } });
 ctx.toolList = ctx.catalog.tools;
 for (const m of ctx.catalog.missing) if (m.error) ctx.log(`skill group ${m.id} failed to load: ${m.error}`);
 ctx.tools = createToolRunner(ctx.toolList, { groups: ctx.catalog.groups });
@@ -198,7 +213,7 @@ ctx.orchestrator = createOrchestrator({
   promptInfo: async () => {
     let media;
     try { media = mediaPromptLine(await Promise.race([ctx.media.state(), new Promise((_, rej) => setTimeout(() => rej(new Error('slow')), 600))])); } catch { media = undefined; }
-    return { hardware: ctx.hardware.cached() || undefined, media, library: ctx.ytPlaylists.digest() || undefined, memory: ctx.memory.digest() || undefined, user: userInfo(), caps: capsLine() };
+    return { hardware: ctx.hardware.cached() || undefined, media, library: ctx.ytPlaylists.digest() || undefined, memory: ctx.memory.digest() || undefined, user: userInfo(), caps: capsLine(), hotkeys: ctx.config.hotkeys };
   },
   // a pending PC action reads the user's own reply first (yes / no); nothing else can confirm it
   fastPath: async (text, o) => (await ctx.confirm.handle(text, o)) || (await ctx.memorySkill.handle(text, o)) || ctx.mediaSkill.handle(text, o),
@@ -244,8 +259,15 @@ ctx.whisper = createWhisperStt({
   // the user's own words (playlists, teams, name) are added each time, so new playlists are heard right
   prompt: () => withTerms(sttPrompt(ctx.config.sttPrompt), [ctx.config.user.name, ...ctx.ytPlaylists.titles(), ...ctx.config.sports.follow.map(f => f.team)]), log: ctx.log,
 });
+// the JARVIS voice when its files are there, else the stock British voice
+const PIPER_VOICES = [
+  { model: path.join(ENGINES, 'piper', 'jarvis-high.onnx'), label: 'Piper neural (JARVIS high, jgkawell)' },
+  { model: path.join(ENGINES, 'piper', 'jarvis-medium.onnx'), label: 'Piper neural (JARVIS, jgkawell)', detail: 'Piper JARVIS voice, local neural voice' },
+  { model: path.join(ENGINES, 'piper', 'en_GB-alan-medium.onnx'), label: 'Piper neural (British, Alan)', detail: 'Piper en_GB alan, local neural voice' },
+];
+const PIPER_VOICE = PIPER_VOICES.find(v => fs.existsSync(v.model) && fs.existsSync(v.model + '.json')) || PIPER_VOICES.at(-1);
 ctx.piper = createPiperTts({
-  exe: path.join(ENGINES, 'piper', 'bin', 'piper', 'piper.exe'), model: path.join(ENGINES, 'piper', 'en_GB-alan-medium.onnx'),
+  exe: path.join(ENGINES, 'piper', 'bin', 'piper', 'piper.exe'), model: PIPER_VOICE.model, label: PIPER_VOICE.label,
   outDir: path.join(os.tmpdir(), 'jarvis-tts'), play: (pcm, rate, o) => ctx.mic.play(pcm, rate, o), log: ctx.log,
 });
 ctx.engines.stt.add(ctx.whisper);
@@ -268,7 +290,7 @@ ctx.speaker = createSpeaker({
   profileFile: path.join(DATA_DIR, 'voiceprint.json'), getConfig: ctx.getConfig, log: ctx.log,
 });
 ctx.voice = createVoiceController({
-  bus: ctx.bus, orchestrator: ctx.orchestrator, speaker: ctx.speaker,
+  bus: ctx.bus, orchestrator: ctx.orchestrator, speaker: ctx.speaker, confirmPending: () => !!ctx.confirm.pending(),
   engines: { stt: () => engine('stt'), tts: () => engine('tts'), wake: () => engine('wake') },
   getConfig: ctx.getConfig, getSessionId: () => ctx.sessionId, setSessionId: id => { ctx.sessionId = id; },
   vadOptions: { silenceMs: ctx.config.endSilenceMs }, // config.endSilenceMs; read at start
@@ -375,6 +397,8 @@ app.whenReady().then(async () => {
     openChat: () => ctx.windows.showChat(),
     talk: () => ctx.startVoice(),
     openSettings: () => ctx.windows.showSettings(),
+    copyLinkKey: () => clipboard.writeText(ctx.linkKey),
+    openWebLog: () => { try { if (!fs.existsSync(ctx.webAudit.file)) fs.writeFileSync(ctx.webAudit.file, ''); } catch { /* shown empty */ } shell.openPath(ctx.webAudit.file); },
     quit: () => app.quit(),
   });
   applyHotkeys();

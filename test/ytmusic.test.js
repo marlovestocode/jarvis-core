@@ -76,6 +76,8 @@ function client(port, origin, path = '/ytmusic') {
       if (!head.includes(`Sec-WebSocket-Accept: ${accept}`)) { s.destroy(); return reject(new Error('bad Sec-WebSocket-Accept')); }
       const parse = createParser((fin, op, data) => { if (op === 1) msgs.push(JSON.parse(data.toString())); });
       s.on('data', parse);
+      const rest = Buffer.from(head.slice(i + 4), 'latin1');   // a frame sent right behind the 101 arrives in the same chunk
+      if (rest.length) parse(rest);
       const sendMasked = obj => {   // clients must mask
         const p = Buffer.from(JSON.stringify(obj)); const m = crypto.randomBytes(4);
         const f = frame(1, Buffer.from(p.map((b, k) => b ^ m[k & 3])));
@@ -113,6 +115,73 @@ test('link: only the JARVIS extension may connect; requests round-trip', async (
   ext.s.destroy();
   for (let i = 0; i < 50 && link.connected; i++) await tick(20);
   try { assert.equal(link.connected, false); } finally { await link.close(); }
+});
+
+test('link with a key: nothing is accepted until the extension proves it, and the proof is checked both ways', async () => {
+  const { proof } = require('../src/core/media/link-key');
+  const KEY = 'ab'.repeat(32);
+  const changes = [], plays = [];
+  const link = startYtMusicLink({ ports: [47894, 47895], secret: KEY, authMs: 300, onChange: c => changes.push(c), onPlay: e => plays.push(e) });
+  const port = await link.started;
+  const origin = `chrome-extension://${EXTENSION_ID}`;
+  const waitFor = async (ext, pred) => { for (let i = 0; i < 50 && !ext.msgs.find(pred); i++) await tick(10); return ext.msgs.find(pred); };
+
+  // 1. a client that never answers the challenge is dropped, and nothing it sent counted
+  const lazy = await client(port, origin);
+  const ch = await waitFor(lazy, m => m.type === 'challenge');
+  assert.ok(ch?.nonce);
+  lazy.send({ type: 'play', event: { title: 'sneaky' } });
+  await tick(20);
+  assert.equal(link.connected, false);
+  await assert.rejects(link.request('status'), /not connected/);
+  for (let i = 0; i < 40 && !lazy.s.destroyed; i++) await tick(20);
+  assert.equal(lazy.s.destroyed, true, 'dropped after authMs');
+  assert.deepEqual(plays, []);
+
+  // 2. a wrong key is dropped at once
+  const wrong = await client(port, origin);
+  const wc = await waitFor(wrong, m => m.type === 'challenge');
+  wrong.send({ type: 'hello', version: '1', nonce: 'n2', proof: proof('cd'.repeat(32), 'ext', port, wc.nonce) });
+  for (let i = 0; i < 40 && !wrong.s.destroyed; i++) await tick(20);
+  assert.equal(wrong.s.destroyed, true);
+  assert.equal(link.connected, false);
+
+  // 3. a proof made for another port (a relay) is refused
+  const relay = await client(port, origin);
+  const rc = await waitFor(relay, m => m.type === 'challenge');
+  relay.send({ type: 'hello', version: '1', nonce: 'n2', proof: proof(KEY, 'ext', port + 1, rc.nonce) });
+  for (let i = 0; i < 40 && !relay.s.destroyed; i++) await tick(20);
+  assert.equal(relay.s.destroyed, true);
+
+  // 4. the right key: JARVIS answers with its own proof, then commands and plays work
+  const ext = await client(port, origin);
+  const c4 = await waitFor(ext, m => m.type === 'challenge');
+  ext.send({ type: 'hello', version: '1.5.0', nonce: 'n2n2', proof: proof(KEY, 'ext', port, c4.nonce) });
+  const auth = await waitFor(ext, m => m.type === 'auth');
+  assert.equal(auth.proof, proof(KEY, 'srv', port, c4.nonce, 'n2n2'));
+  await tick();
+  assert.equal(link.connected, true);
+  assert.deepEqual(changes, [true]);
+  ext.send({ type: 'play', event: { title: 'ok' } });
+  const p = link.request('status');
+  const req = await waitFor(ext, m => m.cmd === 'status');
+  ext.send({ id: req.id, ok: true, result: { fine: 1 } });
+  assert.deepEqual(await p, { fine: 1 });
+  assert.deepEqual(plays, [{ title: 'ok' }]);
+  ext.s.destroy();
+  for (let i = 0; i < 50 && link.connected; i++) await tick(20);
+  try { assert.equal(link.connected, false); } finally { await link.close(); }
+});
+
+test('link key: made once, kept, and reused', () => {
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const { loadOrCreateLinkKey, KEY_RE } = require('../src/core/media/link-key');
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'jc-key-')), 'link.key');
+  const a = loadOrCreateLinkKey(file);
+  assert.match(a, KEY_RE);
+  assert.equal(loadOrCreateLinkKey(file), a);
+  fs.writeFileSync(file, 'not a key');
+  assert.match(loadOrCreateLinkKey(file), KEY_RE, 'a damaged file is replaced');
 });
 
 // ---- ytmusic + skill against a fake extension ----
@@ -202,4 +271,24 @@ test('rank: a loosely spoken title and artist still win (no exact title needed)'
   const r = rank(parseRequest('play 5 in the morning by suicide boys'), cands);
   assert.equal(r[0].c.artists[0], '$uicideboy$');
   assert.ok(r[0].score >= 0.35);
+});
+
+test('link with a key: an old extension (no proof) is dropped, reported once a minute, with a readable reason', async () => {
+  const logs = [], rejects = [];
+  const link = startYtMusicLink({ ports: [47896, 47897], secret: 'ab'.repeat(32), log: m => logs.push(m), onReject: r => rejects.push(r) });
+  const port = await link.started;
+  const origin = `chrome-extension://${EXTENSION_ID}`;
+  for (let i = 0; i < 4; i++) {
+    const old = await client(port, origin);
+    for (let k = 0; k < 50 && !old.msgs.find(m => m.type === 'challenge'); k++) await tick(10);
+    old.send({ type: 'hello', version: '1.4.0' });   // what a 1.4.0 extension sends
+    for (let k = 0; k < 40 && !old.s.destroyed; k++) await tick(10);
+    assert.equal(old.s.destroyed, true);
+  }
+  try {
+    assert.equal(rejects.length, 1, 'one report, not one per retry');
+    assert.equal(rejects[0].legacy, true);
+    assert.equal(logs.filter(l => /old version/.test(l)).length, 1);
+    assert.equal(link.connected, false);
+  } finally { await link.close(); }
 });

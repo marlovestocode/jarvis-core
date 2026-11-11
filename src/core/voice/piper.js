@@ -5,6 +5,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const childProcess = require('node:child_process');
+const { polishPcm } = require('./polish');
+
+// noise_scale: how much each sound wobbles (lower is cleaner, higher is looser). noise_w: how much the timing of sounds
+// varies. A little under the model's own 0.667 and 0.8 keeps the sound steadier; going much lower makes it flat.
+const NOISE_SCALE = 0.5;
+const NOISE_W = 0.8;
 
 // small async queue usable with for-await
 function channel() {
@@ -20,10 +26,17 @@ function channel() {
 }
 
 function createPiperTts({
-  exe, model, outDir, play, sampleRate = 22050,
+  exe, model, outDir, play, label = 'Piper neural (British, Alan)', sampleRate = 22050, noiseScale = NOISE_SCALE, noiseW = NOISE_W,
   spawn = childProcess.spawn, exists = p => fs.existsSync(p), readFile = p => fs.readFileSync(p), remove = p => fs.rm(p, { force: true }, () => {}),
   log = () => {},
 }) {
+  let base = null;
+  const baseLength = () => {
+    if (base === null) {
+      try { const v = Number(JSON.parse(readFile(model + '.json').toString()).inference?.length_scale); base = v >= 0.6 && v <= 1.6 ? v : 1; } catch { base = 1; }
+    }
+    return base;
+  };
   let proc = null, procRate = null;
   let pending = [];   // resolvers waiting for the next WAV path, in order
   const installed = () => exists(exe) && exists(model);
@@ -41,8 +54,9 @@ function createPiperTts({
         if (/\.wav$/i.test(f) && Date.now() - fs.statSync(p).mtimeMs > 600000) remove(p);
       }
     } catch { /* test path */ }
-    const lengthScale = String(Math.round(100 / Math.max(0.5, Math.min(2, rate))) / 100);
-    const kid = spawn(exe, ['-m', model, '--output_dir', outDir, '--length_scale', lengthScale, '-q'], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    // rate 1 is the pace the voice was trained at (its own length_scale: JARVIS 1.15, Alan 1.0); faster than that distorts it
+    const lengthScale = String(Math.round(100 * baseLength() / Math.max(0.5, Math.min(2, rate))) / 100);
+    const kid = spawn(exe, ['-m', model, '--output_dir', outDir, '--length_scale', lengthScale, '--noise_scale', String(noiseScale), '--noise_w', String(noiseW), '-q'], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     proc = kid; procRate = rate;
     let buf = '';
     kid.stdout.setEncoding?.('utf8');
@@ -74,7 +88,7 @@ function createPiperTts({
     const b = readFile(path);
     remove(path);
     const n = Math.floor((b.length - 44) / 2);
-    return new Int16Array(b.buffer.slice(b.byteOffset + 44, b.byteOffset + 44 + n * 2));
+    return polishPcm(new Int16Array(b.buffer.slice(b.byteOffset + 44, b.byteOffset + 44 + n * 2)), sampleRate);
   }
 
   function createStream({ rate = 1, signal } = {}) {
@@ -124,8 +138,8 @@ function createPiperTts({
   }
 
   return {
-    id: 'piper', label: 'Piper neural (British, Alan)',
-    async status() { return installed() ? { ready: true, detail: 'Piper en_GB alan, local neural voice' } : { ready: false, detail: 'Piper is not installed' }; },
+    id: 'piper', label,
+    async status() { return installed() ? { ready: true, detail: `${label}, local` } : { ready: false, detail: 'Piper is not installed' }; },
     available: () => installed(),
     warm(rate = 1) { if (installed()) start(rate); },
     createStream,

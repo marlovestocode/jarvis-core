@@ -90,40 +90,78 @@ function createMediaStatusTool({ service }) {
 }
 
 // youtube_music: search-and-play, the queue and likes in the user's YouTube Music tab (extension).
+// secret: true keeps the picked titles out of every result and reply (the chat shows tool results), so a surprise stays one.
+// The tool remembers the secret picks itself, so "skip to the first one" still works (play_secret) and reveal_secret tells them.
 function createYtMusicTool({ ytm }) {
   const { named } = require('../media/ytmusic');
+  const secrets = [];   // { title, artist } in the order they were picked
+  const norm = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const isSecret = x => secrets.some(p => norm(p.title) === norm(x?.title));
+  const keep = it => { if (it && !isSecret(it)) secrets.push({ title: it.title, artist: it.artists?.length ? it.artists.join(', ') : it.artist || '' }); };
   return {
     name: 'youtube_music',
-    description: 'YouTube Music in Chrome: play a song, album, playlist or artist by name right now (action play; also for "skip to <song>"); play_next and add_to_queue only QUEUE it and do not start it; read what is up next; clear the queue; like or dislike the current song. query is what to search, e.g. "bohemian rhapsody by queen", "album american idiot", "some lofi".',
+    description: 'YouTube Music in Chrome: play a song, album, playlist or artist by name right now (action play; also for "skip to <song>"); play_next and add_to_queue only QUEUE it and do not start it; read what is up next; clear the queue; like or dislike the current song. query is what to search, e.g. "bohemian rhapsody by queen", "album american idiot", "some lofi". play_random plays one random song by the artist in query ("play a random song by X"); queue_random queues `count` random songs by the artist in query ("queue 5 random songs by X"). secret=true when the user wants to be surprised: the titles are then hidden from the result and remembered; play_secret (index 1, 2, ...) plays one of them, reveal_secret tells the user which they were.',
     timeoutMs: 40000,
     params: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['play', 'play_next', 'add_to_queue', 'up_next', 'clear_queue', 'like', 'dislike'] },
+        action: { type: 'string', enum: ['play', 'play_next', 'add_to_queue', 'up_next', 'clear_queue', 'like', 'dislike', 'play_secret', 'reveal_secret', 'queue_random', 'play_random'] },
         query: { type: 'string', description: 'for play / play_next / add_to_queue' },
+        secret: { type: 'boolean', description: 'true to hide the title from the result and remember it as a secret pick' },
+        index: { type: 'number', description: 'for play_secret: which secret pick, 1 is the first' },
+        count: { type: 'number', description: 'for queue_random: how many songs (default 5, at most 10)' },
       },
       required: ['action'],
       additionalProperties: false,
     },
-    async run({ action, query } = {}) {
+    async run({ action, query, secret, index, count } = {}) {
       if (!ytm.connected) throw new Error('The YouTube Music extension is not connected');
-      if (['play', 'play_next', 'add_to_queue'].includes(action) && !query) throw new Error('query is required');
+      if (['play', 'play_next', 'add_to_queue', 'queue_random', 'play_random'].includes(action) && !query) throw new Error('query is required');
+      if (action === 'play_random') {
+        const r = await ytm.playRandom(query);
+        if (!r.ok) throw new Error(r.message);
+        if (secret) { keep(r.item); return 'Playing a secret pick (verified). The title stays hidden.'; }
+        return r.started ? `Playing ${named(r.item)} (verified).` : `Loaded ${named(r.item)}, but ${r.message}`;
+      }
+      if (action === 'queue_random') {
+        const r = await ytm.queueRandom(query, count, 'end');
+        if (!r.ok) throw new Error(r.message);
+        if (secret) { for (const it of r.added) keep(it); return `Added ${r.added.length} secret picks to the end of the queue (verified)${r.failed ? `, ${r.failed} could not be queued` : ''}. The titles stay hidden.`; }
+        return `Added ${r.added.length} random songs to the end of the queue (verified): ${r.added.map(it => named(it)).join('; ')}${r.failed ? `. ${r.failed} could not be queued` : ''}.`;
+      }
+      if (action === 'play_secret') {
+        const n = Math.round(Number(index) || 1);
+        const pick = secrets[n - 1];
+        if (!pick) throw new Error(secrets.length ? `There are only ${secrets.length} secret picks` : 'There are no secret picks');
+        const r = await ytm.play(`${pick.title}${pick.artist ? ' by ' + pick.artist : ''}`);
+        if (!r.ok) throw new Error('Could not start that secret pick');
+        return `Playing secret pick ${n} (verified). The title stays hidden.`;
+      }
+      if (action === 'reveal_secret') {
+        if (!secrets.length) return 'There are no secret picks.';
+        const list = secrets.map((p, i) => `${i + 1}. ${p.title}${p.artist ? ' by ' + p.artist : ''}`).join('; ');
+        secrets.length = 0;
+        return `Secret picks, now revealed: ${list}.`;
+      }
       if (action === 'play') {
         const r = await ytm.play(query);
         if (!r.ok) throw new Error(r.message);
+        if (secret) { keep(r.item); return r.started ? 'Playing a secret pick (verified). The title stays hidden.' : 'Loaded a secret pick, but Chrome blocked autoplay. Press play once in the YouTube Music tab.'; }
         return r.started ? `Playing ${named(r.item)} (verified).` : `Loaded ${named(r.item)}, but ${r.message}`;
       }
       if (action === 'play_next' || action === 'add_to_queue') {
         const r = await ytm.enqueue(query, action === 'play_next' ? 'next' : 'end');
         if (!r.ok) throw new Error(r.message);
+        if (secret) { keep(r.item); return r.started ? `Queue was empty, so secret pick ${secrets.length} is playing.` : `Secret pick ${secrets.length} ${action === 'play_next' ? 'queued to play next' : 'added to the end of the queue'} (verified), NOT playing yet. The title stays hidden.`; }
         return r.started ? `Queue was empty, so ${named(r.item)} is playing.` : `${action === 'play_next' ? 'Queued to play next' : 'Added to the end of the queue'}, NOT playing yet: ${named(r.item)} (verified). To hear it now, call youtube_music action play with the same query`;
       }
       if (action === 'up_next') {
         const q = await ytm.upNext(5);
         if (q.none) return 'No YouTube Music tab is open.';
-        return q.next.length ? 'Up next: ' + q.next.map(x => `"${x.title}"${x.artist ? ' by ' + x.artist : ''}`).join('; ') + (q.repeat && q.repeat !== 'NONE' ? `. Repeat ${q.repeat}.` : '.') : 'Nothing is queued after this song.';
+        const shown = x => (isSecret(x) ? 'a secret pick' : `"${x.title}"${x.artist ? ' by ' + x.artist : ''}`);
+        return q.next.length ? 'Up next: ' + q.next.map(shown).join('; ') + (q.repeat && q.repeat !== 'NONE' ? `. Repeat ${q.repeat}.` : '.') : 'Nothing is queued after this song.';
       }
-      if (action === 'clear_queue') { const r = await ytm.clear(); return `Removed ${r.removed} songs after the current one.`; }
+      if (action === 'clear_queue') { const r = await ytm.clear(); secrets.length = 0; return `Removed ${r.removed} songs after the current one.`; }
       if (action === 'like' || action === 'dislike') { const r = await ytm.like(action === 'like' ? 'LIKE' : 'DISLIKE'); return `Song is now ${r.value.toLowerCase()}d.`; }
       throw new Error(`Unknown action ${action}`);
     },

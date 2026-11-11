@@ -25,7 +25,6 @@ const OLD_ALIASES = {
   get_news: 'news_headlines',
   wikipedia: 'lookup_knowledge',
   search: 'lookup_knowledge',
-  web_search: 'lookup_knowledge',
   time: 'get_time',
   system_stats: 'get_system_stats',
   timer: 'set_timer',
@@ -82,7 +81,7 @@ test('migration: every tool keeps name, description, params, risk and timeout', 
 });
 
 test('migration: every old alias still resolves to the same tool', async () => {
-  assert.equal(Object.keys(OLD_ALIASES).length, 50);
+  assert.equal(Object.keys(OLD_ALIASES).length, 49);   // web_search used to be an alias of lookup_knowledge; it is a real tool now (skills/web)
   const runner = createToolRunner(defaultTools(toolDeps()));
   const catalog = buildCatalog(loadGroups(toolDeps()));
   for (const [alias, name] of Object.entries(OLD_ALIASES)) {

@@ -3,7 +3,8 @@
 // The user's prints live in one local JSON file. Nothing leaves the PC.
 //   embed(pcm, rate) → Float32Array(256), unit length | null (audio too short)
 //   enroll(clips[]) → { ok, count } | { ok:false, reason }
-//   verify(pcm, rate, { lenient }) → { ok, score, reason? }   (not enrolled / model missing → ok:true: no gate)
+//   verify(pcm, rate, { lenient, strict }) → { ok, score, reason? }   (not enrolled / model missing → ok:true: no gate;
+//   strict: an error or audio too short fails instead of passing)
 const fs = require('node:fs');
 const path = require('node:path');
 const { fbank, RATE } = require('./fbank');
@@ -79,13 +80,13 @@ function createSpeaker({ ort, modelPath, profileFile, getConfig = () => ({}), ex
   function clear() { prints = []; centroid = null; try { fs.rmSync(profileFile, { force: true }); } catch { /* gone */ } }
 
   // lenient: slightly lower bar, for audio with JARVIS's own voice mixed in (interrupts while it speaks)
-  async function verify(pcm, rate = RATE, { lenient = false } = {}) {
+  async function verify(pcm, rate = RATE, { lenient = false, strict = false } = {}) {
     if (!enrolled() || !available()) return { ok: true, score: null, reason: 'no gate' };
     const base = Number(getConfig().speakerThreshold);
     const threshold = (Number.isFinite(base) ? base : 0.45) - (lenient ? 0.1 : 0);
     let e;
-    try { e = await embed(pcm, rate); } catch (err) { return { ok: true, score: null, reason: 'error: ' + err.message }; }   // a broken model never locks the user out
-    if (!e) return { ok: true, score: null, reason: 'too short' };
+    try { e = await embed(pcm, rate); } catch (err) { return { ok: !strict, score: null, reason: 'error: ' + err.message }; }   // a broken model never locks the user out, but strict (a spoken yes) fails closed
+    if (!e) return { ok: !strict, score: null, reason: 'too short' };
     const score = dot(e, centroid);   // the centroid is unit length, as is e: cosine similarity
     return { ok: score >= threshold, score: Math.round(score * 1000) / 1000, threshold };
   }

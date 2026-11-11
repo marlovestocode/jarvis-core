@@ -14,6 +14,12 @@ async function refresh() {
   $('tab').className = tabs.length ? 'ok' : '';
 }
 
+$('savekey').addEventListener('click', () => {
+  const key = $('key').value.trim();
+  if (!/^[0-9a-f]{64}$/i.test(key)) { $('err').textContent = 'That is not a link key (64 letters and digits). Copy it from the JARVIS tray menu.'; return; }
+  $('link').textContent = 'connecting…';
+  chrome.runtime.sendMessage({ type: 'set-key', key }, s => { $('key').value = ''; show(s); refresh(); });
+});
 $('retry').addEventListener('click', () => {
   $('link').textContent = 'connecting…';
   chrome.runtime.sendMessage({ type: 'reconnect' }, s => { show(s); refresh(); });

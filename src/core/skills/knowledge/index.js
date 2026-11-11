@@ -5,7 +5,7 @@ const { own } = require('../util');
 const ALIASES = {
   get_weather: ['weather'],
   news_headlines: ['get_news'],
-  lookup_knowledge: ['wikipedia', 'search', 'web_search'],
+  lookup_knowledge: ['wikipedia', 'search'],
 };
 
 function createGroup({ fetcher, kiwix, getConfig, bus } = {}) {

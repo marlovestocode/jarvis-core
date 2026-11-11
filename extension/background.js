@@ -29,17 +29,53 @@ function open(port) {
   });
 }
 
+async function hmac(key, text) {
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(text));
+  return [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Whatever listens on these local ports is trusted only after it proves it knows the link key (JARVIS tray menu →
+// "Copy extension link key", pasted into this popup): it answers a challenge, we answer with a proof naming the port
+// we dialled, and it must send back a proof of its own. Until then nothing it says is read and nothing is sent to it.
+function authenticate(sock, key, port) {
+  return new Promise((resolve, reject) => {
+    const fail = msg => { sock.onmessage = null; reject(new Error(msg)); };
+    const timer = setTimeout(() => fail('JARVIS did not prove the link key'), 5000);
+    const nonce = crypto.randomUUID().replaceAll('-', '');
+    let challenge = null;
+    sock.onmessage = async e => {
+      let m; try { m = JSON.parse(e.data); } catch { return fail('bad reply'); }
+      try {
+        if (!challenge) {
+          if (m.type !== 'challenge' || typeof m.nonce !== 'string') return fail('This is not a JARVIS that uses a link key');
+          challenge = m.nonce;
+          send(sock, { type: 'hello', version: VERSION, nonce, proof: await hmac(key, `ext|${port}|${challenge}`) });
+        } else if (m.type === 'auth' && m.proof === await hmac(key, `srv|${port}|${challenge}|${nonce}`)) {
+          clearTimeout(timer); sock.onmessage = null; resolve();
+        } else fail('The link key does not match');
+      } catch { fail('handshake failed'); }
+    };
+  });
+}
+
 async function connect() {
   if (ws || connecting) return;
   connecting = true;
+  let sock = null, key = '';
   try {
+    try { key = String((await chrome.storage.local.get('linkKey')).linkKey || '').trim(); } catch { /* storage unavailable */ }
+    if (!key) { status.connected = false; status.lastError = 'Paste the link key from the JARVIS tray menu below, then press Reconnect.'; save(); return; }
     for (const port of PORTS) {
-      try { ws = await open(port); status.port = port; break; } catch { /* next port */ }
+      let s;
+      try { s = await open(port); } catch { continue; }
+      try { await authenticate(s, key, port); sock = s; status.port = port; break; }
+      catch (err) { status.lastError = err.message; try { s.close(); } catch { /* closing */ } }
     }
   } finally { connecting = false; }
-  if (!ws) { status.connected = false; status.lastError = 'JARVIS is not running'; save(); return; }
+  if (!sock) { status.connected = false; if (!status.lastError || status.lastError === 'JARVIS is not running') status.lastError = 'JARVIS is not running'; save(); return; }
+  ws = sock;
   status.connected = true; status.lastError = null; save();
-  const sock = ws;
   sock.onmessage = e => onMessage(sock, e.data);
   sock.onclose = () => {
     if (ws === sock) ws = null;
@@ -47,7 +83,6 @@ async function connect() {
     status.connected = false; save();
     setTimeout(connect, 3000);
   };
-  send(sock, { type: 'hello', version: VERSION });
   flushPending(sock);
   // traffic every 20 s keeps this worker alive while JARVIS is connected (Chrome 116+)
   clearInterval(keepalive);
@@ -150,6 +185,7 @@ chrome.runtime.onStartup.addListener(connect);
 chrome.runtime.onInstalled.addListener(() => { chrome.alarms.create('jarvis-reconnect', { periodInMinutes: 0.5 }); connect(); });
 chrome.alarms.onAlarm.addListener(a => { if (a.name === 'jarvis-reconnect') connect(); });
 chrome.runtime.onMessage.addListener((m, _s, reply) => {
+  if (m?.type === 'set-key') { chrome.storage.local.set({ linkKey: String(m.key || '').trim() }).then(() => { try { ws?.close(); } catch { /* closing */ } ws = null; return connect(); }).then(() => reply({ ...status })); return true; }
   if (m?.type === 'play-log') { onPlay(m.event); return false; }
   if (m?.type === 'reconnect') { connect().then(() => reply({ ...status })); return true; }
   if (m?.type === 'status') { reply({ ...status }); return false; }

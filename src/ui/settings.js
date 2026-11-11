@@ -61,7 +61,7 @@
     $('errors').hidden = !errs.length;
     $('errors').textContent = errs.join(' · ');
     if ($('mic').dataset.loaded) $('mic').value = c.micDeviceId || '';
-    for (const [key, id] of Object.entries({ enabled: 'onlineEnabled', weather: 'onlineWeather', news: 'onlineNews', sports: 'onlineSports', wiki: 'onlineWiki' })) {
+    for (const [key, id] of Object.entries({ enabled: 'onlineEnabled', weather: 'onlineWeather', news: 'onlineNews', sports: 'onlineSports', wiki: 'onlineWiki', web: 'onlineWeb' })) {
       $(id).checked = !!c.online[key];
       $(id).disabled = key !== 'enabled' && !c.online.enabled;
     }
@@ -200,7 +200,7 @@
   $('mic').addEventListener('change', e => save({ micDeviceId: e.target.value || null }));
   $('rate').addEventListener('input', e => { $('rateVal').textContent = Number(e.target.value).toFixed(2) + '×'; });
   $('rate').addEventListener('change', e => save({ voiceRate: Number(e.target.value) }));
-  for (const [key, id] of Object.entries({ enabled: 'onlineEnabled', weather: 'onlineWeather', news: 'onlineNews', sports: 'onlineSports', wiki: 'onlineWiki' })) $(id).addEventListener('change', e => save({ online: { [key]: e.target.checked } }));
+  for (const [key, id] of Object.entries({ enabled: 'onlineEnabled', weather: 'onlineWeather', news: 'onlineNews', sports: 'onlineSports', wiki: 'onlineWiki', web: 'onlineWeb' })) $(id).addEventListener('change', e => save({ online: { [key]: e.target.checked } }));
   $('units').addEventListener('change', e => save({ location: { units: e.target.value } }));
   $('placeForm').addEventListener('submit', async e => {
     e.preventDefault();

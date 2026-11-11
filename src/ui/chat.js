@@ -15,6 +15,7 @@
   let micReason = '';
   let routeLabel = '';
   let lookupEvents = [];
+  let liveTools = [];     // names of the tools called so far this turn
   const statEl = $('stat');
   const levels = new Array(22).fill(0);
 
@@ -71,8 +72,9 @@
     const lastA = lastAssistantIndex(msgs);
     msgs.forEach((m, i) => {
       if (m.role === 'user') { log.appendChild(el('div', 'msg user', m.content)); return; }
-      if (m.role === 'tool') { log.appendChild(el('div', 'msg tool', `⚙ ${m.name}: ${String(m.content).slice(0, 120)}`)); return; }
+      if (m.role === 'tool') { log.appendChild(el('div', 'msg tool', `⚙ ${m.label || m.name}: ${String(m.content).slice(0, 120)}`)); return; }
       if (m.role !== 'assistant') return;
+      if (m.skill) log.appendChild(el('div', 'msg tool', `⚙ ${m.skill}`));   // a skill answered without the model
       if (!m.content && m.toolCalls && !m.error) return;
       const box = el('div', 'msg assistant');
       box.appendChild(md(m.content || ''));
@@ -96,6 +98,7 @@
       log.appendChild(box);
     });
     if (live) {
+      for (const name of liveTools) log.appendChild(el('div', 'msg tool', `⚙ ${name}`));   // tools called so far this turn, above the reply
       live.el = el('div', 'msg assistant live');
       live.el.appendChild(md(live.text));
       if (lookupEvents.length) live.el.appendChild(lookupNote(lookupEvents));
@@ -190,6 +193,7 @@
           setBusy(true);
           lookupEvents = [];
           live = { el: null, text: '' };
+          liveTools = [];
           session = await window.jarvis.current();
           drawLog();
           refreshList();
@@ -203,7 +207,11 @@
         live.text += ev.text;
         if (!renderQueued) { renderQueued = true; requestAnimationFrame(drawLive); }
         break;
+      case 'retract':   // the model's last words were a false claim and are being redone
+        if (live) { live.text = ''; drawLive(); }
+        break;
       case 'tool':
+        if (ev.phase === 'start') { liveTools.push(ev.label || ev.name); if (live) drawLog(); }
         if (ev.phase === 'end') reload();
         break;
       case 'net':

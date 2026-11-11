@@ -29,7 +29,7 @@ const DEFAULTS = Object.freeze({
   hotkeys: Object.freeze({ chat: 'Control+Space', voice: 'Control+Shift+Space' }),
   port: 47801,
   // knowledge & live data (spec 2026-11-10-knowledge §3): allowlisted lookups only
-  online: Object.freeze({ enabled: true, weather: true, news: true, sports: true, wiki: true }),
+  online: Object.freeze({ enabled: true, weather: true, news: true, sports: true, wiki: true, web: true }),
   // who the user is: JARVIS addresses them by name and treats this as known (settings or "call me ...")
   user: Object.freeze({ name: '', about: '' }),
   location: Object.freeze({ city: 'Abilene, TX', lat: 32.4487, lon: -99.7331, country: 'US', units: 'F' }),

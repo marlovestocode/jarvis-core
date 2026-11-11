@@ -12,7 +12,8 @@ It talks only to JARVIS on this PC (`127.0.0.1:47830`), and JARVIS accepts only 
 5. Check the card says **JARVIS for YouTube Music** with ID `kekfpeebafdohogkjmlnakddhbpednea`.
 6. Click the puzzle icon in the toolbar and pin the extension (optional, shows status).
 7. Restart JARVIS (tray icon → Quit, then start it again) so it opens the link.
-8. Click the extension icon: **JARVIS link: connected** means it works.
+8. Right-click the JARVIS tray icon → **Copy extension link key**, click the extension icon, paste the key, and press **Save key and connect**. (JARVIS and the extension prove they hold this key to each other; nothing on this PC without it can drive the extension. Needed once per browser profile, and again if you delete `link.key` in the JARVIS data folder.)
+9. **JARVIS link: connected** in the popup means it works.
 
 Sign in to YouTube Music in Chrome as usual. Likes need a signed-in account.
 
@@ -44,7 +45,7 @@ Sign in to YouTube Music in Chrome as usual. Likes need a signed-in account.
 
 ## Troubleshooting
 
-- **Not connected**: JARVIS isn't running, or it is an older version. Restart JARVIS, then click **Reconnect** in the popup.
+- **Not connected**: JARVIS isn't running, or it is an older version. Restart JARVIS, then click **Reconnect** in the popup. "Link key does not match" or "Paste the link key": copy the key again from the tray menu and save it in the popup.
 - **Wrong ID**: don't edit `manifest.json`. The `key` in it sets the ID JARVIS trusts.
 - **Remove it**: `chrome://extensions` → Remove. JARVIS keeps working without it (no song search or queue).
 

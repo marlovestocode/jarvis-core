@@ -25,7 +25,8 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
   }
 
   const unknown = name => ({ ok: false, text: `Error: unknown tool ${name}. Tools that exist: ${names.join(', ')}. Use one of those, or say you cannot do it.` });
-  const tainted = (tool, ctx) => tool.risk === 'confirm' && (!ctx.turn || ctx.turn.tainted);
+  // confirm tools need a known clean turn; durable-state tools (needsClean: memory) only refuse a turn known to be tainted
+  const tainted = (tool, ctx) => (tool.risk === 'confirm' && (!ctx.turn || ctx.turn.tainted)) || (tool.needsClean === true && !!ctx.turn?.tainted);
   const taintedText = { ok: false, text: "Error: I won't start that from text I read. Ask me directly." };
 
   function specs() {

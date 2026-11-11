@@ -13,7 +13,9 @@ function titleFor(messages) {
   return flat.length > TITLE_MAX ? flat.slice(0, TITLE_MAX).trimEnd() + '…' : flat;
 }
 
-function createSessionStore(dir) {
+const MAX_SESSIONS = 200;
+
+function createSessionStore(dir, { maxSessions = MAX_SESSIONS } = {}) {
   const hist = path.join(dir, 'history');
   const broken = path.join(hist, 'broken');
   fs.mkdirSync(hist, { recursive: true });
@@ -57,25 +59,42 @@ function createSessionStore(dir) {
     const tmp = file + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(s));
     fs.renameSync(tmp, file);
+    index?.set(s.id, { id: s.id, title: s.title, updated: s.updated });
   }
 
-  function list() {
+  // The list is built from disk once (the oldest files past MAX_SESSIONS go first), then kept in memory:
+  // save() and remove() keep it current, so listing never re-reads every session.
+  let index = null;   // id → { id, title, updated }
+  function build() {
+    index = new Map();
     let names = [];
-    try { names = fs.readdirSync(hist); } catch { return []; }
-    const out = [];
+    try { names = fs.readdirSync(hist); } catch { return; }
+    const files = [];
     for (const n of names) {
       if (!n.endsWith('.json')) continue;
       const id = n.slice(0, -5);
       if (!ID_RE.test(id)) continue;
-      const s = read(id);
-      if (s) out.push({ id: s.id, title: s.title, updated: s.updated });
+      let at = 0;
+      try { at = fs.statSync(path.join(hist, n)).mtimeMs; } catch { continue; }
+      files.push({ id, at });
     }
-    return out.sort((a, b) => b.updated - a.updated);
+    files.sort((a, b) => b.at - a.at);
+    for (const f of files.slice(maxSessions)) { try { fs.unlinkSync(fileOf(f.id)); } catch { /* gone */ } }
+    for (const f of files.slice(0, maxSessions)) {
+      const s = read(f.id);
+      if (s) index.set(s.id, { id: s.id, title: s.title, updated: s.updated });
+    }
+  }
+
+  function list() {
+    if (!index) build();
+    return [...index.values()].sort((a, b) => b.updated - a.updated);
   }
 
   function remove(id) {
     if (!ID_RE.test(String(id))) return;
     try { fs.unlinkSync(fileOf(id)); } catch { /* already gone */ }
+    index?.delete(id);
   }
 
   return { create, load, save, list, remove };

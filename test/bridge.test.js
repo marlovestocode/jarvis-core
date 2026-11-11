@@ -74,7 +74,7 @@ test('stream delivers bus events as SSE, with current state and provider on conn
   assert.equal(events[1].event, 'provider');
   assert.equal(events[1].data.label, 'No model');
   const tok = events.find(e => e.event === 'token');
-  assert.equal(tok.data.text, 'hi');
+  assert.equal(tok.data.text, '', 'the words of the conversation are not sent on the stream');
   assert.equal(tok.data.prob, 0.5);
   await br.close();
 });

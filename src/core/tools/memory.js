@@ -1,7 +1,9 @@
 // remember / forget_memory: the model's way to save and delete the user's lasting facts (deep tier;
 // quick voice/chat commands go through src/core/memory/skill.js).
 function createMemoryTools({ memory }) {
+  // needsClean: a turn that read a page, file or other outside text cannot change what JARVIS keeps for every later turn
   const remember = {
+    needsClean: true,
     name: 'remember',
     description: "Save one short lasting fact or preference about the user, only when they ask you to remember it. Never save passwords, keys or card numbers.",
     params: { type: 'object', properties: { fact: { type: 'string', description: 'One short sentence, e.g. "User prefers Fahrenheit"' } }, required: ['fact'], additionalProperties: false },
@@ -12,6 +14,7 @@ function createMemoryTools({ memory }) {
     },
   };
   const forget = {
+    needsClean: true,
     name: 'forget_memory',
     description: 'Delete saved facts about the user that match the words given, when the user asks you to forget something.',
     params: { type: 'object', properties: { about: { type: 'string', description: 'Words from the fact to delete' } }, required: ['about'], additionalProperties: false },

@@ -123,3 +123,21 @@ test('prompt: brief mode knows JARVIS listens by voice and wake word, and never 
   assert.match(brief, /no tools/i);
   assert.match(brief, /never say you (?:did|played|changed)/i);
 });
+
+// regression, from real chats on 2026-11-11: these went to quick chat (no tools) and got "I did not catch that" or "no internet"
+test('router: skill-list phrasings and look-it-up requests get tools', () => {
+  const { route } = require('../src/core/brain/router');
+  for (const t of ['Give me your skill list.', 'Give me your skill set.', 'List your skill set.', 'Tell me who Not Your Average Flight is', 'Search up who not your average flight is', 'look up the tallest building', 'Whose flight reacts']) {
+    assert.equal(route(t).tools, true, t);
+  }
+  for (const t of ['hello?', 'looks good', 'checking in']) assert.equal(route(t).tools, false, t);
+});
+
+test('prompt: spoken habits do not teach a "Very good" sign-off', () => {
+  const { systemPrompt } = require('../src/core/brain/prompt');
+  for (const brief of [false, true]) {
+    const p = systemPrompt({ source: 'voice', brief });
+    assert.match(p, /never after an answer, a refusal, an error/);
+    assert.doesNotMatch(p, /\("Very good\./);
+  }
+});

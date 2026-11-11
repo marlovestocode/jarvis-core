@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JARVIS for YouTube Music",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Lets JARVIS (running on this PC) play music in your YouTube Music tab and, only if you allow it in this popup, work with your browser tabs. Talks only to 127.0.0.1.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAk+6UCU3kPGnINSJP/vzUxqbccJ65CqqIwsKyilImpFyHFr/D15EpMFTvMTkjY/KGcYo5TY0HK9+nEk7PdNS94wsQ2YzALKqcUB+m28Wsse3dBmUebH087NrdEF3/nXeawwM1HvOoQFyAx5RwEP7fwmLobIjtqhLa35BmUz5qcxzj73Hcn6Fnjlm3FxHR9QjhSZdXIXE/1MIVYGKjg3dir9Q4NaaHWLlTKWxkG51UnrZFOZdFlDXbCXRCFhn/CYpFhcyAUAKtySIwx8B6bk7FLsNKdra4OBLE5w32ZKVQ3RFQwSqvPIwBzhDwd33SCepniV9IAvezxUMo2UdhS+dK2QIDAQAB",
   "minimum_chrome_version": "116",

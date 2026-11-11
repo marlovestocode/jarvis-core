@@ -9,6 +9,9 @@ function createGroup({ fetch, media, ytm } = {}) {
     { words: ['play', 'pause', 'resume', 'skip', 'louder', 'quieter', 'mute', 'unmute', 'shuffle', 'queue', 'song', 'songs', 'track', 'tracks', 'album', 'albums', 'spotify'], w: 3 },
     { re: /^(?!.*\b(?:brightness|screen|display|lights?)\b).*\bturn (?:it |the \w+ )?(?:up|down)\b/i, w: 3 },
     { words: ['volume', 'music'], w: 2 },
+    // spoken complaints that mean a control ("it's too quiet", "this song sucks"): without these the turn would load no media tools
+    { re: /\b(?:(?:can'?t|cannot|barely|hardly) hear|too (?:quiet|loud|low)|(?:hurting|hurts) my ears|not loud enough|sick of (?:this|it)|tired of (?:this|it)|bored (?:of|with) (?:this|it)|this (?:song|track|one) (?:sucks|is (?:bad|boring|trash|awful|annoying))|something else|another (?:song|one|track)|different (?:song|track))\b/i, w: 3 },
+    { re: /\b(?:surprise me|you(?:'d| would) (?:think )?i(?:'d| would)? (?:like|enjoy|love)|i(?:'d| would) (?:like|enjoy|love)|something i(?:'d| would)? (?:like|enjoy)|your picks?|recommend|suggest)\b/i, w: 3 },
   ], tools };
 }
 

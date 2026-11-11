@@ -5,11 +5,16 @@
 //   { kind: 'unsupported', message }
 // Patterns match the whole (cleaned) utterance so ordinary questions never get hijacked.
 
+const { variants } = require('../voice/understand');
+
 const APPS = [
   [/\bspotify\b/, 'Spotify'], [/\b(google )?chrome\b/, 'Chrome'], [/\b(microsoft )?edge\b/, 'Edge'], [/\bfirefox\b/, 'Firefox'],
   [/\bbrave\b/, 'Brave'], [/\bopera\b/, 'Opera'], [/\byoutube( music)?\b/, 'YouTube'], [/\bvlc\b/, 'VLC'], [/\b(windows )?media player\b/, 'Media Player'],
   [/\bapple music\b/, 'Apple Music'], [/\btidal\b/, 'TIDAL'], [/\bamazon music\b/, 'Amazon Music'], [/\bfoobar\b/, 'foobar2000'], [/\bmusicbee\b/, 'MusicBee'],
 ];
+
+// "songs you think I'd like" asks for JARVIS's own picks: the brain chooses them, so it is never a literal search
+const TASTE = /\b(?:(?:\d+|a few|some|several|a couple of|couple|two|three|four|five|six|seven|eight|nine|ten) (?:\w+ ){0,3}(?:songs|tracks)\b|random (?:\w+ ){0,3}(?:songs?|tracks?)\b|you (?:think|thought|know|reckon)|you'?d|you would|i'?d (?:like|enjoy|love)|i would (?:like|enjoy|love)|i (?:might|may|will) (?:like|enjoy|love)|surprise|your (?:picks?|choice|taste)|secret(?:ly)?|(?:few|some|couple of|\d+|three|four|five|six) (?:songs|tracks) (?:for|that|i|you))\b/;
 
 const NUM = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, fifteen: 15, twenty: 20, thirty: 30, forty: 40, 'forty five': 45, fifty: 50, sixty: 60, ninety: 90, half: 0.5, 'a couple': 2, 'a few': 3 };
 const num = w => (w === undefined ? undefined : /^\d+(\.\d+)?$/.test(w) ? Number(w) : NUM[w]);
@@ -33,7 +38,7 @@ function takeApp(t) {
   return { app: undefined, rest: t };
 }
 
-const MEDIA_NOUN = '(?:it|this|that|the (?:music|song|track|video|podcast|audio|episode|media|playback)|music|playback|the player)';
+const MEDIA_NOUN = '(?:it|this|that|the (?:music|song|track|video|podcast|audio|episode|media|playback)|music|song|track|video|media|audio|playback|the player)';
 const AMOUNT_SMALL = /\b(a (?:little )?bit|a little|a tad|a touch|slightly|a smidge|little bit|just a bit)\b/;
 const AMOUNT_BIG = /\b(a lot|way|loads|much|a bunch)\b/;
 
@@ -56,7 +61,26 @@ function timeAt(s) {
   return undefined;
 }
 
-function parse(text) {
+// loose: spoken input. When the strict grammar finds nothing, try rewrites of the same words (fillers and hedges removed,
+// indirect asks like "it's too quiet", misheard command words) and keep the first the strict grammar accepts whole.
+// Only controls and questions come back this way, never a "play <name>" search, so a wrong guess stays a reversible media control.
+function parse(text, { loose = false } = {}) {
+  const strict = parseStrict(text);
+  // "play something else" is a request to change the song, not a search for a song called "something else"
+  const vague = strict?.kind === 'find' && /^(?:something|anything|a different|different|another|some other|a new|it again|that again|this again|it back|that back|it one more time)\b/.test(strict.query);
+  if ((strict && !vague) || !loose) return strict;
+  const raw = clean(text);
+  if (!raw) return null;
+  for (const v of variants(raw)) {
+    const r = parseStrict(v.text);
+    if (r && (r.kind === 'control' || r.kind === 'query') && !(r.kind === 'control' && r.action === 'queue')) {
+      return { ...r, via: v.how, ...(v.loose && r.action !== 'stop' ? { loose: true } : {}) };
+    }
+  }
+  return strict;
+}
+
+function parseStrict(text) {
   const raw = clean(text);
   if (!raw || raw.split(' ').length > 16) return null;
   const { app, rest } = takeApp(raw);
@@ -86,7 +110,7 @@ function parse(text) {
   if (/^(?:remove|delete|take out|drop|skip) (?:the )?next (?:song|track|one)(?: (?:from|in|out of) (?:the )?queue)?$/.test(t) || /^remove (?:that|it) from (?:the )?queue$/.test(t))
     return { kind: 'control', action: 'queue', op: 'remove-next' };
   if ((m = t.match(/^(?:add|put|throw|stick) (.+?) (?:to|in|on|into|at the end of) (?:the |my )?queue$/)) || (m = t.match(/^queue(?: up)? (.+)$/)))
-    return /^(?:it|this|that|this song|that song)$/.test(m[1]) ? null : { kind: 'find', mode: 'end', query: m[1], ...(app ? { app } : {}) };
+    return /^(?:it|this|that|this song|that song)$/.test(m[1]) || TASTE.test(m[1]) ? null : { kind: 'find', mode: 'end', query: m[1], ...(app ? { app } : {}) };
   if ((m = t.match(/^play (.+?) (?:next|after this(?: one| song)?)$/)) && !/^(?:the|a)$/.test(m[1])) return { kind: 'find', mode: 'next', query: m[1], ...(app ? { app } : {}) };
 
   // ---- likes ----
@@ -145,7 +169,7 @@ function parse(text) {
 
   // ---- the user's own playlists: library first. The skill falls back to the catalog for a loose phrase
   // ("play the rock playlist") when nothing in the library matches; "my" makes it a library-only request. ----
-  const NOT_NAME = /^(?:the|this|that|a|an|my|it|some|any|music|songs?|tracks?|something|anything|playlists?|queue|album|list)$/;
+  const NOT_NAME =/^(?:the|this|that|a|an|my|it|some|any|music|songs?|tracks?|something|anything|playlists?|queue|album|list)$/;
   // add to a playlist / take it back. "explicit" = the user said "playlist", so a name that matches nothing is an answer, not a different request ("add 5 to my total").
   const THIS = '(?:this|this song|this track|it|that|that song|the current song|the song that\'?s playing|what\'?s playing)';
   if (/^(?:undo|undo (?:that|it|the last (?:one|thing|change|add)|my last (?:change|add))|take (?:that|it) back|revert that)$/.test(t)) return { kind: 'library-undo' };
@@ -166,7 +190,9 @@ function parse(text) {
 
   // ---- "play <something>": search and play it (YouTube Music) ----
   if ((m = t.match(/^(?:play|put on|start playing|play me|play us) (.+)$/)) && !/^(?:it|this|that|music|again)$/.test(m[1])
-    && !/\b(?:game|games|chess|cards|trivia|with me|with us|along|pretend|a joke|dead|nice|fair|dumb)\b/.test(m[1]))
+    && !/\b(?:game|games|chess|cards|trivia|with me|with us|along|pretend|a joke|dead|nice|fair|dumb)\b/.test(m[1])
+    // "songs you think I'd like" asks for JARVIS's own picks: the brain chooses them, not a literal search
+    && !TASTE.test(m[1]))
     return { kind: 'find', mode: 'play', query: m[1], ...(app ? { app } : {}) };
 
   // a bare app name means nothing on its own

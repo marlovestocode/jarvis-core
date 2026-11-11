@@ -40,8 +40,12 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
     if (res.writableLength > clientMaxBuffer) { clients.delete(res); dropped++; res.destroy(); return; }
     res.write(text);
   }
+  // Any page on localhost (or a sandboxed frame, which sends Origin: null) may read this stream, so the words of the
+  // conversation never go out on it: the wallpaper draws a spark per token, not the text.
+  const publicEvent = ev => (ev.type === 'token' && 'text' in ev ? { ...ev, text: '' } : ev);
   function write(res, ev) {
-    send(res, `event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`);
+    const out = publicEvent(ev);
+    send(res, `event: ${out.type}\ndata: ${JSON.stringify(out)}\n\n`);
   }
 
   const offBus = bus.on('*', ev => {

@@ -26,6 +26,8 @@
   { "id": "alerts", "group": "live", "q": "Any severe weather alerts in Abilene, TX?", "tool": "weather_alerts" },
   { "id": "headline", "group": "live", "q": "What is the latest top news headline?", "tool": "news_headlines" },
   { "id": "cowboys", "group": "live", "q": "What was the last Dallas Cowboys score?", "tool": "sports_scores" },
+  { "id": "t-web", "group": "tools", "q": "Search the web for the latest James Webb telescope discoveries.", "pick": "web_search" },
+  { "id": "t-web2", "group": "tools", "q": "Look it up online: who won the Cannes film festival this year?", "pick": "web_search" },
   { "id": "t-timer", "group": "tools", "q": "Set a timer for 10 minutes.", "pick": "set_timer" },
   { "id": "t-timers", "group": "tools", "q": "Which timers do I have running right now?", "pick": "list_timers" },
   { "id": "t-media", "group": "tools", "q": "Pause the music.", "pick": "media_control" },

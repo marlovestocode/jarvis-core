@@ -870,7 +870,7 @@
   },
   {
     "name": "youtube_music",
-    "description": "YouTube Music in Chrome: play a song, album, playlist or artist by name right now (action play; also for \"skip to <song>\"); play_next and add_to_queue only QUEUE it and do not start it; read what is up next; clear the queue; like or dislike the current song. query is what to search, e.g. \"bohemian rhapsody by queen\", \"album american idiot\", \"some lofi\".",
+    "description": "YouTube Music in Chrome: play a song, album, playlist or artist by name right now (action play; also for \"skip to <song>\"); play_next and add_to_queue only QUEUE it and do not start it; read what is up next; clear the queue; like or dislike the current song. query is what to search, e.g. \"bohemian rhapsody by queen\", \"album american idiot\", \"some lofi\". play_random plays one random song by the artist in query (\"play a random song by X\"); queue_random queues `count` random songs by the artist in query (\"queue 5 random songs by X\"). secret=true when the user wants to be surprised: the titles are then hidden from the result and remembered; play_secret (index 1, 2, ...) plays one of them, reveal_secret tells the user which they were.",
     "params": {
       "type": "object",
       "properties": {
@@ -883,12 +883,28 @@
             "up_next",
             "clear_queue",
             "like",
-            "dislike"
+            "dislike",
+            "play_secret",
+            "reveal_secret",
+            "queue_random",
+            "play_random"
           ]
         },
         "query": {
           "type": "string",
           "description": "for play / play_next / add_to_queue"
+        },
+        "secret": {
+          "type": "boolean",
+          "description": "true to hide the title from the result and remember it as a secret pick"
+        },
+        "index": {
+          "type": "number",
+          "description": "for play_secret: which secret pick, 1 is the first"
+        },
+        "count": {
+          "type": "number",
+          "description": "for queue_random: how many songs (default 5, at most 10)"
         }
       },
       "required": [

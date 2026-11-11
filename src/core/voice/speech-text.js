@@ -22,6 +22,19 @@ const SPOKEN_UNITS = [[/(\d)\s*ms\b/g, '$1 milliseconds'], [/(\d)\s*Mbps\b/g, '$
   [/(\d)\s*cm\b/g, '$1 centimeters'], [/(\d)\s*mm\b/g, '$1 millimeters'], [/(\d)\s*m\b(?![/²^])/g, '$1 meters'], [/(\d)\s*ft\b/g, '$1 feet'],
   [/(\d)\s*lbs?\b/g, '$1 pounds'], [/(\d)\s*oz\b/g, '$1 ounces'], [/(\d)\s*mi\b/g, '$1 miles'], [/(\d)\s*(?:hrs?|h)\b/g, '$1 hours'],
   [/(\d)\s*mins?\b/g, '$1 minutes'], [/(\d)\s*(?:secs?|s)\b/g, '$1 seconds'], [/(\d)\s*fps\b/gi, '$1 frames per second']];
+// "2026" is "twenty twenty-six", not "two thousand twenty-six"; only where it is plainly a year (after a month or a
+// date, or after in/since/from/until/by/during/of/before/after, or in "(1999)"), so "2026 files" and "1500 meters" are left alone.
+const ONES = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+const below100 = n => (n < 20 ? ONES[n] : TENS[Math.floor(n / 10)] + (n % 10 ? '-' + ONES[n % 10] : ''));
+function yearWords(y) {
+  const hi = Math.floor(y / 100), lo = y % 100;
+  if (y >= 2000 && y <= 2009) return y === 2000 ? 'two thousand' : `two thousand and ${ONES[lo]}`;
+  if (lo === 0) return `${below100(hi)} hundred`;
+  return `${below100(hi)} ${lo < 10 ? 'oh ' + ONES[lo] : below100(lo)}`;
+}
+const MONTH_RE = MONTHS.join('|');
+const YEAR_CTX = new RegExp(String.raw`(\b(?:${MONTH_RE})\s+(?:\d{1,2}(?:st|nd|rd|th)?,?\s+)?|\b(?:in|since|from|until|till|by|during|of|before|after|circa|early|late|mid)\s+|\()(1[1-9]\d\d|20\d\d)(?![\d,.]*\d|\s*(?:%|(?:meters?|metres?|kilometers?|km|cm|mm|ms|seconds?|minutes?|hours?|days?|miles?|feet|ft|kg|grams?|pounds?|lbs?|dollars?|euros?|people|files?|items?|users?|points?|words?|bytes?|mb|gb|kb|hz|mhz|ghz|rpm|watts?|degrees?|m|g|w)\b))`, 'gi');
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 // Words a voice says well: times, dates, money, ranges, abbreviations, acronyms, and pauses
@@ -29,6 +42,7 @@ const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 function articulate(s) {
   s = s.replace(/\bJ\.A\.R\.V\.I\.S\.?|\bJARVIS\b/g, 'Jarvis');
   s = s.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (m, y, mo, d) => (+mo >= 1 && +mo <= 12 && +d >= 1 && +d <= 31 ? `${MONTHS[+mo - 1]} ${+d}, ${y}` : m));
+  s = s.replace(YEAR_CTX, (m, pre, y) => pre + yearWords(+y));
   // clock times: "3:05 PM" → "3 oh 5 P M", "3:00 pm" → "3 P M", "15:00" → "15 hundred", "9:00" → "9 o'clock"
   s = s.replace(/\b(\d{1,2}):(\d{2})(?::\d{2})?(?:\s*([AaPp])\.?\s?[Mm](?![a-z])(?:\.(?=\s+[a-z]))?)?/g, (m, h, mm, ap) => {
     const ampm = ap ? ` ${ap.toUpperCase()} M` : '';
@@ -57,6 +71,35 @@ function articulate(s) {
   return s;
 }
 
+// ---- how a person says it ----
+// Models write "I am unable to" and "Please let me know if you need anything else"; people say "I can't" and stop.
+// Only forms that are never stressed are contracted; "it is" and "that is" stay, since "It is 21 degrees" is fine spoken.
+const NEG = { do: "don't", does: "doesn't", did: "didn't", is: "isn't", are: "aren't", was: "wasn't", were: "weren't", has: "hasn't", have: "haven't", had: "hadn't", would: "wouldn't", could: "couldn't", should: "shouldn't", must: "mustn't", cannot: "can't", will: "won't" };
+const capFirst = (src, w) => (/^[A-Z]/.test(src) ? w[0].toUpperCase() + w.slice(1) : w);
+// closers and throat-clearing that add nothing when spoken
+const FILLER = /(?:^|(?<=[.!?]\s))(?:I hope (?:this|that|it) helps|(?:Please )?let me know[^.!?]*|Feel free to (?:ask|reach out)[^.!?]*|Is there anything else[^.!?]*|Do you (?:need|want) (?:anything|any) (?:else|more)[^.!?]*|As an AI(?: language model)?,?[^.!?]*|I(?:'d| would) be (?:happy|glad) to help[^.!?]*|Great question)[.!?]\s*/gi;
+
+// Said aloud, JARVIS keeps a formal register whatever the model wrote.
+const REGISTER = [
+  [/\b(?:yeah|yep|yup)\b/gi, w => (/^[A-Z]/.test(w) ? 'Yes' : 'yes')], [/\bnope\b/gi, w => (/^[A-Z]/.test(w) ? 'No' : 'no')],
+  [/\b(?:okay|ok)\b(?=[.!,]|\s*$)/gi, w => (/^[A-Z]/.test(w) ? 'Very well' : 'very well')],
+  [/\bgonna\b/gi, 'going to'], [/\bwanna\b/gi, 'want to'], [/\bgotta\b/gi, 'have to'], [/\bkinda\b/gi, 'rather'], [/\bsorta\b/gi, 'somewhat'],
+  [/\bawesome\b/gi, 'excellent'], [/\bno worries\b/gi, 'not at all'], [/\bno problem\b/gi, 'not at all'], [/\bsuper (?=[a-z])/gi, 'very '],
+  [/\bstuff\b/gi, 'things'], [/\ba bunch of\b/gi, 'several'], [/\bhey\b[,!]?\s*/gi, ''], [/\blet's see\b/gi, 'let me see'],
+];
+
+function humanize(text) {
+  let s = String(text || '');
+  s = s.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '');
+  s = s.replace(FILLER, '');
+  for (const [re, w] of REGISTER) s = s.replace(re, typeof w === 'string' ? m => capFirst(m, w) : w);
+  s = s.replace(/\b(do|does|did|is|are|was|were|has|have|had|would|could|should|must|will) not\b/gi, (m, v) => capFirst(m, NEG[v.toLowerCase()]));
+  s = s.replace(/\bcan(?:not| not)\b/gi, m => capFirst(m, "can't"));
+  s = s.replace(/\bI am\b/g, "I'm").replace(/\bI will\b/g, "I'll").replace(/\bI have (?=been|got|had|not|never)/g, "I've ");
+  s = s.replace(/\b(you|we|they) are\b/gi, "$1're").replace(/\b(you|we|they) will\b/gi, "$1'll").replace(/\b(you|we|they) have (?=been|got|had|never)/gi, "$1've ");
+  return s.replace(/\s{2,}/g, ' ').trim();
+}
+
 function speakable(text) {
   let s = String(text || '');
   s = s.replace(/```[\s\S]*?(```|$)/g, ' I put the code in the chat. ');
@@ -72,7 +115,7 @@ function speakable(text) {
   for (const [re, w] of SYMBOLS) s = s.replace(re, w);
   s = s.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁻]+/g, m => ' to the ' + [...m].map(c => SUPER[c]).join(''));
   s = s.replace(/\n{2,}/g, ' ').replace(/\n/g, ' ').replace(/\s+([.,!?;:])/g, '$1').replace(/\.{2,}/g, '.').replace(/\s{2,}/g, ' ').trim();
-  return s;
+  return humanize(s);
 }
 
 const ABBREV = /\b(?:e\.g|i\.e|etc|vs|Mr|Mrs|Ms|Dr|Prof|Inc|approx|No|St)\.$/i;
@@ -106,4 +149,4 @@ function createSentenceSplitter({ maxChars = 160 } = {}) {
   };
 }
 
-module.exports = { speakable, articulate, createSentenceSplitter };
+module.exports = { speakable, articulate, humanize, createSentenceSplitter };

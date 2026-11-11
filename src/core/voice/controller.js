@@ -5,6 +5,7 @@
 // engines.{stt,tts,wake} may be engine objects or functions returning the current engine.
 const { createVad } = require('./vad');
 const { createTrace } = require('./trace');
+const { isYes } = require('../brain/guard');
 const { speakable, createSentenceSplitter } = require('./speech-text');
 
 const SPEAKING_GAIN = 3; // speaker echo is mostly under the ×3 threshold, so Whisper is not run on it
@@ -37,7 +38,7 @@ function dangling(text) {
   return DANGLING.has(norm(t).split(' ').pop());
 }
 
-function createVoiceController({ bus, orchestrator, engines, getConfig, getSessionId, setSessionId = () => {}, vadOptions, vadFactory = createVad, writeTrace = () => {}, continuationMs = 1500, speaker = null }) {
+function createVoiceController({ bus, orchestrator, engines, getConfig, getSessionId, setSessionId = () => {}, vadOptions, vadFactory = createVad, writeTrace = () => {}, continuationMs = 1500, speaker = null, confirmPending = () => false }) {
   const vad = vadFactory(vadOptions);
   const trace = createTrace();   // per-turn timing; summary goes to the log + writeTrace at turn end
   const pick = k => (typeof engines[k] === 'function' ? engines[k]() : engines[k]);
@@ -158,13 +159,20 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
 
   // Only the enrolled voice may wake JARVIS (config.speakerGate, and only once a voice is enrolled).
   // The hotkey is never gated: pressing it is already the user. A broken model never blocks (verify fails open).
-  async function speakerOk(audio, sampleRate, lenient) {
+  async function speakerOk(audio, sampleRate, lenient, strict = false) {
     if (!speaker || !getConfig().speakerGate || !speaker.enrolled()) return true;
-    const r = await speaker.verify(audio, sampleRate, { lenient });
+    const r = await speaker.verify(audio, sampleRate, { lenient, strict });
     if (r.ok) return true;
-    bus.emit('log', { level: 'info', text: `Ignored "Jarvis" from a voice that is not yours (match ${r.score}, needs ${r.threshold})` });
+    bus.emit('log', { level: 'info', text: strict ? `Ignored a spoken yes from a voice that is not yours (${r.reason || 'match ' + r.score})` : `Ignored "Jarvis" from a voice that is not yours (match ${r.score}, needs ${r.threshold})` });
     bus.emit('speaker', { ok: false, score: r.score });
     return false;
+  }
+
+  // A risky action waits for a yes: when it comes by voice, only the enrolled voice may give it (strict: no pass on errors).
+  // Without an enrolled voice there is nothing to check against; the answer still has to be a plain yes within 60 s.
+  async function yesOk(text, audio, sampleRate) {
+    if (!confirmPending() || !isYes(text)) return true;
+    return speakerOk(audio, sampleRate, false, true);
   }
 
   async function finishCapture(heard) {
@@ -198,6 +206,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       if (hits.length) { const h = hits.at(-1); text = text.slice(h.index + h[0].length).trim(); }
       if (STOP_WORDS.test(text)) { mode = 'idle'; setState('idle'); return; }
     }
+    if (!(await yesOk(text, pcm, rate))) { if (my === turn) { mode = 'idle'; setState('idle'); } return; }
     await runText(text, my);
   }
 
@@ -217,7 +226,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       const t = held; held = null;
       const now = ++turn;
       mode = 'working';
-      runText(t, now);
+      yesOk(t, concat(parts), rate).then(ok => { if (ok) return runText(t, now); if (now === turn) { mode = 'idle'; setState('idle'); } });
     }, continuationMs);
     for (const c of late) feed(c, rate);
   }

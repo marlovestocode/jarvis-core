@@ -4,7 +4,7 @@ const BASE_HOSTS = Object.freeze([
   'api.open-meteo.com', 'geocoding-api.open-meteo.com', 'air-quality-api.open-meteo.com',
   'api.weather.gov', 'en.wikipedia.org', 'site.api.espn.com',
 ]);
-const SOURCES = ['weather', 'news', 'sports', 'wiki'];
+const SOURCES = ['weather', 'news', 'sports', 'wiki', 'web'];
 const { isIP } = require('node:net');
 
 function feedUrl(value) {

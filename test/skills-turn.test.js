@@ -252,5 +252,5 @@ test('orchestrator: loading a skill does not back an action claim', async () => 
   ]);
   const { orc, s } = orcSetup(fp, { selectGroups: () => ['core'] });
   const res = await orc.send(s.id, 'open chrome', { source: 'text' });
-  assert.match(res.reply, /Correction: I didn't actually do that/);
+  assert.match(res.reply, /I haven't actually done that/);
 });

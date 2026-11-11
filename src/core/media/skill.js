@@ -28,7 +28,7 @@ function createMediaSkill({ service, ytm = null, ytPlaylists = null, now = Date.
 
   async function handle(text, { source = 'text' } = {}) {
     const voice = source === 'voice';
-    let intent = parse(text);
+    let intent = parse(text, { loose: voice });
     // answer to "which playlist?": a name, "the second one" or "yes"; anything else drops the question
     if (pendingList) {
       const q = pendingList; pendingList = null;

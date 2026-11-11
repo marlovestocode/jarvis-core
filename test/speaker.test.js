@@ -134,3 +134,48 @@ test('controller gate: your voice wakes; not enrolled or gate off means no check
     if (!cfg.enrolled || cfg.gate === false) assert.equal(g.calls.length, 0);
   }
 });
+
+test('speaker: strict (a spoken yes) fails on a model error or audio too short instead of passing', async () => {
+  const voice = { dir: 5 };
+  const sp = createSpeaker({ ort: fakeOrt(voice), modelPath: 'm', profileFile: tmpFile(), exists: () => true, getConfig: () => ({ speakerThreshold: 0.45 }) });
+  await sp.enroll([{ pcm: secs(2), rate: 16000 }, { pcm: secs(2), rate: 16000 }]);
+  assert.equal((await sp.verify(secs(2), 16000, { strict: true })).ok, true, 'the enrolled voice still passes');
+  assert.equal((await sp.verify(new Int16Array(2000), 16000, { strict: true })).ok, false);
+  voice.fail = true;
+  assert.equal((await sp.verify(secs(2), 16000, { strict: true })).ok, false);
+});
+
+// ---- a spoken yes to a pending action ----
+const speech = () => [...noise(300), ...tone(1000), ...noise(900)];
+function yesSetup({ pending, enrolled, ok, said = 'yes' }) {
+  const bus = createBus();
+  const stt = { id: 'w', label: 'W', async status() { return { ready: true }; }, async transcribe() { return said; } };
+  const sends = [];
+  const orchestrator = { busy: false, stop() {}, async send(id, text) { sends.push(text); return { reply: 'done', stopped: false, sessionId: 's' }; } };
+  const tts = { id: 't', label: 'T', async status() { return { ready: true }; }, speak() { return { levels: (async function* () {})(), done: Promise.resolve() }; } };
+  const calls = [];
+  const speaker = { enrolled: () => enrolled, async verify(pcm, rate, o) { calls.push(o); return ok ? { ok: true, score: 0.9 } : { ok: false, score: null, reason: 'error: boom' }; } };
+  const vc = createVoiceController({ bus, orchestrator, speaker, engines: { stt, tts, wake: null }, getConfig: () => ({ ...DEFAULTS, speakerGate: true }), getSessionId: () => 's', confirmPending: () => pending });
+  return { vc, sends, calls };
+}
+
+test('controller: with a pending action, a spoken yes must come from the enrolled voice (strict check)', async () => {
+  const bad = yesSetup({ pending: true, enrolled: true, ok: false });
+  bad.vc.listen(); feedAll(bad.vc, speech()); await tick(40);
+  assert.deepEqual(bad.sends, [], 'not run');
+  assert.deepEqual(bad.calls.map(c => c.strict), [true]);
+  assert.equal(bad.vc.mode, 'idle');
+
+  const good = yesSetup({ pending: true, enrolled: true, ok: true });
+  good.vc.listen(); feedAll(good.vc, speech()); await tick(40);
+  assert.deepEqual(good.sends, ['yes']);
+
+  const none = yesSetup({ pending: false, enrolled: true, ok: false });
+  none.vc.listen(); feedAll(none.vc, speech()); await tick(40);
+  assert.deepEqual(none.sends, ['yes'], 'no pending action: nothing extra to check');
+  assert.equal(none.calls.length, 0);
+
+  const notYes = yesSetup({ pending: true, enrolled: true, ok: false, said: 'what time is it' });
+  notYes.vc.listen(); feedAll(notYes.vc, speech()); await tick(40);
+  assert.deepEqual(notYes.sends, ['what time is it'], 'only a yes is gated');
+});

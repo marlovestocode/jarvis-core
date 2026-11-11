@@ -1,7 +1,7 @@
 // Skill groups: tools regrouped by area. Each group file exports createGroup(deps) → Group | null.
 // Group = { id, label, triggers, hint?, tools, status? }
 // status() → { ok, detail } (may be async): whether the group can work right now (extension connected, sysmon up...).
-const ORDER = ['core', 'media', 'ytmusic', 'timers', 'knowledge', 'system', 'pc', 'math', 'memory', 'windows', 'audio-display', 'connectivity', 'clipboard-capture', 'files', 'browser', 'self'];
+const ORDER = ['core', 'media', 'ytmusic', 'timers', 'knowledge', 'system', 'pc', 'math', 'memory', 'windows', 'audio-display', 'connectivity', 'clipboard-capture', 'files', 'browser', 'self', 'web'];
 
 // The groups that loaded, in ORDER. The array also carries .missing: [{ id, error? }], the groups left out:
 // error is set when the group file threw (one broken group must not stop the app), absent when it simply

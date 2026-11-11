@@ -75,6 +75,8 @@ test('piper: one process is reused; a new voice rate restarts it with a new leng
   assert.equal(spawn.kids.length, 2);
   const a = spawn.kids[1].args;
   assert.equal(a[a.indexOf('--length_scale') + 1], '0.5');
+  assert.equal(a[a.indexOf('--noise_scale') + 1], '0.5', 'steadier than the model default');
+  assert.equal(a[a.indexOf('--noise_w') + 1], '0.8');
 });
 
 test('piper: abort stops playback and drops queued sentences', async () => {
@@ -146,4 +148,17 @@ test('piper: speak() handle also has finishSentence', () => {
 test('piper: status reports missing files', async () => {
   const t = createPiperTts({ exe: 'x', model: 'y', outDir: 'z', exists: () => false, play: async () => {} });
   assert.equal((await t.status()).ready, false);
+});
+
+test('piper: rate 1 is the pace the voice was trained at (its own length_scale), not a fixed 1.0', async () => {
+  const spawn = fakeSpawn();
+  const files = { 'jarvis.onnx.json': JSON.stringify({ inference: { length_scale: 1.15 } }) };
+  const tts = createPiperTts({ exe: 'piper.exe', model: 'jarvis.onnx', outDir: 'C:/out', spawn, play: async () => {}, exists: () => true,
+    readFile: p => (files[p] ? Buffer.from(files[p]) : wav()), remove: () => {} });
+  await tts.speak('One.', { rate: 1 }).done;
+  let a = spawn.kids[0].args;
+  assert.equal(a[a.indexOf('--length_scale') + 1], '1.15');
+  await tts.speak('Two.', { rate: 1.15 }).done;
+  a = spawn.kids[1].args;
+  assert.equal(a[a.indexOf('--length_scale') + 1], '1', '15% faster than trained');
 });
