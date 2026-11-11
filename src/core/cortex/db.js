@@ -9,9 +9,14 @@ function openDb({ file = ':memory:', migrations = defaultMigrations, log = () =>
   const memory = file === ':memory:';
   if (!memory) fs.mkdirSync(path.dirname(file), { recursive: true });
   const raw = new DatabaseSync(file);
-  if (!memory) raw.exec('PRAGMA journal_mode = WAL');
-  raw.exec(`PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 2000;
-            PRAGMA cache_size = -8000; PRAGMA mmap_size = 0; PRAGMA temp_store = MEMORY;`);
+  try {
+    if (!memory) raw.exec('PRAGMA journal_mode = WAL');
+    raw.exec(`PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 2000;
+              PRAGMA cache_size = -8000; PRAGMA mmap_size = 0; PRAGMA temp_store = MEMORY;`);
+  } catch (err) {
+    try { raw.close(); } catch { /* not open */ }   // an open handle locks the file on Windows, so quarantine could not move it
+    throw err;
+  }
 
   const cache = new Map();
   function stmt(sql) {

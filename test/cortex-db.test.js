@@ -89,6 +89,47 @@ test('cortex-db: stmt cache returns the same prepared statement', () => {
   db.close();
 });
 
+test('cortex-db: corrupt file is quarantined and the newest backup restored', () => {
+  const cortexLib = require('../src/core/cortex');
+  const file = tmpFile(), dir = path.dirname(file);
+  const a = cortexLib.open({ file });
+  const s = a.source.add({ kind: 'user', ref: 'x' });
+  a.node.upsert({ kind: 'fact', text: 'Rex is my dog', source: s });
+  a.backup();
+  a.node.upsert({ kind: 'fact', text: 'written after the backup', source: s });
+  a.close();
+  fs.writeFileSync(file, Buffer.alloc(8192, 0x5a));   // garbage over the db
+  const logs = [];
+  const b = cortexLib.open({ file, log: m => logs.push(m) });
+  assert.equal(b.health().ok, true);
+  assert.equal(b.health().restoredFrom !== null, true);
+  assert.deepEqual(b.node.list({ kind: 'fact' }).map(n => n.text), ['Rex is my dog']);
+  assert.ok(fs.readdirSync(path.join(dir, 'broken')).length >= 1);
+  b.close();
+});
+
+test('cortex-db: corrupt file with no backup starts empty and marks it', () => {
+  const cortexLib = require('../src/core/cortex');
+  const file = tmpFile();
+  fs.writeFileSync(file, Buffer.alloc(8192, 0x5a));
+  const c = cortexLib.open({ file });
+  assert.equal(c.stats().nodes, 0);
+  assert.ok(c.health().recoveredEmpty > 0);
+  c.close();
+});
+
+test('cortex-db: open never throws on an unusable path', () => {
+  const cortexLib = require('../src/core/cortex');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jcortex-'));
+  const asDir = path.join(dir, 'cortex.db');
+  fs.mkdirSync(asDir);                                  // a folder where the file should be
+  const c = cortexLib.open({ file: asDir });
+  assert.equal(c.health().ok, false);
+  const s = c.source.add({ kind: 'user', ref: 'x' });   // degraded but usable (in memory)
+  assert.equal(c.node.upsert({ kind: 'fact', text: 'Rex is my dog', source: s }).created, true);
+  c.close();
+});
+
 test('cortex-db: only db.js requires node:sqlite', () => {
   const hits = [];
   const walk = d => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) walk(p); else if (p.endsWith('.js') && /node:sqlite/.test(fs.readFileSync(p, 'utf8'))) hits.push(path.relative(path.join(__dirname, '..'), p).replace(/\\/g, '/')); } };
