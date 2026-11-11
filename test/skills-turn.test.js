@@ -47,7 +47,7 @@ test('turn: unknown group returns the group ids', async () => {
   const { runner, ctx } = setup();
   const r = await runner.turn(['core']).run('more_skills', { group: 'bananas' }, ctx);
   assert.equal(r.ok, false);
-  assert.match(r.text, /Unknown group\. Groups: core, media, .*math, memory\./);
+  assert.match(r.text, /Unknown group\. Groups: core, media, .*math, memory.*\./);
 });
 
 test('turn: wrong case and aliases load the group, reloading a loaded group costs nothing', async () => {

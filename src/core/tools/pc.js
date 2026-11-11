@@ -358,4 +358,4 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
   return [openApp, closeApp, focusWindow, listWindows, findFiles, openPath, moveFiles, recycle, undoLast, setVolume, lockScreen, power];
 }
 
-module.exports = { createPcTools, PROGRAM_EXT };
+module.exports = { createPcTools, PROGRAM_EXT, PROTECTED };

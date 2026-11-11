@@ -7,6 +7,9 @@ const SCRIPT = path.join(__dirname, 'pc-host.ps1');
 const POWER = ['shutdown', 'restart', 'sleep'];
 
 // ConvertTo-Json turns a one-item array into a bare value; null means none
+const isRect = r => r && ['x', 'y', 'w', 'h'].every(k => Number.isFinite(r[k]));
+const cleanRect = r => ({ x: r.x, y: r.y, w: r.w, h: r.h });
+const LAYOUTS = ['left', 'right', 'top_left', 'top_right', 'bottom_left', 'bottom_right', 'maximize', 'minimize', 'restore', 'center'];
 const list = r => (r === null || r === undefined ? [] : [].concat(r));
 const isId = n => Number.isInteger(n) && n > 0;
 function needId(n, what) { if (!isId(n)) throw new Error(`Bad ${what}`); return n; }
@@ -22,7 +25,32 @@ function createPcHost({ request }) {
   return {
     startApps: wrap(async () => list(await call('startApps')).filter(a => a && typeof a.name === 'string' && typeof a.appId === 'string' && a.name && a.appId)),
     launch: wrap(async target => { await call('launch', { target: needText(target, 'target') }); return true; }),
-    windows: wrap(async () => list(await call('windows')).filter(w => w && isId(w.hwnd) && isId(w.pid) && typeof w.title === 'string').map(w => ({ hwnd: w.hwnd, pid: w.pid, app: String(w.app || ''), title: w.title }))),
+    // responding and rect are only present when the host reported them
+    windows: wrap(async () => list(await call('windows')).filter(w => w && isId(w.hwnd) && isId(w.pid) && typeof w.title === 'string').map(w => ({ hwnd: w.hwnd, pid: w.pid, app: String(w.app || ''), title: w.title, ...(typeof w.responding === 'boolean' ? { responding: w.responding } : {}), ...(isRect(w.rect) ? { rect: cleanRect(w.rect) } : {}) }))),
+    foreground: wrap(async () => { const r = await call('foreground'); return isId(r) ? r : null; }),
+    monitors: wrap(async () => list(await call('monitors')).filter(m => m && Number.isInteger(m.n) && m.n > 0 && isRect(m)).map(m => ({ n: m.n, primary: !!m.primary, ...cleanRect(m) }))),
+    // { ok, rect, state } read back from Windows after the move
+    place: wrap(async (hwnd, layout) => {
+      needId(hwnd, 'hwnd');
+      if (!LAYOUTS.includes(layout)) throw new Error('Bad layout');
+      const r = await call('place', { hwnd, layout });
+      return { ok: r?.ok === true, rect: isRect(r?.rect) ? cleanRect(r.rect) : null, state: ['normal', 'minimized', 'maximized'].includes(r?.state) ? r.state : null };
+    }),
+    moveToMonitor: wrap(async (hwnd, n) => {
+      needId(hwnd, 'hwnd'); needId(n, 'monitor');
+      const r = await call('moveToMonitor', { hwnd, n });
+      return { ok: r?.ok === true, rect: isRect(r?.rect) ? cleanRect(r.rect) : null };
+    }),
+    // true only when Windows is verified to be on the target desktop; false = not possible here
+    desktopSwitch: wrap(async target => {
+      if (target !== 'next' && target !== 'previous' && !(Number.isInteger(target) && target >= 1 && target <= 20)) throw new Error('Bad desktop');
+      return (await call('desktopSwitch', { target })) === true;
+    }),
+    desktopMove: wrap(async (hwnd, n) => {
+      needId(hwnd, 'hwnd');
+      if (!(Number.isInteger(n) && n >= 1 && n <= 20)) throw new Error('Bad desktop');
+      return (await call('desktopMove', { hwnd, n })) === true;
+    }),
     alive: wrap(async pids => {
       if (!Array.isArray(pids)) throw new Error('Bad pid list');
       pids.forEach(p => needId(p, 'pid'));
@@ -46,4 +74,4 @@ function createPcHost({ request }) {
   };
 }
 
-module.exports = { createPcHost, SCRIPT };
+module.exports = { createPcHost, SCRIPT, LAYOUTS };
