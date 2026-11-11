@@ -39,7 +39,9 @@ async function groupState(g) {
   }
 }
 
-function createSelfTools({ getChecks = () => [], about = () => ({}), logFile, dataDir } = {}) {
+// toolHistory (W2 §6, E15): the cortex tool events, so failure rates survive a restart; the runner's in-memory stats
+// still give the last error text of this run.
+function createSelfTools({ getChecks = () => [], about = () => ({}), logFile, dataDir, toolHistory = null, now = Date.now } = {}) {
   const need = ctx => { if (!ctx?.skills?.catalog) throw new Error('The skill catalog is not available here'); return ctx.skills; };
 
   // checks every part needs, built from the runner's own catalog and counts
@@ -53,6 +55,13 @@ function createSelfTools({ getChecks = () => [], about = () => ({}), logFile, da
         return `${plural(catalog.groups.length, 'group')}, ${plural(catalog.tools.length, 'tool')}${idle.length ? `; not set up: ${idle.join(', ')}` : ''}`;
       } },
       { id: 'tool runs', run: () => {
+        if (toolHistory) {
+          const week = toolHistory.stats({ since: now() - 7 * 864e5 }), live = skills.stats();
+          const calls = [...week.values()].reduce((n, s) => n + s.calls, 0);
+          const bad = [...week].filter(([, s]) => s.fails).sort((a, b) => b[1].fails - a[1].fails);
+          if (!bad.length) return `${plural(calls, 'call')} in the last 7 days, none failed`;
+          return { ok: false, detail: bad.map(([n, s]) => `${n} failed ${s.fails} of ${s.calls} (${Math.round((100 * s.fails) / s.calls)}%)${live.get(n)?.lastError ? `, last: ${cut(live.get(n).lastError, 120)}` : ''}`).join(', ') + ' in the last 7 days' };
+        }
         const stats = skills.stats();
         const bad = failures(stats);
         const calls = [...stats.values()].reduce((n, s) => n + s.calls, 0);
