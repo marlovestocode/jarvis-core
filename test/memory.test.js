@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createMemory } = require('../src/core/memory/store');
+const { memoryOn } = require('./helpers/memory');
 const { createMemorySkill } = require('../src/core/memory/skill');
 const { createMemoryTools } = require('../src/core/tools/memory');
 const { systemPrompt } = require('../src/core/brain/prompt');
@@ -12,15 +12,15 @@ const tmp = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'jmem-')), 'me
 
 test('memory: add, dedupe, persist and reload', () => {
   const file = tmp();
-  const m = createMemory({ file });
+  const m = memoryOn(file);
   assert.equal(m.add('I prefer Fahrenheit.').ok, true);
   assert.equal(m.add('i prefer fahrenheit').duplicate, true);
   assert.equal(m.count(), 1);
-  assert.deepEqual(createMemory({ file }).list(), ['I prefer Fahrenheit']);
+  assert.deepEqual(memoryOn(file).list(), ['I prefer Fahrenheit']);
 });
 
 test('memory: refuses secrets, empty and long text', () => {
-  const m = createMemory({ file: tmp() });
+  const m = memoryOn(tmp());
   assert.equal(m.add('my password is hunter2').reason, 'secret');
   assert.equal(m.add('card 4111 1111 1111 1111').reason, 'secret');
   assert.equal(m.add('hi').reason, 'empty');
@@ -29,7 +29,7 @@ test('memory: refuses secrets, empty and long text', () => {
 });
 
 test('memory: forget by words; several matches need all=true; cap drops the oldest', () => {
-  const m = createMemory({ file: tmp(), max: 3 });
+  const m = memoryOn(tmp(), { caps: { active: 3 }, addTier: 'note' });
   m.add('Daniel likes jazz'); m.add('Daniel likes tea'); m.add('Daniel owns an RTX 3050');
   assert.equal(m.forget('jazz').removed.length, 1);
   m.add('Daniel likes rain');
@@ -44,15 +44,15 @@ test('memory: forget by words; several matches need all=true; cap drops the olde
 });
 
 test('memory: digest is newest first and within the budget', () => {
-  const m = createMemory({ file: tmp() });
+  const m = memoryOn(tmp());
   m.add('first fact here'); m.add('second fact here');
   assert.equal(m.digest(), 'second fact here; first fact here');
   assert.equal(m.digest(25), 'second fact here');
-  assert.equal(createMemory({ file: tmp() }).digest(), '');
+  assert.equal(memoryOn(tmp()).digest(), '');
 });
 
 test('memory skill: remember, recall, forget, forget everything, passthrough', async () => {
-  const m = createMemory({ file: tmp() });
+  const m = memoryOn(tmp());
   const s = createMemorySkill({ memory: m });
   let r = await s.handle('Jarvis, remember that my dog is called Rex.');
   assert.match(r.reply, /your dog is called Rex/);
@@ -72,7 +72,7 @@ test('memory skill: remember, recall, forget, forget everything, passthrough', a
 });
 
 test('memory tools: remember and forget_memory report the real result', async () => {
-  const m = createMemory({ file: tmp() });
+  const m = memoryOn(tmp());
   const [remember, forget] = createMemoryTools({ memory: m });
   assert.match(await remember.run({ fact: 'User lives in Abilene' }), /^Saved/);
   assert.match(await remember.run({ fact: 'api key is sk-123' }), /Refused/);
@@ -97,7 +97,7 @@ test('prompt: the user block names them, home, teams, voice and says what is not
 
 test('memory skill: "call me X" / "my name is X" saves the name through setName', async () => {
   const names = [];
-  const s = createMemorySkill({ memory: createMemory({ file: tmp() }), setName: n => names.push(n) });
+  const s = createMemorySkill({ memory: memoryOn(tmp()), setName: n => names.push(n) });
   assert.match((await s.handle('Jarvis, call me daniel')).reply, /Daniel/);
   await s.handle('my name is Sam Lee');
   assert.deepEqual(names, ['Daniel', 'Sam Lee']);

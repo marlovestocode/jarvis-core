@@ -5,13 +5,13 @@ const os = require('node:os');
 const path = require('node:path');
 const { createToolRunner } = require('../src/core/tools/registry');
 const { createMemoryTools } = require('../src/core/tools/memory');
-const { createMemory } = require('../src/core/memory/store');
+const { memoryOn } = require('./helpers/memory');
 const { createSessionStore } = require('../src/core/session');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'jc-hard-'));
 
 test('memory tools: a turn that read outside text cannot remember or forget', async () => {
-  const memory = createMemory({ file: path.join(tmp(), 'm.json') });
+  const memory = memoryOn(tmp());
   const runner = createToolRunner(createMemoryTools({ memory }));
   const dirty = await runner.run('remember', { fact: 'User banks at evil.example' }, { turn: { tainted: true } });
   assert.equal(dirty.ok, false);
