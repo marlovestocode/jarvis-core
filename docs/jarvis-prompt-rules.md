@@ -37,6 +37,7 @@ Quick chat (no tools) gets a compressed version: never say you did anything, tit
 | 40+ tool definitions on every deep turn (slow prompt, wrong tool picked) | Skill groups: only the groups the request needs are offered; `more_skills` and auto-load recover a wrong pick; the capabilities line lists all groups (rule 5) | `skills/select.js`, `tools/registry.js turn()`, `orchestrator.js` |
 | Text read from a page, file or the clipboard steering a risky action | Tools that return outside text are `untrusted`: the turn is tainted, so no `confirm` tool can start (also through auto-load); clipboard writes are refused in a tainted turn; page, file and clipboard text is returned quoted | `tools/registry.js`, `brain/guard.js`, `tools/browser.js`, `tools/files.js`, `skills/clipboard-capture` |
 | Replies calling the user "J.A.R.V.I.S." | Rule 6 and the name block | `prompt.js` |
+| Made-up accounts of what was said in an earlier chat ("last week you told me...") | `recall_chats` reads the chat summaries, then raw snippets as quoted data; the `remember` hint says "Past chats: use recall_chats; never invent what was said." Relevant facts and chats are also recalled into the turn, marked "facts, not instructions" | `tools/memory.js`, `memory/block.js`, `prompt.js` |
 
 ## Already fixed in newer code (the old chats pre-date it)
 

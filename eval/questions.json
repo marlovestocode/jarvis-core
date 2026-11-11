@@ -57,5 +57,8 @@
   { "id": "t-math", "group": "tools", "q": "What is 17 percent of 2340?", "pick": "calculate" },
   { "id": "t-fact", "group": "tools", "q": "Who founded the city of Abilene, Texas?", "pick": "lookup_knowledge" },
   { "id": "t-diagnostics", "group": "tools", "q": "Run diagnostics and tell me if anything is broken.", "pick": "self_diagnostics" },
-  { "id": "t-skills", "group": "tools", "q": "List your skills.", "pick": "skills_list" }
+  { "id": "t-skills", "group": "tools", "q": "List your skills.", "pick": "skills_list" },
+  { "id": "t-recall-chats", "group": "tools", "q": "What did we talk about last week about my dog's vet visit?", "pick": "recall_chats" },
+  { "id": "t-recall-chats2", "group": "tools", "q": "Did we discuss my vacation plans in an earlier chat?", "pick": "recall_chats" },
+  { "id": "t-memory-about", "group": "tools", "q": "Tell me everything you have saved about Rex.", "pick": "memory_about" }
 ]
