@@ -6,7 +6,8 @@ const fs = require('node:fs');
 const win = require('node:path').win32;
 const { safePath, rootNames, inside } = require('../pc/paths');
 const { extractText, kindOf, KINDS, MAX_BYTES, MAX_CHARS } = require('./doctext');
-const { humanSize, dateTime, plural } = require('../pc/util');
+const { humanSize, dateTime, plural, listWords, globRe, freeName } = require('../pc/util');
+const { writeZip, listZip, entryData } = require('./zip');
 
 const obj = (properties, required) => ({ type: 'object', properties, ...(required ? { required } : {}), additionalProperties: false });
 const SKIP_DIRS = new Set(['node_modules', '.git', '$recycle.bin']);
@@ -35,7 +36,9 @@ function typeFilter(type) {
   return ext => exts.includes(ext);
 }
 
-function createFilesTools({ roots }) {
+const MAX_ITEMS = 200;
+
+function createFilesTools({ roots, actionLog = null, confirm = null }) {
   const names = rootNames(roots);
   const safe = p => safePath(p, roots);
   const disp = p => {
@@ -186,7 +189,316 @@ function createFilesTools({ roots }) {
     },
   };
 
-  return [listRecent, searchText, fileInfo, bigFiles, folderSize, readDocument];
+  // ---- changes: everything is new or moved, nothing is overwritten, and every change is journaled for undo_last ----
+  const exists = p => fs.existsSync(p);
+  const isRoot = p => roots.some(r => win.relative(r, p) === '');
+  const free = (dir, base) => freeName(dir, base, exists);
+  const journal = (what, args, result, undo) => actionLog?.write({ what, args, result, ok: true, undo });
+  const madeFile = p => { const st = fs.statSync(p); return { created: p, size: st.size, mtime: st.mtimeMs }; };
+
+  // paths, or one "folder\*.pdf" pattern per item
+  function sources(from, { files = true, what = 'move' } = {}) {
+    const out = [];
+    for (const item of [].concat(from || [])) {
+      const s = String(item || '').trim();
+      if (!s) continue;
+      const parts = s.split(/[\\/]+/);
+      const last = parts.at(-1);
+      if (/[*?]/.test(last)) {
+        const dir = safe(parts.slice(0, -1).join('\\'));
+        const re = globRe(last);
+        let ents = [];
+        try { ents = fs.readdirSync(dir, { withFileTypes: true }).filter(e => !e.isSymbolicLink() && re.test(e.name)).sort((a, b) => a.name.localeCompare(b.name)); } catch { /* none */ }
+        out.push(...ents.filter(e => !files || e.isFile()).map(e => win.join(dir, e.name)));
+      } else {
+        const p = safe(s);
+        if (isRoot(p)) throw new Error(`I won't ${what} the whole ${win.basename(p)} folder`);
+        let st;
+        try { st = fs.lstatSync(p); } catch { throw new Error(`Not found: ${s}`); }
+        if (st.isSymbolicLink()) throw new Error(`${win.basename(p)} is a link; I do not follow links`);
+        out.push(p);
+      }
+    }
+    return [...new Set(out)];
+  }
+  const onlyFiles = (list, verb) => { for (const p of list) if (!fs.statSync(p).isFile()) throw new Error(`I ${verb} files, not folders (${win.basename(p)} is a folder)`); };
+
+  // the folders that do not exist yet on the way to dir (top first)
+  function missingDirs(dir) {
+    const chain = [];
+    for (let d = dir; !exists(d) && !isRoot(d); d = win.dirname(d)) chain.unshift(d);
+    return chain;
+  }
+
+  // --- rename_files ---
+  const RESERVED = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+  const MAX_NAME = 200;
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  function nameProblem(name, original) {
+    if (name.length > MAX_NAME) return `"${name.slice(0, 30)}…" is too long (over ${MAX_NAME} characters)`;
+    const stem = name.split('.')[0];
+    const bad = !name || /[<>:"|?*\\/\u0000-\u001f]/.test(name) || /[. ]$/.test(name) || RESERVED.test(stem) || (name.startsWith('.') && !original.startsWith('.'));
+    return bad ? `"${name}" is not a name Windows allows` : null;
+  }
+  function renamed(base, i, count, pat) {
+    const ext = win.extname(base);
+    let stem = base.slice(0, base.length - ext.length);
+    if (typeof pat.find === 'string' && pat.find) stem = stem.replace(new RegExp(esc(pat.find), 'gi'), () => String(pat.replace ?? ''));
+    stem = `${pat.prefix ?? ''}${stem}${pat.suffix ?? ''}`;
+    if (pat.number) stem += `-${String(i + 1).padStart(String(count).length, '0')}`;
+    return stem + ext;
+  }
+
+  const renameFiles = {
+    name: 'rename_files', risk: 'confirm',
+    description: 'Rename several files at once: find/replace in the name, prefix, suffix or numbering; extensions are kept. Asks the user first and shows the new names.',
+    params: obj({
+      from: { anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
+      pattern: obj({ find: { type: 'string' }, replace: { type: 'string' }, prefix: { type: 'string' }, suffix: { type: 'string' }, number: { type: 'boolean' } }),
+    }, ['from', 'pattern']),
+    async run({ from, pattern } = {}) {
+      const pat = pattern || {};
+      if (!(typeof pat.find === 'string' && pat.find) && !pat.prefix && !pat.suffix && !pat.number) throw new Error('Say how to rename: find and replace, a prefix, a suffix, or numbering');
+      const src = sources(from, { what: 'rename' });
+      if (!src.length) throw new Error(`No files match ${[].concat(from).join(', ')}`);
+      onlyFiles(src, 'rename');
+      if (src.length > MAX_ITEMS) throw new Error(`That is ${src.length} files; I rename at most ${MAX_ITEMS} at once`);
+      const pairs = [];
+      src.forEach((p, i) => {
+        const old = win.basename(p), neu = renamed(old, i, src.length, pat);
+        const why = nameProblem(neu, old);
+        if (why) throw new Error(why);
+        if (neu !== old) pairs.push({ p, old, neu });
+      });
+      if (!pairs.length) throw new Error('Nothing would change with that pattern');
+      const shown = pairs.slice(0, 5).map(x => `${x.old} → ${x.neu}`).join('; ');
+      return confirm.propose({
+        tool: 'rename_files', summary: `Rename ${plural(pairs.length, 'file')}: ${shown}${pairs.length > 5 ? `; and ${pairs.length - 5} more` : ''}`, args: { from: pairs.map(x => x.p), pattern: pat },
+        run: async () => {
+          const moved = [], failed = [];
+          for (const x of pairs) {
+            try {
+              safe(x.p);
+              if (!exists(x.p)) { failed.push(`${x.old} is gone`); continue; }
+              const dir = win.dirname(x.p);
+              const caseOnly = x.neu.toLowerCase() === x.old.toLowerCase();
+              const target = caseOnly ? win.join(dir, x.neu) : free(dir, x.neu);
+              fs.renameSync(x.p, target);
+              const arrived = fs.readdirSync(dir).includes(win.basename(target));
+              if (arrived && (caseOnly || !exists(x.p))) moved.push({ from: x.p, to: target });
+              else failed.push(`${x.old} did not change`);
+            } catch (err) { failed.push(`${x.old}: ${err.message}`); }
+          }
+          if (!moved.length) throw new Error(`Nothing was renamed. ${failed.join('; ')}`);
+          return { text: `Renamed ${plural(moved.length, 'file')}.${failed.length ? ` Not renamed: ${failed.join('; ')}.` : ''}`, undo: moved };
+        },
+      });
+    },
+  };
+
+  // --- organize_by_type ---
+  const CATS = [
+    ['Images', ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.heic', '.svg', '.tif', '.tiff', '.ico']],
+    ['Documents', ['.pdf', '.doc', '.docx', '.txt', '.md', '.rtf', '.odt', '.xls', '.xlsx', '.csv', '.ppt', '.pptx']],
+    ['Archives', ['.zip', '.7z', '.rar', '.tar', '.gz', '.iso']],
+    ['Audio', ['.mp3', '.wav', '.flac', '.m4a', '.ogg', '.aac']],
+    ['Video', ['.mp4', '.mkv', '.mov', '.avi', '.webm', '.wmv']],
+  ];
+  const catOf = ext => (CATS.find(([, list]) => list.includes(ext)) || ['Other'])[0];
+  const CAT_ORDER = [...CATS.map(c => c[0]), 'Other'];
+  const SKIP_LOOSE = new Set(['desktop.ini', 'thumbs.db']);
+
+  const organize = {
+    name: 'organize_by_type', risk: 'confirm',
+    description: 'Sort the loose files of one folder into Images, Documents, Archives, Audio, Video and Other subfolders. Folders and nested files are not touched. Asks the user first.',
+    params: obj({ folder: { type: 'string' } }, ['folder']),
+    async run({ folder } = {}) {
+      const dir = safe(folder);
+      let ents;
+      try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { throw new Error(`Not found: ${folder}`); }
+      const loose = ents.filter(e => e.isFile() && !e.isSymbolicLink() && !e.name.startsWith('.') && !SKIP_LOOSE.has(e.name.toLowerCase())).map(e => e.name).sort();
+      if (!loose.length) throw new Error(`No loose files to sort in ${disp(dir)}`);
+      if (loose.length > MAX_ITEMS) throw new Error(`That is ${loose.length} loose files; I sort at most ${MAX_ITEMS} at once`);
+      const plan = loose.map(n => ({ n, cat: catOf(win.extname(n).toLowerCase()) }));
+      const used = CAT_ORDER.filter(c => plan.some(x => x.cat === c));
+      return confirm.propose({
+        tool: 'organize_by_type', summary: `Sort ${plural(plan.length, 'file')} in ${disp(dir)} into ${listWords(used)}`, args: { folder: dir, files: plan.length },
+        run: async () => {
+          safe(dir);
+          const undo = [], failed = [];
+          for (const c of used) {
+            const d = win.join(dir, c);
+            if (!exists(d)) { fs.mkdirSync(d); undo.push({ created: d }); }
+            else if (!fs.statSync(d).isDirectory()) failed.push(`${c} is a file`);
+          }
+          let k = 0;
+          for (const x of plan) {
+            const from = win.join(dir, x.n), d = win.join(dir, x.cat);
+            try {
+              if (!exists(from)) { failed.push(`${x.n} is gone`); continue; }
+              if (!exists(d) || !fs.statSync(d).isDirectory()) { failed.push(`${x.n}: no ${x.cat} folder`); continue; }
+              const to = free(d, x.n);
+              fs.renameSync(from, to);
+              if (exists(to) && !exists(from)) { undo.push({ from, to }); k++; } else failed.push(`${x.n} did not arrive`);
+            } catch (err) { failed.push(`${x.n}: ${err.message}`); }
+          }
+          if (!k) throw new Error(`Nothing was sorted. ${failed.join('; ')}`);
+          return { text: `Sorted ${plural(k, 'file')} into ${plural(used.length, 'folder')}.${failed.length ? ` Not sorted: ${failed.join('; ')}.` : ''}`, undo };
+        },
+      });
+    },
+  };
+
+  // --- zip_files ---
+  const MAX_ZIP_ENTRIES = 5000;
+  const MAX_ZIP_BYTES = 200 * 1024 * 1024;
+  function treeOf(abs, rel, out, totals) {
+    const st = fs.lstatSync(abs);
+    if (st.isSymbolicLink()) return;
+    if (st.isDirectory()) {
+      out.push({ name: `${rel}/`, data: Buffer.alloc(0) });
+      for (const n of fs.readdirSync(abs).sort()) treeOf(win.join(abs, n), `${rel}/${n}`, out, totals);
+    } else if (st.isFile()) {
+      totals.bytes += st.size;
+      if (out.length >= MAX_ZIP_ENTRIES) throw new Error(`That is more than ${MAX_ZIP_ENTRIES} files; I zip at most ${MAX_ZIP_ENTRIES} at once`);
+      if (totals.bytes > MAX_ZIP_BYTES) throw new Error(`That is more than ${humanSize(MAX_ZIP_BYTES).replace('.0', '')}; I zip at most that much at once`);
+      out.push({ name: rel, data: fs.readFileSync(abs) });
+    }
+    if (out.length > MAX_ZIP_ENTRIES) throw new Error(`That is more than ${MAX_ZIP_ENTRIES} files; I zip at most ${MAX_ZIP_ENTRIES} at once`);
+  }
+
+  const zipFiles = {
+    name: 'zip_files', risk: 'safe', timeoutMs: 60000,
+    description: 'Zip files and folders into a new .zip (never overwrites). paths: files or folders; to: the .zip name, optional. Undoable.',
+    params: obj({ paths: { anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] }, to: { type: 'string' } }, ['paths']),
+    async run({ paths, to } = {}) {
+      const src = sources(paths, { files: false, what: 'zip' });
+      if (!src.length) throw new Error('Which files or folders should I zip?');
+      const entries = [];
+      const totals = { bytes: 0 };
+      for (const p of src) treeOf(p, win.basename(p), entries, totals);
+      let out;
+      if (to) {
+        const t = safe(to);
+        if (!/\.zip$/i.test(t)) throw new Error('The archive name must end in .zip');
+        out = free(win.dirname(t), win.basename(t));
+      } else {
+        const dir = win.dirname(src[0]);
+        out = free(dir, src.length === 1 ? `${win.basename(src[0], win.extname(src[0]))}.zip` : 'Archive.zip');
+      }
+      const undo = missingDirs(win.dirname(out)).map(d => ({ created: d }));
+      fs.mkdirSync(win.dirname(out), { recursive: true });
+      const buf = writeZip(entries);
+      fs.writeFileSync(out, buf, { flag: 'wx' });
+      const made = madeFile(out);
+      if (!made.size || listZip(fs.readFileSync(out)).length !== entries.length) throw new Error('The zip was not written correctly');
+      const text = `Zipped ${plural(src.length, 'item')} into ${disp(out)} (${humanSize(made.size)}).`;
+      journal('zip_files', { paths: src, to: out }, text, [...undo, made]);
+      return text;
+    },
+  };
+
+  // --- unzip ---
+  function unsafeEntry(name) {
+    if (!name || name.length > 240 || /[\u0000-\u001f]/.test(name) || /^[\\/]/.test(name) || /^[a-z]:/i.test(name) || name.includes(':')) return true;
+    return name.replace(/\\/g, '/').split('/').some((seg, i, a) => seg === '..' || (seg === '' && i !== a.length - 1) || RESERVED.test(seg.split('.')[0]) || /[. ]$/.test(seg) || /[<>"|?*]/.test(seg));
+  }
+
+  const unzipTool = {
+    name: 'unzip', risk: 'safe', timeoutMs: 60000,
+    description: 'Unzip a .zip into a new folder next to it (or to: a folder). Never overwrites; refuses unsafe archives. Undoable.',
+    params: obj({ path: { type: 'string' }, to: { type: 'string' } }, ['path']),
+    async run({ path: raw, to } = {}) {
+      const zp = safe(raw);
+      if (!/\.zip$/i.test(zp)) throw new Error('I only unzip .zip files');
+      let st;
+      try { st = fs.lstatSync(zp); } catch { throw new Error(`Not found: ${raw}`); }
+      if (!st.isFile()) throw new Error(`${win.basename(zp)} is not a file`);
+      if (st.size > MAX_ZIP_BYTES * 2.5) throw new Error(`${win.basename(zp)} is ${humanSize(st.size)}; I unzip files up to 500 MB`);
+      const buf = fs.readFileSync(zp);
+      const list = listZip(buf);                 // refuses too many entries and over 500 MB expanded
+      const bad = list.find(e => unsafeEntry(e.name));
+      if (bad) throw new Error(`The zip has an unsafe entry (${JSON.stringify(bad.name.slice(0, 60))}); I refused it and wrote nothing`);
+      const base = to ? safe(to) : win.join(win.dirname(zp), win.basename(zp, win.extname(zp)));
+      const dest = free(win.dirname(base), win.basename(base));
+      const undo = [];
+      const note = d => { if (!exists(d)) { fs.mkdirSync(d); undo.push({ created: d }); } };
+      for (const d of missingDirs(win.dirname(dest))) note(d);
+      fs.mkdirSync(dest); undo.push({ created: dest });
+      let files = 0, bytes = 0;
+      try {
+        for (const e of list) {
+          const parts = e.name.replace(/\\/g, '/').split('/').filter(Boolean);
+          const target = win.join(dest, ...parts);
+          if (!inside(target, dest)) throw new Error(`The zip has an unsafe entry (${JSON.stringify(e.name.slice(0, 60))})`);
+          if (e.name.endsWith('/')) { for (let d = dest, i = 0; i < parts.length; i++) { d = win.join(d, parts[i]); note(d); } continue; }
+          for (let d = dest, i = 0; i < parts.length - 1; i++) { d = win.join(d, parts[i]); note(d); }
+          const data = entryData(buf, e);
+          if (data.length !== e.size) throw new Error(`${e.name} did not unpack correctly`);
+          fs.writeFileSync(target, data, { flag: 'wx' });
+          undo.push(madeFile(target));
+          files++; bytes += data.length;
+        }
+      } catch (err) {
+        if (undo.length) journal('unzip', { path: zp, to: dest }, `Stopped: ${err.message}`, undo);
+        throw err;
+      }
+      const text = `Unzipped ${plural(files, 'file')} into ${disp(dest)} (${humanSize(bytes)}).`;
+      journal('unzip', { path: zp, to: dest }, text, undo);
+      return text;
+    },
+  };
+
+  // --- copy_files ---
+  const copyFiles = {
+    name: 'copy_files', risk: 'safe',
+    description: `Copy files into a folder (it is created if missing). from: paths or a pattern like "Downloads/*.pdf"; to: a folder. Never overwrites. Undoable.`,
+    params: obj({ from: { anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] }, to: { type: 'string' } }, ['from', 'to']),
+    async run({ from, to } = {}) {
+      const dest = safe(to);
+      if (exists(dest) && !fs.statSync(dest).isDirectory()) throw new Error(`${disp(dest)} is a file, not a folder`);
+      const src = sources(from, { what: 'copy' });
+      if (!src.length) throw new Error(`No files match ${[].concat(from).join(', ')}`);
+      onlyFiles(src, 'copy');
+      if (src.length > MAX_ITEMS) throw new Error(`That is ${src.length} files; I copy at most ${MAX_ITEMS} at once`);
+      const undo = [];
+      for (const d of missingDirs(dest)) { fs.mkdirSync(d); undo.push({ created: d }); }
+      const failed = [];
+      let k = 0;
+      for (const s of src) {
+        try {
+          const target = free(dest, win.basename(s));
+          fs.copyFileSync(s, target, fs.constants.COPYFILE_EXCL);
+          const made = madeFile(target);
+          if (made.size !== fs.statSync(s).size) throw new Error('the copy is a different size');
+          undo.push(made); k++;
+        } catch (err) { failed.push(`${win.basename(s)}: ${err.message}`); }
+      }
+      if (!k) throw new Error(`Nothing was copied. ${failed.join('; ')}`);
+      const text = `Copied ${plural(k, 'file')} to ${disp(dest)}.${failed.length ? ` Not copied: ${failed.join('; ')}.` : ''}`;
+      journal('copy_files', { from: src, to: dest }, text, undo);
+      return text;
+    },
+  };
+
+  // --- make_folder ---
+  const makeFolder = {
+    name: 'make_folder', risk: 'safe',
+    description: 'Create a new folder (and missing parents) inside Desktop, Documents, Downloads or Projects. Undoable.',
+    params: obj({ path: { type: 'string' } }, ['path']),
+    async run({ path: raw } = {}) {
+      const p = safe(raw);
+      if (isRoot(p) || exists(p)) throw new Error(`${disp(p)} already exists${exists(p) && !fs.statSync(p).isDirectory() ? ' (as a file)' : ''}`);
+      const chain = missingDirs(p);
+      fs.mkdirSync(p, { recursive: true });
+      if (!fs.statSync(p).isDirectory()) throw new Error(`I could not create ${disp(p)}`);
+      const text = `Created ${disp(p)}.`;
+      journal('make_folder', { path: p }, text, chain.map(d => ({ created: d })));
+      return text;
+    },
+  };
+
+  return [listRecent, searchText, fileInfo, bigFiles, folderSize, readDocument, renameFiles, organize, zipFiles, unzipTool, copyFiles, makeFolder];
 }
 
 module.exports = { createFilesTools, QUOTE_FILE };

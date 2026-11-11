@@ -844,7 +844,7 @@
   },
   {
     "name": "undo_last",
-    "description": "Undo the last move_files: move those files back. Asks the user first.",
+    "description": "Undo the last file change JARVIS made (moved, renamed, copied, zipped, unzipped or created): puts files back or sends new ones to the Recycle Bin. Asks the user first.",
     "params": {
       "type": "object",
       "properties": {},

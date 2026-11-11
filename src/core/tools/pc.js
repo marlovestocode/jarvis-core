@@ -18,10 +18,8 @@ const SKIP_DIRS = new Set(['node_modules', '.git', '$recycle.bin']);
 const POWER_ASK = { shutdown: 'Shut down the PC now', restart: 'Restart the PC now', sleep: 'Put the PC to sleep now' };
 const POWER_DONE = { shutdown: 'Shutting down now.', restart: 'Restarting now.', sleep: 'Going to sleep.' };
 
-const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-const listWords = a => (a.length < 2 ? a.join('') : `${a.slice(0, -1).join(', ')} and ${a.at(-1)}`);
+const { plural, listWords, globRe, freeName: freeNameIn } = require('../pc/util');
 const obj = (properties, required) => ({ type: 'object', properties, ...(required ? { required } : {}), additionalProperties: false });
-const globRe = g => new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$', 'i');
 const exists = p => fs.existsSync(p);
 
 function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = null, waitMs = 5000, pollMs = 400, sleep = ms => new Promise(r => setTimeout(r, ms)) }) {
@@ -204,13 +202,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
     return [...new Set(out)];
   }
 
-  // a name in dir that is free: "a.pdf" → "a (2).pdf"
-  function freeName(dir, base) {
-    const ext = win.extname(base), stem = base.slice(0, base.length - ext.length);
-    let p = win.join(dir, base);
-    for (let i = 2; exists(p); i++) p = win.join(dir, `${stem} (${i})${ext}`);
-    return p;
-  }
+  const freeName = (dir, base) => freeNameIn(dir, base, exists);
 
   const moveFiles = {
     name: 'move_files', risk: 'confirm',
@@ -284,31 +276,58 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
     },
   };
 
+  // what undo_last does with one journal item: { from, to } moves back; { created, size?, mtime? } goes to the
+  // Recycle Bin, but only if it is still there and unchanged (a folder only when empty)
+  async function undoOne(u) {
+    if (u.created) {
+      const name = win.basename(u.created);
+      safe(u.created);
+      let st;
+      try { st = fs.lstatSync(u.created); } catch { return { skip: `${name} is already gone` }; }
+      if (st.isDirectory()) {
+        if (fs.readdirSync(u.created).length) return { skip: `${name} is not empty, so I left it` };
+      } else if ((Number.isFinite(u.size) && st.size !== u.size) || (Number.isFinite(u.mtime) && Math.abs(st.mtimeMs - u.mtime) > 2)) {
+        return { skip: `${name} changed since I made it, so I left it` };
+      }
+      const r = await host.recycle(u.created);
+      if (exists(u.created)) return { skip: `${name} is still there` };
+      if (!r.inBin) return { skip: `${name} did not go to the Recycle Bin` };
+      return { removed: true };
+    }
+    safe(u.from); safe(u.to);
+    if (!exists(u.to)) return { skip: `${win.basename(u.to)} is gone` };
+    if (exists(u.from)) return { skip: `${win.basename(u.from)} exists again` };
+    fs.mkdirSync(win.dirname(u.from), { recursive: true });
+    fs.renameSync(u.to, u.from);
+    return exists(u.from) && !exists(u.to) ? { moved: true } : { skip: win.basename(u.from) };
+  }
+
   const undoLast = {
     name: 'undo_last', risk: 'confirm',
-    description: 'Undo the last move_files: move those files back. Asks the user first.',
+    description: 'Undo the last file change JARVIS made (moved, renamed, copied, zipped, unzipped or created): puts files back or sends new ones to the Recycle Bin. Asks the user first.',
     params: obj({}),
     async run() {
       const e = actionLog.lastUndoable();
       if (!e) throw new Error('There is no move to undo');
       const items = e.undo;
+      const moves = items.filter(u => !u.created), made = items.filter(u => u.created);
+      const parts = [];
+      if (moves.length) parts.push(`Move ${plural(moves.length, 'file')} back to ${disp(win.dirname(moves[0].from))}`);
+      if (made.length) parts.push(`${parts.length ? 'send' : 'Send'} ${plural(made.length, 'new item')} to the Recycle Bin`);
       return confirm.propose({
-        tool: 'undo_last', summary: `Move ${plural(items.length, 'file')} back to ${disp(win.dirname(items[0].from))}`, args: { undo: e.id }, undid: e.id,
+        tool: 'undo_last', summary: parts.join(' and '), args: { undo: e.id }, undid: e.id,
         run: async () => {
-          let k = 0;
-          const failed = [];
+          let moved = 0, removed = 0;
+          const left = [];
           for (const u of [...items].reverse()) {
             try {
-              safe(u.from); safe(u.to);
-              if (!exists(u.to)) { failed.push(`${win.basename(u.to)} is gone`); continue; }
-              if (exists(u.from)) { failed.push(`${win.basename(u.from)} exists again`); continue; }
-              fs.mkdirSync(win.dirname(u.from), { recursive: true });
-              fs.renameSync(u.to, u.from);
-              if (exists(u.from) && !exists(u.to)) k++; else failed.push(win.basename(u.from));
-            } catch (err) { failed.push(`${win.basename(u.from)}: ${err.message}`); }
+              const r = await undoOne(u);
+              if (r.moved) moved++; else if (r.removed) removed++; else left.push(r.skip);
+            } catch (err) { left.push(`${win.basename(u.created || u.from)}: ${err.message}`); }
           }
-          if (!k) throw new Error(`Nothing was moved back. ${failed.join('; ')}`);
-          return `Moved ${plural(k, 'file')} back.${failed.length ? ` Not moved: ${failed.join('; ')}.` : ''}`;
+          if (!moved && !removed) throw new Error(`Nothing was undone. ${left.join('; ')}`);
+          const did = [moved && `Moved ${plural(moved, 'file')} back`, removed && `Removed ${plural(removed, 'item')} (sent to the Recycle Bin)`].filter(Boolean).join('. ');
+          return `${did}.${left.length ? ` Left alone: ${left.join('; ')}.` : ''}`;
         },
       });
     },

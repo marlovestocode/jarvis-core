@@ -118,5 +118,14 @@
   {"text": "find the pdf I downloaded yesterday", "expect": ["core", "files"]},
   {"text": "what is in my downloads folder", "expect": ["core", "pc"]},
   {"text": "what did I download this week", "expect": ["core", "knowledge"]},
-  {"text": "what files changed recently", "expect": ["core", "files", "pc"]}
+  {"text": "what files changed recently", "expect": ["core", "files", "pc"]},
+  {"text": "rename all the photos in my downloads folder", "expect": ["core", "files", "pc"]},
+  {"text": "organize my downloads", "expect": ["core", "files"]},
+  {"text": "zip up the project folder", "expect": ["core", "files", "pc"]},
+  {"text": "unzip the archive in downloads", "expect": ["core", "files"]},
+  {"text": "make a new folder called taxes", "expect": ["core", "files", "pc"]},
+  {"text": "copy the files to my desktop", "expect": ["core", "files", "pc"]},
+  {"text": "bulk rename these pdfs", "expect": ["core", "files"]},
+  {"text": "sort my desktop files by type", "expect": ["core", "files", "pc"]},
+  {"text": "undo that", "expect": ["core", "pc"]}
 ]

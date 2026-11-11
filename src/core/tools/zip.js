@@ -49,9 +49,52 @@ function readEntry(buf, e) {
   throw new Error(`${e.name} uses a compression I do not support`);
 }
 
+// the bytes of one entry from listZip's list
+const entryData = readEntry;
+
 function readZip(buf, opts = {}) {
   const entries = listZip(buf, opts);
   return entries.filter(e => opts.only === undefined || e.name === opts.only).map(e => ({ name: e.name, data: readEntry(buf, e) }));
 }
 
-module.exports = { readZip, listZip, MAX_ENTRIES, MAX_TOTAL };
+const CRC = new Uint32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+function crc32(buf) {
+  if (typeof zlib.crc32 === 'function') return zlib.crc32(buf);
+  let c = 0xffffffff;
+  for (const b of buf) c = CRC[(c ^ b) & 255] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+// entries: [{ name, data }]; a name ending in "/" is a folder. Deflate, UTF-8 names.
+function writeZip(entries, { now = Date.now() } = {}) {
+  const d = new Date(now);
+  const dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+  const dosDate = (Math.max(0, d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  const locals = [], centrals = [];
+  let offset = 0;
+  for (const { name, data } of entries) {
+    const nm = Buffer.from(name, 'utf8');
+    const isDir = name.endsWith('/');
+    const raw = isDir ? Buffer.alloc(0) : Buffer.from(data);
+    const comp = isDir || raw.length === 0 ? raw : zlib.deflateRawSync(raw);
+    const method = comp === raw ? 0 : 8;
+    const crc = crc32(raw);
+    const lh = Buffer.alloc(30);
+    lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(0x0800, 6); lh.writeUInt16LE(method, 8);
+    lh.writeUInt16LE(dosTime, 10); lh.writeUInt16LE(dosDate, 12); lh.writeUInt32LE(crc, 14); lh.writeUInt32LE(comp.length, 18); lh.writeUInt32LE(raw.length, 22); lh.writeUInt16LE(nm.length, 26);
+    locals.push(lh, nm, comp);
+    const ch = Buffer.alloc(46);
+    ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(20, 6); ch.writeUInt16LE(0x0800, 8); ch.writeUInt16LE(method, 10);
+    ch.writeUInt16LE(dosTime, 12); ch.writeUInt16LE(dosDate, 14); ch.writeUInt32LE(crc, 16); ch.writeUInt32LE(comp.length, 20); ch.writeUInt32LE(raw.length, 24);
+    ch.writeUInt16LE(nm.length, 28); ch.writeUInt32LE(isDir ? 0x10 : 0, 38); ch.writeUInt32LE(offset, 42);
+    centrals.push(ch, nm);
+    offset += 30 + nm.length + comp.length;
+  }
+  const cd = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length & 0xffff, 8); end.writeUInt16LE(entries.length & 0xffff, 10);
+  end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, cd, end]);
+}
+
+module.exports = { readZip, listZip, writeZip, entryData, MAX_ENTRIES, MAX_TOTAL };
