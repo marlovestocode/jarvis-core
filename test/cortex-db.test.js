@@ -1,0 +1,97 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { openDb } = require('../src/core/cortex/db');
+const defaultMigrations = require('../src/core/cortex/migrations');
+
+const tmpFile = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'jcortex-')), 'cortex.db');
+const now = 1_700_000_000_000;
+
+function addNode(db, text = 'Rex is my dog') {
+  return Number(db.stmt('INSERT INTO node(kind, text, created, updated) VALUES (?, ?, ?, ?)').run('fact', text, now, now).lastInsertRowid);
+}
+
+test('cortex-db: pragmas set on a file', () => {
+  const db = openDb({ file: tmpFile() });
+  assert.equal(db.raw.prepare('PRAGMA foreign_keys').get().foreign_keys, 1);
+  assert.equal(db.raw.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
+  assert.equal(db.raw.prepare('PRAGMA mmap_size').get().mmap_size, 0);
+  db.close();
+});
+
+test('cortex-db: migrations apply once', () => {
+  const file = tmpFile();
+  const a = openDb({ file });
+  assert.equal(a.version, 1);
+  assert.equal(a.readOnly, false);
+  a.close();
+  const b = openDb({ file });
+  assert.equal(b.version, 1);
+  assert.equal(b.readOnly, false);
+  b.close();
+});
+
+test('cortex-db: failed migration rolls back and opens read-only', () => {
+  const file = tmpFile();
+  openDb({ file }).close();
+  const logs = [];
+  const bad = { version: 2, name: 'bad', up(raw) { raw.exec('CREATE TABLE x(a)'); throw new Error('boom'); } };
+  const db = openDb({ file, migrations: [...defaultMigrations, bad], log: m => logs.push(m) });
+  assert.equal(db.readOnly, true);
+  assert.equal(db.version, 1);
+  assert.equal(db.raw.prepare("SELECT count(*) n FROM sqlite_master WHERE name = 'x'").get().n, 0);
+  assert.ok(logs.some(l => /boom/.test(l)));
+  assert.throws(() => addNode(db));
+  db.close();
+});
+
+test('cortex-db: cascade delete removes provenance, edges and vector', () => {
+  const db = openDb({ file: ':memory:' });
+  const a = addNode(db), b = addNode(db, 'Rex likes the park');
+  const s = Number(db.stmt('INSERT INTO source(kind, trust, ref, at) VALUES (?, ?, ?, ?)').run('user', 100, 's1', now).lastInsertRowid);
+  db.stmt('INSERT INTO provenance(node_id, source_id, at) VALUES (?, ?, ?)').run(a, s, now);
+  db.stmt('INSERT INTO edge(src, dst, type, weight, created, last_used) VALUES (?, ?, ?, ?, ?, ?)').run(a, b, 'mentions', 0.5, now, now);
+  db.stmt('INSERT INTO edge(src, dst, type, weight, created, last_used) VALUES (?, ?, ?, ?, ?, ?)').run(b, a, 'mentions', 0.5, now, now);
+  db.stmt('INSERT INTO vec(node_id, dim, scale, v) VALUES (?, ?, ?, ?)').run(a, 2, 0.01, new Uint8Array([1, 2]));
+  db.stmt('DELETE FROM node WHERE id = ?').run(a);
+  for (const t of ['provenance', 'edge', 'vec']) assert.equal(db.raw.prepare(`SELECT count(*) n FROM ${t}`).get().n, 0, t);
+  db.close();
+});
+
+test('cortex-db: fts triggers keep the index current', () => {
+  const db = openDb({ file: ':memory:' });
+  const match = q => db.raw.prepare('SELECT rowid FROM node_fts WHERE node_fts MATCH ?').all(q).map(r => r.rowid);
+  const id = addNode(db, 'Rex has a vet visit');
+  assert.deepEqual(match('"vet"'), [id]);
+  db.stmt('UPDATE node SET text = ? WHERE id = ?').run('Rex goes to the groomer', id);
+  assert.deepEqual(match('"vet"'), []);
+  assert.deepEqual(match('"groomer"'), [id]);
+  db.stmt('DELETE FROM node WHERE id = ?').run(id);
+  assert.deepEqual(match('"groomer"'), []);
+  db.close();
+});
+
+test('cortex-db: tx commits, rolls back on throw, and nests', () => {
+  const db = openDb({ file: ':memory:' });
+  db.tx(() => { addNode(db, 'one fact'); db.tx(() => addNode(db, 'two fact')); });
+  assert.throws(() => db.tx(() => { addNode(db, 'three fact'); throw new Error('no'); }));
+  db.tx(() => { addNode(db, 'four fact'); try { db.tx(() => { addNode(db, 'five fact'); throw new Error('inner'); }); } catch { /* inner only */ } });
+  const texts = db.raw.prepare('SELECT text FROM node ORDER BY id').all().map(r => r.text);
+  assert.deepEqual(texts, ['one fact', 'two fact', 'four fact']);
+  db.close();
+});
+
+test('cortex-db: stmt cache returns the same prepared statement', () => {
+  const db = openDb({ file: ':memory:' });
+  assert.equal(db.stmt('SELECT 1'), db.stmt('SELECT 1'));
+  db.close();
+});
+
+test('cortex-db: only db.js requires node:sqlite', () => {
+  const hits = [];
+  const walk = d => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) walk(p); else if (p.endsWith('.js') && /node:sqlite/.test(fs.readFileSync(p, 'utf8'))) hits.push(path.relative(path.join(__dirname, '..'), p).replace(/\\/g, '/')); } };
+  walk(path.join(__dirname, '..', 'src'));
+  assert.deepEqual(hits, ['src/core/cortex/db.js']);
+});
