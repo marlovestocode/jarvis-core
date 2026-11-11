@@ -74,6 +74,19 @@ export async function ytm(cmd, args = {}) {
     };
   }
 
+  // the playlist's own shelf: on the first page musicPlaylistShelfRenderer, on later pages its continuation. Never another
+  // shelf: under a playlist the user owns, YouTube Music adds "Suggestions" (songs not in it) with a continuation of its own.
+  function playlistShelf(j) {
+    let shelf = null;
+    walk(j, o => {
+      if (shelf) return;
+      const s = o.musicPlaylistShelfRenderer || o.musicPlaylistShelfContinuation;
+      if (s) shelf = { contents: s.contents || [], continuations: s.continuations || [] };
+      else if (o.appendContinuationItemsAction) shelf = { contents: o.appendContinuationItemsAction.continuationItems || [] };
+    });
+    return shelf || { contents: [] };
+  }
+
   function playlistRows(j) {
     const out = [];
     walk(j, o => { if (o.musicResponsiveListItemRenderer?.playlistItemData) out.push(parseRow(o.musicResponsiveListItemRenderer)); });
@@ -198,15 +211,17 @@ export async function ytm(cmd, args = {}) {
       let title = '';
       walk(j, o => { if (!title) for (const k of Object.keys(o)) if (/^music\w*Header\w*Renderer$/.test(k) && o[k]?.title) { title = runs(o[k].title); break; } });
       const editable = JSON.stringify(j).includes('"playlistEditorEndpoint"') || JSON.stringify(j).includes('musicEditablePlaylistDetailHeaderRenderer');
-      const tracks = playlistRows(j);
+      let shelf = playlistShelf(j);
+      const tracks = playlistRows(shelf);
       let truncated = false;
       for (let page = 0; page < 60; page++) {
-        const token = tokenOf(j);
+        const token = tokenOf(shelf);
         if (!token) break;
         if (tracks.length >= limit) { truncated = true; break; }
         await wait(120);   // be gentle with the API
         j = await innertube('browse', { continuation: token }, { auth: true });
-        tracks.push(...playlistRows(j));
+        shelf = playlistShelf(j);
+        tracks.push(...playlistRows(shelf));
       }
       const seen = new Set();
       const unique = tracks.filter(t => !t.setVideoId || (!seen.has(t.setVideoId) && seen.add(t.setVideoId)));

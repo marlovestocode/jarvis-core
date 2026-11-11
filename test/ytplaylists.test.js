@@ -106,6 +106,21 @@ test('page playlist: follows continuations, drops repeated rows, parses songs', 
   assert.equal(p.truncated, false);
 });
 
+// a one-song playlist the user owns: YouTube Music adds a "Suggestions" shelf below it, loaded through the section
+// list's own continuation. Those suggested songs are not in the playlist (Main 2 read as 15 songs, it has 1).
+test('page playlist: suggested songs below the playlist are not its tracks', async () => {
+  const sugg = (id, title) => ({ musicResponsiveListItemRenderer: { playlistItemData: { videoId: id }, flexColumns: [{ musicResponsiveListItemFlexColumnRenderer: { text: run(title) } }] } });
+  const first = { contents: { twoColumnBrowseResultsRenderer: { secondaryContents: { sectionListRenderer: {
+    contents: [{ musicPlaylistShelfRenderer: { contents: [row('v1', 's1', 'Cajun Couyon', '$lim Gucci', '2:37')] } }],
+    continuations: [{ nextContinuationData: { continuation: 'SUGGESTIONS' } }],
+  } } } } };
+  const suggestions = { continuationContents: { sectionListContinuation: { contents: [{ musicShelfRenderer: { title: run('Suggestions'), contents: [sugg('x1', 'Grounds My Limit'), sugg('x2', 'Matte Black')] } }] } } };
+  const bodies = [];
+  const r = await pageRun('playlist', { id: 'PLmain200001' }, { fetchImpl: async (_u, init) => { const b = JSON.parse(init.body); bodies.push(b); return respond(b.continuation ? suggestions : first); } });
+  assert.deepEqual(r.result.tracks.map(t => t.title), ['Cajun Couyon']);
+  assert.equal(bodies.length, 1, 'the suggestions are not fetched');
+});
+
 test('page playlist: limit stops paging and says it was cut; bad ids are refused', async () => {
   let calls = 0;
   const r = await pageRun('playlist', { id: 'PLx0000000', limit: 2 }, { fetchImpl: async () => { calls++; return respond(page1); } });
