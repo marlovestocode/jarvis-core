@@ -6,7 +6,7 @@ const { getMeta, setMeta } = require('./maintenance');
 const EMBED_KINDS = new Set(['fact', 'entity', 'chat', 'knowledge', 'reminder']);
 const BATCH = 16, SIMILAR = 0.82, DUPLICATE = 0.95, NEIGHBORS = 5;
 const STALE_DAYS = 180, DAY = 864e5, HOUR = 36e5;
-const PRUNE_SRCS = 60, ARCHIVE_ROWS = 200, WARM_ROWS = 800;   // sized from the 50k bench: each step ≈ 8 ms or less
+const PRUNE_SRCS = 10, ARCHIVE_ROWS = 200, WARM_ROWS = 800;   // sized from the 50k bench: each step ≈ 8 ms or less
 const yieldNow = () => new Promise(r => setImmediate(r));
 
 function createConsolidate({ db, vectors, edges, maintenance = null, embedder = null, isIdle = () => true, now = Date.now, log = () => {} }) {
@@ -86,11 +86,15 @@ function createConsolidate({ db, vectors, edges, maintenance = null, embedder = 
     return { ms: performance.now() - t0, deduped };
   }
 
-  // 4. prune: faded edges (a chunk of source ids per tick), and knowledge/chat unused for 180 days unless the user said it
-  function prune() {
+  // 4. prune faded edges: small chunks of source ids until the slice budget is spent (a first pass over an old
+  // store deletes a lot; steady state deletes little)
+  function prune(budget) {
     const t0 = performance.now();
-    const r = edges.prune({ fromSrc: pruneFrom, limit: PRUNE_SRCS });
-    pruneFrom = r.nextSrc ?? 0;
+    do {
+      const r = edges.prune({ fromSrc: pruneFrom, limit: PRUNE_SRCS });
+      pruneFrom = r.nextSrc ?? 0;
+      if (!pruneFrom) break;   // wrapped: one full pass is enough per tick
+    } while (performance.now() - t0 < budget);
     return performance.now() - t0;
   }
 
@@ -150,7 +154,7 @@ function createConsolidate({ db, vectors, edges, maintenance = null, embedder = 
       return 'ok';
     };
     try {
-      for (const [name, fn] of [['embed', embed], ['warm', warm], ['link', () => link(Math.max(1, deadlineMs - spent))], ['prune', prune], ['housekeeping', () => housekeeping(did)]]) {
+      for (const [name, fn] of [['embed', embed], ['warm', warm], ['link', () => link(Math.max(1, deadlineMs - spent))], ['prune', () => prune(Math.max(1, deadlineMs - spent))], ['housekeeping', () => housekeeping(did)]]) {
         const r = await step(name, fn);
         if (r === 'abort') return { did: did.filter(d => d !== 'housekeeping'), aborted: true, steps };
         if (r === 'stop') break;

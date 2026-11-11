@@ -24,6 +24,7 @@ function createRecall({ db, edges, vectors, queryVector = async () => null, now 
     const hit = dfCache.get(token);
     if (hit && now() - hit.at < DF_TTL) return hit.n;
     const n = db.stmt('SELECT count(*) n FROM (SELECT rowid FROM node_fts WHERE node_fts MATCH ? LIMIT ?)').get(`"${token}"`, commonDf + 1).n;
+    if (n <= commonDf) return n;   // rare words are cheap to count, and caching them would hide a word written a moment later
     dfCache.set(token, { n, at: now() });
     if (dfCache.size > DF_CACHE) dfCache.delete(dfCache.keys().next().value);
     return n;

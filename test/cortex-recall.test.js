@@ -204,6 +204,14 @@ test('cortex-recall: at most 40 nodes are expanded per hop, strongest first', as
   assert.deepEqual(new Set(calls.slice(1)), new Set(mids.slice(-40)));   // the 40 strongest links
 });
 
+test('cortex-recall: a word first seen after a miss is found at once (no stale zero count)', async () => {
+  const { recall, add } = setup();
+  assert.equal((await recall('who is Biscuit')).mode, 'empty');
+  const id = add('fact', 'Biscuit is my new puppy');
+  const r = await recall('who is Biscuit');
+  assert.deepEqual(r.items.map(i => i.id), [id]);
+});
+
 test('cortex-recall: debug returns the stages', async () => {
   const { recall, add } = setup();
   add('fact', 'Rex has a vet visit in March');
