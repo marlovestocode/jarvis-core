@@ -6,6 +6,7 @@ const path = require('node:path');
 const { createPcTools } = require('../src/core/tools/pc');
 const { createConfirm } = require('../src/core/pc/confirm');
 const { createActionLog } = require('../src/core/pc/actions-log');
+const { cortexOn } = require('./helpers/cortex');
 const { buildAllowlist } = require('../src/core/pc/apps');
 const { createToolRunner } = require('../src/core/tools/registry');
 const { NEEDS_OK } = require('../src/core/brain/guard');
@@ -24,7 +25,7 @@ function setup({ host: hostOpts = {}, media } = {}) {
   roots.forEach(r => fs.mkdirSync(r));
   const binDir = path.join(base, 'bin'); fs.mkdirSync(binDir);
   const host = createFakePcHost({ binDir, ...hostOpts });
-  const actionLog = createActionLog({ file: path.join(base, 'actions.log') });
+  const actionLog = createActionLog({ cortex: cortexOn(path.join(base, 'actions.log')) });
   const confirm = createConfirm({ actionLog });
   const tools = createPcTools({ host, getAllowlist: async () => buildAllowlist(START, {}), roots, confirm, actionLog, media, waitMs: 50, pollMs: 5 });
   const by = Object.fromEntries(tools.map(t => [t.name, t]));

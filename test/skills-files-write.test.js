@@ -9,6 +9,7 @@ const { writeZip, readZip, listZip } = require('../src/core/tools/zip');
 const { createToolRunner } = require('../src/core/tools/registry');
 const { createConfirm } = require('../src/core/pc/confirm');
 const { createActionLog } = require('../src/core/pc/actions-log');
+const { cortexOn } = require('./helpers/cortex');
 const { NEEDS_OK } = require('../src/core/brain/guard');
 const { createFakePcHost } = require('./helpers/fake-pc-host');
 
@@ -17,7 +18,7 @@ function setup() {
   const roots = ['Desktop', 'Documents', 'Downloads', 'Projects'].map(n => { const p = path.join(base, n); fs.mkdirSync(p); return p; });
   const binDir = path.join(base, 'bin'); fs.mkdirSync(binDir);
   const host = createFakePcHost({ binDir });
-  const actionLog = createActionLog({ file: path.join(base, 'actions.log') });
+  const actionLog = createActionLog({ cortex: cortexOn(path.join(base, 'actions.log')) });
   const confirm = createConfirm({ actionLog });
   const pc = { host, roots, confirm, actionLog, getAllowlist: async () => [], waitMs: 50, pollMs: 5 };
   const group = createGroup({ pc });
@@ -357,7 +358,7 @@ test('files writers: tainted turn cannot start the confirm ones', async () => {
 });
 
 test('every writer writes one action-log line', async () => {
-  const { run, yes, put, p, lines } = setup();
+  const { run, yes, put, lines, actionLog } = setup();
   put('Documents/a.txt'); put('Downloads/s.mp3');
   let n = lines();
   const step = async (fn, label) => { await fn(); assert.equal(lines(), ++n, label); };
@@ -367,7 +368,7 @@ test('every writer writes one action-log line', async () => {
   await step(() => run('unzip', { path: 'Documents/a.zip' }), 'unzip');
   await step(async () => { asked(await run('rename_files', { from: 'Documents/a.txt', pattern: { prefix: 'r-' } })); await yes(); }, 'rename_files');
   await step(async () => { asked(await run('organize_by_type', { folder: 'Downloads' })); await yes(); }, 'organize_by_type');
-  const log = fs.readFileSync(p('actions.log'), 'utf8').trim().split('\n').map(JSON.parse);
+  const log = actionLog.list();
   assert.deepEqual(log.map(e => e.what), ['make_folder', 'copy_files', 'zip_files', 'unzip', 'rename_files', 'organize_by_type']);
   assert.ok(log.every(e => e.ok && Array.isArray(e.undo) && e.undo.length));
 });

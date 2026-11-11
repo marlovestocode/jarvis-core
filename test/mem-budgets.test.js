@@ -18,7 +18,6 @@ const { createSpeechHost, windowsTts, windowsStt, windowsWake } = require('../sr
 const { createPcHost, LIMIT_MS, SCRIPT: PC_HOST_SCRIPT } = require('../src/core/pc/host');
 const { createMediaService } = require('../src/core/media/service');
 const { startYtMusicLink, frame } = require('../src/core/media/ytmusic-link');
-const { createActionLog } = require('../src/core/pc/actions-log');
 const { createMemWatch } = require('../src/core/memwatch');
 const { selfChecks } = require('../src/main/checks');
 const { DEFAULTS } = require('../src/core/config');
@@ -222,25 +221,7 @@ test('speech host: a speak that times out is told to stop talking', async () => 
 });
 
 // ---- action log ----
-test('actions.log: memory and file stay under the cap, and the newest undoable move survives however old it is', () => {
-  const file = path.join(tmp(), 'actions.log');
-  const logA = createActionLog({ file });
-  logA.write({ what: 'recycle', ok: true, undo: [{ from: 'a', to: 'b' }] });
-  const first = logA.lastUndoable().id;
-  for (let i = 0; i < 2500; i++) logA.write({ what: 'focus', ok: true });
-  const lines = () => fs.readFileSync(file, 'utf8').split(/\r?\n/).filter(Boolean).length;
-  assert.ok(logA.stats().entries <= logA.stats().cap && logA.stats().entries >= 500, `entries ${logA.stats().entries}`);
-  assert.ok(lines() <= logA.stats().cap);
-  assert.equal(logA.lastUndoable().id, first);
-  // a restart reads the same state; a file that grew before the cap existed is cut on load
-  assert.equal(createActionLog({ file }).lastUndoable().id, first);
-  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').repeat(5));
-  const big = createActionLog({ file });
-  assert.ok(big.stats().entries <= 1000 && lines() <= 1000);
-  // after the undo, the move is no longer offered
-  logA.write({ what: 'undo', ok: true, undid: first });
-  assert.equal(logA.lastUndoable(), null);
-});
+// the action log lives in the cortex now: its cap (newest 5,000 plus the undoable move) is test/actions-adapter.test.js
 
 // ---- main process: windows and mic (electron is stubbed) ----
 function withElectron(stub, load) {

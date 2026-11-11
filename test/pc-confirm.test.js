@@ -6,6 +6,7 @@ const path = require('node:path');
 const { isYes, isNo, UNTRUSTED_TOOLS, NEEDS_OK } = require('../src/core/brain/guard');
 const { createConfirm } = require('../src/core/pc/confirm');
 const { createActionLog } = require('../src/core/pc/actions-log');
+const { cortexOn } = require('./helpers/cortex');
 const { createToolRunner } = require('../src/core/tools/registry');
 const { createBus } = require('../src/core/bus');
 const { createSessionStore } = require('../src/core/session');
@@ -32,11 +33,11 @@ test('guard: tools that return text from outside are untrusted', () => {
 function confirmSetup(ttlMs = 60000) {
   let t = 1_000_000;
   const file = tmpLog();
-  const log = createActionLog({ file, now: () => t });
+  const log = createActionLog({ cortex: cortexOn(file), now: () => t });
   const c = createConfirm({ now: () => t, ttlMs, actionLog: log });
   const ran = [];
   const action = (name = 'move', text = 'Moved 2 files.') => ({ tool: 'move_files', summary: `Move 2 files (${name})`, args: { name }, run: async () => { ran.push(name); return text; } });
-  return { c, ran, action, file, tick: ms => { t += ms; } };
+  return { c, ran, action, file, log, tick: ms => { t += ms; } };
 }
 
 test('confirm: propose does not run; the question says how to confirm', () => {
@@ -47,13 +48,13 @@ test('confirm: propose does not run; the question says how to confirm', () => {
 });
 
 test('confirm: yes runs exactly the pending action once, and it is logged', async () => {
-  const { c, ran, action, file } = confirmSetup();
+  const { c, ran, action, log } = confirmSetup();
   c.propose(action());
   assert.deepEqual(await c.handle('Yes.'), { reply: 'Moved 2 files.', record: 'Moved 2 files.', tool: 'move_files', ok: true });
   assert.deepEqual(ran, ['move']);
   assert.equal(await c.handle('yes'), null);
   assert.deepEqual(ran, ['move']);
-  const lines = fs.readFileSync(file, 'utf8').trim().split('\n').map(JSON.parse);
+  const lines = log.list();
   assert.equal(lines.length, 1);
   assert.equal(lines[0].what, 'move_files');
   assert.equal(lines[0].ok, true);
@@ -89,12 +90,12 @@ test('confirm: a new proposal replaces the old one; yes runs only the new one', 
 });
 
 test('confirm: a failed action says so honestly and is logged as failed', async () => {
-  const { c, file } = confirmSetup();
+  const { c, log } = confirmSetup();
   c.propose({ tool: 'move_files', summary: 'Move 1 file', args: {}, run: async () => { throw new Error('the file is in use'); } });
   const r = await c.handle('yes');
   assert.equal(r.ok, false);
   assert.match(r.reply, /the file is in use/);
-  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8').trim()).ok, false);
+  assert.equal(log.list()[0].ok, false);
 });
 
 test('confirm: an action that asks again (force close) gives the new question', async () => {
@@ -108,15 +109,15 @@ test('confirm: an action that asks again (force close) gives the new question', 
 
 test('action log: survives restart; last undoable move, and undone moves are skipped', () => {
   const file = tmpLog();
-  const a = createActionLog({ file });
+  const a = createActionLog({ cortex: cortexOn(file) });
   a.write({ what: 'move_files', args: {}, result: 'Moved 1 file.', ok: true, undo: [{ from: 'A', to: 'B' }] });
   const id2 = a.write({ what: 'move_files', args: {}, result: 'Moved 1 file.', ok: true, undo: [{ from: 'C', to: 'D' }] }).id;
-  const b = createActionLog({ file });
+  const b = createActionLog({ cortex: cortexOn(file) });
   assert.equal(b.lastUndoable().id, id2);
   b.write({ what: 'undo_last', args: {}, result: 'ok', ok: true, undid: id2 });
-  assert.deepEqual(createActionLog({ file }).lastUndoable().undo, [{ from: 'A', to: 'B' }]);
+  assert.deepEqual(createActionLog({ cortex: cortexOn(file) }).lastUndoable().undo, [{ from: 'A', to: 'B' }]);
   fs.appendFileSync(file, 'not json\n');
-  assert.ok(createActionLog({ file }).lastUndoable());
+  assert.ok(createActionLog({ cortex: cortexOn(file) }).lastUndoable());
 });
 
 test('registry: a confirm tool is refused outside a user turn or after untrusted text', async () => {
@@ -180,7 +181,7 @@ test('orchestrator: a proposal ends the turn with the exact question; the next u
 });
 
 test('review #6: a failed undo does not block a retry', () => {
-  const a = createActionLog({ file: tmpLog() });
+  const a = createActionLog({ cortex: cortexOn(tmpLog()) });
   const m = a.write({ what: 'move_files', args: {}, result: 'Moved 1 file.', ok: true, undo: [{ from: 'A', to: 'B' }] });
   a.write({ what: 'undo_last', args: {}, result: 'That did not work.', ok: false, undid: m.id });
   assert.equal(a.lastUndoable()?.id, m.id);

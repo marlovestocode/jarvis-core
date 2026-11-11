@@ -7,6 +7,7 @@ const { createGroup } = require('../src/core/skills/windows');
 const { createPcHost } = require('../src/core/pc/host');
 const { createConfirm } = require('../src/core/pc/confirm');
 const { createActionLog } = require('../src/core/pc/actions-log');
+const { cortexOn } = require('./helpers/cortex');
 const { createToolRunner } = require('../src/core/tools/registry');
 const { PROTECTED } = require('../src/core/tools/pc');
 const { NEEDS_OK } = require('../src/core/brain/guard');
@@ -21,7 +22,7 @@ const TWO = [
 function setup(hostOpts = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jsw-'));
   const host = createFakePcHost({ windows: [W(1, 10, 'chrome', 'Docs - Chrome'), W(2, 11, 'Code', 'main.js')], ...hostOpts });
-  const actionLog = createActionLog({ file: path.join(dir, 'a.log') });
+  const actionLog = createActionLog({ cortex: cortexOn(path.join(dir, 'a.log')) });
   const confirm = createConfirm({ actionLog });
   const group = createGroup({ pc: { host, confirm, actionLog, roots: [dir], getAllowlist: async () => [] } });
   const by = Object.fromEntries(group.tools.map(t => [t.name, t]));
