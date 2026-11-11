@@ -6,7 +6,10 @@ const path = require('node:path');
 
 // monitors: work areas. desktops: false = this Windows build has no virtual-desktop support.
 // placeWrong: place() claims success but leaves the window where it was (to test read-back checks).
-function createFakePcHost({ windows = [], opens = {}, binDir = null, stubborn = [], focusOk = true, lockOk = true, monitors = [{ n: 1, primary: true, x: 0, y: 0, w: 1920, h: 1080 }], desktops = true, foreground = null, placeWrong = false } = {}) {
+function createFakePcHost({ windows = [], opens = {}, binDir = null, stubborn = [], focusOk = true, lockOk = true, monitors = [{ n: 1, primary: true, x: 0, y: 0, w: 1920, h: 1080 }], desktops = true, foreground = null, placeWrong = false,
+  audioDevices = [], audioStuck = false, brightness = null, brightnessStuck = false, displays = [], nightLight = null, nightStuck = false } = {}) {
+  const devs = audioDevices.map(d => ({ ...d }));
+  let bright = brightness, night = nightLight;
   const calls = [];
   const wins = windows.map(w => ({ ...w }));
   const alive = new Set(wins.map(w => w.pid));
@@ -58,6 +61,12 @@ function createFakePcHost({ windows = [], opens = {}, binDir = null, stubborn = 
       w.rect = { x: m.x + 50, y: m.y + 50, w: Math.min(r.w, m.w - 100), h: Math.min(r.h, m.h - 100) };
       return { ok: true, rect: { ...w.rect } };
     },
+    async audioDevices() { log('audioDevices'); return devs.map(d => ({ ...d })); },
+    async audioSetDefault(id) { log('audioSetDefault', id); if (!audioStuck) for (const d of devs) d.default = d.id === id; return true; },
+    async brightness() { log('brightness'); return bright; },
+    async setBrightness(p) { log('setBrightness', p); if (!brightnessStuck) bright = p; return bright; },
+    async displays() { log('displays'); return displays.map(d => ({ ...d })); },
+    async nightLight(on) { log('nightLight', on); if (night === null) return null; if (on !== undefined && !nightStuck) night = on; return night; },
     async desktopSwitch(target) { log('desktopSwitch', target); if (!desktops) throw new Error('Virtual desktops are not available on this Windows build'); return true; },
     async desktopMove(hwnd, n) { log('desktopMove', { hwnd, n }); if (!desktops) throw new Error('Virtual desktops are not available on this Windows build'); return true; },
     async focus(hwnd) { log('focus', hwnd); return focusOk; },

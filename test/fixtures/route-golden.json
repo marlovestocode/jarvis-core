@@ -73,5 +73,17 @@
   {"text": "snap this to the right half", "expect": ["core", "windows"]},
   {"text": "maximize chrome", "expect": ["core", "windows"]},
   {"text": "move this to desktop 3", "expect": ["core", "windows", "pc"]},
-  {"text": "move my notes to the desktop", "expect": ["core", "pc"]}
+  {"text": "move my notes to the desktop", "expect": ["core", "pc"]},
+  {"text": "switch the sound output to my headphones", "expect": ["core", "audio-display"]},
+  {"text": "list my output devices", "expect": ["core", "audio-display"]},
+  {"text": "play it through the speakers", "expect": ["core", "media", "audio-display"]},
+  {"text": "turn the brightness down", "expect": ["core", "audio-display"]},
+  {"text": "make the screen dimmer", "expect": ["core", "audio-display"]},
+  {"text": "set brightness to 40", "expect": ["core", "audio-display"]},
+  {"text": "how many displays do I have", "expect": ["core", "audio-display"]},
+  {"text": "turn on night light", "expect": ["core", "audio-display"]},
+  {"text": "enable the blue light filter", "expect": ["core", "audio-display"]},
+  {"text": "what is my display refresh rate", "expect": ["core", "audio-display"]},
+  {"text": "make it brighter", "expect": ["core", "audio-display"]},
+  {"text": "turn the volume down", "expect": ["core", "media"]}
 ]

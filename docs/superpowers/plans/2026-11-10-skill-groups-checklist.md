@@ -13,3 +13,12 @@ read-only commands (`ping`, `monitors`, `foreground`, `windows`). Start JARVIS n
 - [ ] "Switch to desktop 2" and "move Notepad to desktop 2" → both answer that this is not possible here (the PC host does not read the desktop list from the registry); nothing moves. Decide later whether to allow a read-only registry read for this.
 - [ ] Hung app: freeze a test app on purpose (for example a PowerShell window running `Add-Type -A System.Windows.Forms; $f=New-Object Windows.Forms.Form; $f.Show(); Start-Sleep 600`), then "the test app is not responding, end it" → asks → "yes" → only that process ends. A healthy app named the same way → refused ("Windows does not report ... as not responding").
 - [ ] "End explorer" while it is frozen (or not) → refused as protected.
+
+## Audio and display
+(The host's read-only `audioDevices`, `displays` and `brightness` were seen to compile and answer on the dev PC; nothing below was changed on the real PC.)
+- [ ] "List my sound outputs" → names match Windows' sound settings and the default is marked.
+- [ ] "Switch the sound output to my headphones" → Windows' default output really changes (check the volume flyout); an ambiguous name ("headphones" with two pairs) asks which; an unknown name lists the devices. Switch back afterwards.
+- [ ] Laptop only: "set brightness to 40" / "make it brighter" → the panel changes and the reply states the value read back. On a desktop with external monitors: "brightness" must answer that it is not supported, never "done".
+- [ ] "What displays do I have" → count, resolution and refresh rate match Windows display settings.
+- [ ] "Turn on night light" → answers that it is not available from here (the PC host does not touch the registry); the setting is unchanged. Decide later whether to allow it.
+- [ ] "Mute Spotify" / "set the volume to 30" still go to media, not this group.

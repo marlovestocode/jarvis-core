@@ -66,6 +66,22 @@ function createPcHost({ request }) {
       const r = await call('recycle', { path: p });
       return { gone: !!r?.gone, inBin: !!r?.inBin };
     }),
+    audioDevices: wrap(async () => list(await call('audioDevices')).filter(d => d && typeof d.id === 'string' && d.id && typeof d.name === 'string').map(d => ({ id: d.id, name: d.name, default: !!d.default }))),
+    audioSetDefault: wrap(async id => (await call('audioSetDefault', { id: needText(id, 'device id') })) === true),
+    // percent of the built-in panel, or null when this display has no brightness control
+    brightness: wrap(async () => { const r = await call('brightness'); return Number.isFinite(r) ? r : null; }),
+    setBrightness: wrap(async percent => {
+      if (!Number.isFinite(percent) || percent < 0 || percent > 100) throw new Error('Bad brightness');
+      const r = await call('setBrightness', { percent: Math.round(percent) });
+      return Number.isFinite(r) ? r : null;
+    }),
+    displays: wrap(async () => list(await call('displays')).filter(d => d && Number.isInteger(d.n) && d.n > 0 && Number.isFinite(d.w) && Number.isFinite(d.h)).map(d => ({ n: d.n, primary: !!d.primary, w: d.w, h: d.h, hz: Number.isFinite(d.hz) ? d.hz : null }))),
+    // the state after the call (true/false), or null when this PC cannot report it
+    nightLight: wrap(async on => {
+      if (on !== undefined && typeof on !== 'boolean') throw new Error('Bad night light value');
+      const r = await call('nightLight', on === undefined ? {} : { on });
+      return typeof r === 'boolean' ? r : null;
+    }),
     lock: wrap(async () => (await call('lock')) === true),
     power: wrap(async mode => {
       if (!POWER.includes(mode)) throw new Error('Bad power mode');

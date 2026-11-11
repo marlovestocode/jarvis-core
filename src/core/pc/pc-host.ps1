@@ -17,6 +17,12 @@
 #   desktopSwitch {target}    next|previous (Win+Ctrl+Arrow); true only when the front window left the current desktop;
 #                             numbers and builds without virtual desktops throw
 #   desktopMove {hwnd,n}      always throws: needs the desktop list (registry), which this host never reads
+#   audioDevices              active playback devices: [{ id, name, default }]
+#   audioSetDefault {id}      make a listed device the default output (console, media, communications)
+#   brightness                built-in panel percent, or null (external monitors)
+#   setBrightness {percent}   -> the percent read back, or throws when there is no panel control
+#   displays                  [{ n, primary, w, h, hz }]
+#   nightLight                always throws: the setting lives in the registry, which this host never touches
 #   alive     {pids}          which of these process ids still run
 #   closeMain {pid}           ask the app to close (like clicking X); true if the request was sent
 #   kill      {pid}           end the process (only after the user confirmed a force close)
@@ -263,6 +269,148 @@ function Do-Power($m) {
   }
 }
 
+# ---- sound output, brightness, displays: compiled on first use, so a problem here cannot break the rest of the host ----
+function Ensure-Audio {
+  if ('JvAudio.Native' -as [type]) { return }
+  Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+namespace JvAudio {
+  [StructLayout(LayoutKind.Sequential)] public struct PROPERTYKEY { public Guid fmtid; public uint pid; }
+  [StructLayout(LayoutKind.Explicit, Size = 24)] public struct PROPVARIANT { [FieldOffset(0)] public ushort vt; [FieldOffset(8)] public IntPtr p; }
+  [ComImport, Guid("886d8eeb-8cf2-4446-8d02-cdba1dbdcf99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IPropertyStore {
+    [PreserveSig] int GetCount(out uint c); [PreserveSig] int GetAt(uint i, out PROPERTYKEY k);
+    [PreserveSig] int GetValue(ref PROPERTYKEY k, out PROPVARIANT v); [PreserveSig] int SetValue(ref PROPERTYKEY k, ref PROPVARIANT v); [PreserveSig] int Commit();
+  }
+  [ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IMMDevice {
+    [PreserveSig] int Activate(ref Guid id, int ctx, IntPtr p, [MarshalAs(UnmanagedType.IUnknown)] out object o);
+    [PreserveSig] int OpenPropertyStore(int access, out IPropertyStore s);
+    [PreserveSig] int GetId([MarshalAs(UnmanagedType.LPWStr)] out string id); [PreserveSig] int GetState(out int s);
+  }
+  [ComImport, Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IMMDeviceCollection { [PreserveSig] int GetCount(out uint c); [PreserveSig] int Item(uint i, out IMMDevice d); }
+  [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IMMDeviceEnumerator {
+    [PreserveSig] int EnumAudioEndpoints(int flow, int mask, out IMMDeviceCollection c);
+    [PreserveSig] int GetDefaultAudioEndpoint(int flow, int role, out IMMDevice d);
+  }
+  [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumeratorCom { }
+  [ComImport, Guid("f8679f50-850a-41cf-9c72-430f290290c8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IPolicyConfig {
+    [PreserveSig] int GetMixFormat(IntPtr a, IntPtr b); [PreserveSig] int GetDeviceFormat(IntPtr a, int b, IntPtr c); [PreserveSig] int ResetDeviceFormat(IntPtr a);
+    [PreserveSig] int SetDeviceFormat(IntPtr a, IntPtr b, IntPtr c); [PreserveSig] int GetProcessingPeriod(IntPtr a, int b, IntPtr c, IntPtr d); [PreserveSig] int SetProcessingPeriod(IntPtr a, IntPtr b);
+    [PreserveSig] int GetShareMode(IntPtr a, IntPtr b); [PreserveSig] int SetShareMode(IntPtr a, IntPtr b); [PreserveSig] int GetPropertyValue(IntPtr a, IntPtr b, IntPtr c); [PreserveSig] int SetPropertyValue(IntPtr a, IntPtr b, IntPtr c);
+    [PreserveSig] int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string id, int role); [PreserveSig] int SetEndpointVisibility(IntPtr a, int b);
+  }
+  [ComImport, Guid("870af99c-171d-4f9e-af0d-e63df40c2bc9")] class PolicyConfigClient { }
+  public class Dev { public string id; public string name; public bool isDefault; }
+  public static class Native {
+    [DllImport("ole32.dll")] static extern int PropVariantClear(ref PROPVARIANT v);
+    static string FriendlyName(IMMDevice d) {
+      IPropertyStore ps; if (d.OpenPropertyStore(0, out ps) != 0) return null;
+      var key = new PROPERTYKEY { fmtid = new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), pid = 14 };
+      PROPVARIANT v; if (ps.GetValue(ref key, out v) != 0) return null;
+      string s = v.vt == 31 ? Marshal.PtrToStringUni(v.p) : null;
+      PropVariantClear(ref v);
+      return s;
+    }
+    // active playback devices; isDefault = the default for media
+    public static List<Dev> Devices() {
+      var list = new List<Dev>();
+      var en = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
+      IMMDeviceCollection col; if (en.EnumAudioEndpoints(0, 1, out col) != 0) return list;
+      string defId = null; IMMDevice dd; if (en.GetDefaultAudioEndpoint(0, 1, out dd) == 0) dd.GetId(out defId);
+      uint n; col.GetCount(out n);
+      for (uint i = 0; i < n; i++) {
+        IMMDevice d; if (col.Item(i, out d) != 0) continue;
+        string id; if (d.GetId(out id) != 0) continue;
+        list.Add(new Dev { id = id, name = FriendlyName(d) ?? id, isDefault = id == defId });
+      }
+      return list;
+    }
+    public static bool SetDefault(string id) {
+      var pc = (IPolicyConfig)new PolicyConfigClient();
+      bool ok = true;
+      for (int role = 0; role < 3; role++) ok &= pc.SetDefaultEndpoint(id, role) == 0;   // console, multimedia, communications
+      return ok;
+    }
+  }
+}
+'@
+}
+
+function Ensure-Display {
+  if ('JvDisp.Native' -as [type]) { return }
+  Add-Type -AssemblyName System.Windows.Forms
+  Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+namespace JvDisp {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+  public struct DEVMODE {
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+    public short dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
+    public int dmFields, dmPositionX, dmPositionY, dmDisplayOrientation, dmDisplayFixedOutput;
+    public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+    public short dmLogPixels;
+    public int dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency, dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
+  }
+  public class Disp { public int n; public bool primary; public int w, h, hz; }
+  public static class Native {
+    [DllImport("user32.dll", CharSet = CharSet.Ansi)] static extern bool EnumDisplaySettings(string dev, int mode, ref DEVMODE dm);
+    // primary first, then left to right (the same numbering as the window monitors)
+    public static List<Disp> Displays() {
+      var screens = new List<Screen>(Screen.AllScreens);
+      screens.Sort((a, b) => a.Primary != b.Primary ? (a.Primary ? -1 : 1) : a.Bounds.X.CompareTo(b.Bounds.X));
+      var list = new List<Disp>();
+      for (int i = 0; i < screens.Count; i++) {
+        var dm = new DEVMODE(); dm.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
+        var d = new Disp { n = i + 1, primary = screens[i].Primary };
+        if (EnumDisplaySettings(screens[i].DeviceName, -1, ref dm)) { d.w = dm.dmPelsWidth; d.h = dm.dmPelsHeight; d.hz = dm.dmDisplayFrequency; }
+        else { d.w = screens[i].Bounds.Width; d.h = screens[i].Bounds.Height; }
+        list.Add(d);
+      }
+      return list;
+    }
+  }
+}
+'@
+}
+
+function Do-AudioDevices { Ensure-Audio; @([JvAudio.Native]::Devices() | ForEach-Object { @{ id = $_.id; name = $_.name; default = $_.isDefault } }) }
+
+function Do-AudioSetDefault($m) {
+  Ensure-Audio
+  $id = [string]$m.id
+  if (-not ([JvAudio.Native]::Devices() | Where-Object { $_.id -ceq $id })) { throw 'No such sound output device' }
+  [JvAudio.Native]::SetDefault($id)
+}
+
+# built-in panels only (WMI); external monitors have no instance, so the answer is null / an error
+function Do-Brightness {
+  $b = @(Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness -ErrorAction SilentlyContinue | Where-Object { $_.Active })
+  if ($b.Count -gt 0) { [int]$b[0].CurrentBrightness } else { $null }
+}
+
+function Do-SetBrightness($m) {
+  $methods = @(Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods -ErrorAction SilentlyContinue)
+  if ($methods.Count -eq 0) { throw 'This display has no brightness control' }
+  foreach ($x in $methods) { [void](Invoke-CimMethod -InputObject $x -MethodName WmiSetBrightness -Arguments @{ Timeout = [uint32]1; Brightness = [byte][int]$m.percent }) }
+  Start-Sleep -Milliseconds 300
+  Do-Brightness
+}
+
+function Do-Displays { Ensure-Display; @([JvDisp.Native]::Displays() | ForEach-Object { @{ n = $_.n; primary = $_.primary; w = $_.w; h = $_.h; hz = $_.hz } }) }
+
+# Windows keeps night light in the registry, which this host never touches
+function Do-NightLight($m) { throw 'Night light is not available from here: Windows stores it in the registry, which JARVIS does not touch' }
+
 function Handle($line) {
   $m = $null
   try { $m = $line | ConvertFrom-Json } catch { return }
@@ -279,6 +427,12 @@ function Handle($line) {
       'moveToMonitor' { Do-MoveToMonitor $m }
       'desktopSwitch' { Do-DesktopSwitch $m }
       'desktopMove' { Do-DesktopMove $m }
+      'audioDevices' { Do-AudioDevices }
+      'audioSetDefault' { Do-AudioSetDefault $m }
+      'brightness' { Do-Brightness }
+      'setBrightness' { Do-SetBrightness $m }
+      'displays' { Do-Displays }
+      'nightLight' { Do-NightLight $m }
       'alive' { @($m.pids | ForEach-Object { $q = Get-Process -Id ([int]$_) -ErrorAction SilentlyContinue; if ($q) { $q.Id } }) }
       'closeMain' { $q = Get-Process -Id ([int]$m.pid) -ErrorAction SilentlyContinue; if ($q) { $q.CloseMainWindow() } else { $false } }
       'kill' { Stop-Process -Id ([int]$m.pid) -Force; $true }

@@ -40,6 +40,8 @@ const TOOL_HINTS = {
   lock_screen: 'lock_screen: see set_system_volume.', power: 'power: see set_system_volume.',
   window_arrange: 'window_arrange: snap, maximize, minimize, restore or center a window. window_to_monitor: move it to another monitor. desktop_switch / window_to_desktop: virtual desktops. end_unresponsive_app: end a hung app (asks first). Say it is done only when the result says so.',
   window_to_monitor: 'window_to_monitor: see window_arrange.', desktop_switch: 'desktop_switch: see window_arrange.', window_to_desktop: 'window_to_desktop: see window_arrange.', end_unresponsive_app: 'end_unresponsive_app: see window_arrange.',
+  audio_devices: 'audio_devices: list sound outputs. audio_output_set: switch the default output ("headphones"). brightness_set: laptop panel brightness. displays_list: connected displays. night_light: blue light filter on or off. Say it is done only when the result says so; volume and mute are media_control.',
+  audio_output_set: 'audio_output_set: see audio_devices.', brightness_set: 'brightness_set: see audio_devices.', displays_list: 'displays_list: see audio_devices.', night_light: 'night_light: see audio_devices.',
   more_skills: 'more_skills: load another skill group when your tools do not cover the request; groups are listed under Capabilities.',
   remember: "remember / forget_memory: save or delete a lasting fact or preference when the user asks (\"remember that...\", \"forget...\"). Say it is saved only when the tool says so.",
 };
