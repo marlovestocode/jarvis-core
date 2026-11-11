@@ -18,6 +18,7 @@ test('cortex-db: pragmas set on a file', () => {
   assert.equal(db.raw.prepare('PRAGMA foreign_keys').get().foreign_keys, 1);
   assert.equal(db.raw.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
   assert.equal(db.raw.prepare('PRAGMA mmap_size').get().mmap_size, 0);
+  assert.equal(db.raw.prepare('PRAGMA cache_size').get().cache_size, -4000);   // 4 MB page cache: the 64 MB budget holds a 15 MB matrix
   db.close();
 });
 

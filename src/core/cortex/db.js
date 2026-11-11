@@ -12,7 +12,7 @@ function openDb({ file = ':memory:', migrations = defaultMigrations, log = () =>
   try {
     if (!memory) raw.exec('PRAGMA journal_mode = WAL');
     raw.exec(`PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 2000;
-              PRAGMA cache_size = -8000; PRAGMA mmap_size = 0; PRAGMA temp_store = MEMORY;`);
+              PRAGMA cache_size = -4000; PRAGMA mmap_size = 0; PRAGMA temp_store = MEMORY;`);
   } catch (err) {
     try { raw.close(); } catch { /* not open */ }   // an open handle locks the file on Windows, so quarantine could not move it
     throw err;

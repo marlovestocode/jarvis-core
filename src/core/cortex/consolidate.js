@@ -6,7 +6,7 @@ const { getMeta, setMeta } = require('./maintenance');
 const EMBED_KINDS = new Set(['fact', 'entity', 'chat', 'knowledge', 'reminder']);
 const BATCH = 16, SIMILAR = 0.82, DUPLICATE = 0.95, NEIGHBORS = 5;
 const STALE_DAYS = 180, DAY = 864e5, HOUR = 36e5;
-const PRUNE_SRCS = 10, ARCHIVE_ROWS = 200, WARM_ROWS = 800;   // sized from the 50k bench: each step ≈ 8 ms or less
+const PRUNE_SRCS = 10, ARCHIVE_ROWS = 200, WARM_ROWS = 400;   // sized from the 50k bench: each step ≈ 8 ms or less
 const yieldNow = () => new Promise(r => setImmediate(r));
 
 function createConsolidate({ db, vectors, edges, maintenance = null, embedder = null, isIdle = () => true, now = Date.now, log = () => {} }) {
