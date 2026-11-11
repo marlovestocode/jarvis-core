@@ -225,9 +225,9 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           try { res = await tools.run(call.name, call.args, { signal: ac.signal, turn }); }
           finally { inTool = false; }
           bus.emit('tool', { id: call.id, name: call.name, phase: 'end', ok: res.ok });
-          if (UNTRUSTED_TOOLS.has(call.name)) turn.tainted = true;
+          if (res.untrusted || UNTRUSTED_TOOLS.has(call.name)) turn.tainted = true;
           if (res.ok && String(res.text).startsWith(NEEDS_OK)) question = String(res.text).slice(NEEDS_OK.length);
-          else if (res.ok && !/^error/i.test(String(res.text)) && !UNTRUSTED_TOOLS.has(call.name)) okTools++;
+          else if (res.ok && !/^error/i.test(String(res.text)) && !res.untrusted && !UNTRUSTED_TOOLS.has(call.name)) okTools++;
           s.messages.push({ role: 'tool', content: res.text, toolCallId: call.id, name: call.name });
           if (ac.signal.aborted) break;
         }

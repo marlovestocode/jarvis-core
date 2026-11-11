@@ -75,13 +75,14 @@ test('timer tools: cancel_timer by label, all, nothing', async () => {
 });
 
 test('timer tools: strict schemas and aliases resolve', async () => {
-  const { tools } = setup();
+  const { tools, scheduler } = setup();
   assert.deepEqual(tools.map(t => t.name), ['set_timer', 'set_alarm', 'set_reminder', 'list_timers', 'cancel_timer']);
   for (const t of tools) {
     assert.equal(t.params.additionalProperties, false, t.name);
     assert.ok(t.description.length < 200, t.name);
   }
-  const runner = createToolRunner(tools);
+  // aliases belong to the tools in the timers skill group
+  const runner = createToolRunner(require('../src/core/skills/timers').createGroup({ scheduler: { ...scheduler } }).tools);
   for (const [alias, real] of [['start_timer', 'set_timer'], ['remind_me', 'set_reminder'], ['get_timers', 'list_timers'], ['stop_timer', 'cancel_timer'], ['cancel_alarm', 'cancel_timer'], ['create_alarm', 'set_alarm']]) {
     const r = await runner.run(alias, real === 'list_timers' ? {} : { all: true });
     assert.doesNotMatch(r.text, /unknown tool/, alias);

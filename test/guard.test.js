@@ -72,7 +72,7 @@ test('router: factual questions the old routing sent to tool-less quick chat now
 
 test('tools: made-up names map to the real tool; truly unknown names list what exists', async () => {
   const calls = [];
-  const runner = createToolRunner([{ name: 'youtube_music', description: '', params: {}, run: async a => { calls.push(a); return 'Playing'; } }, { name: 'get_time', description: '', params: {}, run: async () => 'noon' }]);
+  const runner = createToolRunner([{ name: 'youtube_music', aliases: ['ytm_music'], description: '', params: {}, run: async a => { calls.push(a); return 'Playing'; } }, { name: 'get_time', description: '', params: {}, run: async () => 'noon' }]);
   assert.deepEqual(await runner.run('ytm_music', { action: 'queue' }), { ok: true, text: 'Playing' });
   const bad = await runner.run('get_stock_data', {});
   assert.equal(bad.ok, false);
