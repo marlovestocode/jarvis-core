@@ -12,7 +12,7 @@ const { createVectors } = require('./vectors');
 const { withQueryCache } = require('./embedder');
 const { createRecall } = require('./recall');
 const { createConsolidate } = require('./consolidate');
-const { openChecked, createMaintenance, setMeta } = require('./maintenance');
+const { openChecked, createMaintenance, setMeta, getMeta } = require('./maintenance');
 
 const { CortexError } = guard;
 const FLUSH_MS = 60000;
@@ -91,6 +91,13 @@ function open({ file = ':memory:', log = () => {}, bus = null, embedder = null, 
     trim: () => { vectors.trim(); },
     health: () => ({ ok: ok && !db.readOnly, readOnly: db.readOnly, quickCheck: opened.quickCheck, embedder: embedder?.id || null,
       queue: consolidate.queue.size, lastBackupAt: maint.lastBackupAt(), restoredFrom: opened.restoredFrom, recoveredEmpty: opened.recoveredEmpty }),
+    // small markers for wave importers (W1 §3); keys and values are short strings
+    meta: {
+      get: safe(key => getMeta(db, String(key).slice(0, 100))),
+      set: safe((key, value) => { setMeta(db, String(key).slice(0, 100), String(value).slice(0, 1000)); }),
+    },
+    // run fn (which uses only these verbs) as one transaction: all of it or none (W1 §3 import)
+    transaction: safe(fn => db.tx(fn)),
     backup: safe(() => maint.backup()),
     export: safe(() => maint.export()),
     wipe: safe(opts => maint.wipe(opts)),

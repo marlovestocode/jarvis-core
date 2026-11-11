@@ -36,7 +36,7 @@ function createNodes(db, { now = Date.now, sources, onWrite = () => {} } = {}) {
       .run(src, dst, type, weight, t, t);
   }
 
-  function upsert({ kind, key = null, text, data, importance = 0.5, status = 'active', source, quote = null, tainted = false } = {}) {
+  function upsert({ kind, key = null, text, data, importance = 0.5, status = 'active', source, quote = null, tainted = false, created } = {}) {
     const clean = checkText(kind, text);
     if (!STATUSES.has(status)) throw new CortexError('status');
     const src = sources.get(source);
@@ -50,7 +50,8 @@ function createNodes(db, { now = Date.now, sources, onWrite = () => {} } = {}) {
     const out = db.tx(() => {
       const existing = k === null ? null : db.stmt('SELECT * FROM node WHERE kind = ? AND key = ?').get(kind, k);
       if (!existing) {
-        const id = insert({ kind, key: k, text: clean, data: json, importance: imp, status });
+        const at = Number.isFinite(created) && created > 0 ? Math.min(created, now()) : undefined;   // importers keep the original date
+        const id = insert({ kind, key: k, text: clean, data: json, importance: imp, status, created: at });
         addProvenance(id, src.id, q); refreshConfidence(id);
         return { id, created: true, wrote: true };
       }
