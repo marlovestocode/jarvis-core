@@ -181,3 +181,122 @@ test('knowledge reuse: the knowledge skill group hands the store to its tools', 
   assert.match(r.text, /from memory/);
   assert.equal(net.calls.length, 0);
 });
+
+// ---- web_search / web_open (Task 3) ----
+const { createWebTools } = require('../src/core/tools/web');
+const RESULTS = [
+  { title: 'Eiffel Tower - Wikipedia', host: 'en.wikipedia.org', url: 'https://en.wikipedia.org/wiki/Eiffel_Tower', snippet: 'The Eiffel Tower is a wrought-iron lattice tower in Paris, 330 metres tall.' },
+  { title: 'Eiffel Tower facts', host: 'example.com', url: 'https://example.com/eiffel', snippet: 'The tower was built for the 1889 World Fair.' },
+];
+function fakeWeb({ enabled = true, pageText = 'The Eiffel Tower is 300 metres tall and painted gold.' } = {}) {
+  const w = { searches: 0, opens: 0, on: enabled, fail: null };
+  w.enabled = () => w.on;
+  w.search = async q => {
+    if (!w.on) throw Object.assign(new Error('web search is switched off in settings'), { code: 'REFUSED' });
+    if (/john smith/i.test(q)) throw Object.assign(new Error("the user's full name is never put in a web search"), { code: 'REFUSED' });
+    if (w.fail) throw w.fail;
+    w.searches++;
+    return RESULTS;
+  };
+  w.open = async url => {
+    if (!w.on) throw Object.assign(new Error('web access is switched off in settings'), { code: 'REFUSED' });
+    if (w.fail) throw w.fail;
+    w.opens++;
+    const host = new URL(url).hostname.replace(/^www\./, '');
+    return { title: 'Page', url, host, text: pageText, truncated: false };
+  };
+  return w;
+}
+function webWorld() {
+  const w = world();
+  const web = fakeWeb();
+  const [search, open] = createWebTools({ web, knowledge: w.knowledge });
+  return { ...w, web, search, open };
+}
+
+test('web reuse: a search is stored and the same search again makes no web call', async () => {
+  const w = webWorld();
+  const a = await w.search.run({ query: 'eiffel tower height' });
+  assert.match(a, /web search: eiffel tower height/);
+  const n = w.cortex.node.find({ kind: 'knowledge', key: 'kn:search:eiffel-tower-height' });
+  assert.ok(n);
+  assert.equal(n.data.ttlClass, 'news-ish');
+  assert.equal(n.sources[0].kind, 'web');
+  const b = await w.search.run({ query: 'eiffel tower height' });
+  assert.equal(w.web.searches, 1);
+  assert.match(b, /from memory, fetched just now/);
+  assert.match(b, /Eiffel Tower - Wikipedia/);
+});
+
+test('web reuse: a volatile search is not stored and goes online every time', async () => {
+  const w = webWorld();
+  await w.search.run({ query: 'latest iPhone price' });
+  await w.search.run({ query: 'latest iPhone price' });
+  assert.equal(w.web.searches, 2);
+  assert.equal(w.cortex.node.list({ kind: 'knowledge' }).length, 0);
+});
+
+test('web reuse: a refused personal query stores nothing and keeps the refusal', async () => {
+  const w = webWorld();
+  await assert.rejects(w.search.run({ query: 'john smith address' }), /full name is never put in a web search/);
+  assert.equal(w.cortex.node.list({ kind: 'knowledge' }).length, 0);
+});
+
+test('web reuse: a page opened twice is read from the web once', async () => {
+  const w = webWorld();
+  await w.open.run({ url: 'https://example.com/eiffel' });
+  const b = await w.open.run({ url: 'https://example.com/eiffel' });
+  assert.equal(w.web.opens, 1);
+  assert.match(b, /web: example\.com, from memory/);
+  assert.match(b, /Name example\.com as the source/);
+});
+
+test('web reuse: a page longer than 2,000 chars is stored cut', async () => {
+  const w = world();
+  const web = fakeWeb({ pageText: Array.from({ length: 600 }, (_, i) => 'w' + i).join(' ') });
+  const [, open] = createWebTools({ web, knowledge: w.knowledge });
+  await open.run({ url: 'https://example.com/long' });
+  const n = w.cortex.node.find({ kind: 'knowledge', key: 'kn:example.com:long' });
+  assert.ok(n.text.length <= 2000 && n.text.length > 1500);
+});
+
+test('web reuse: a Wikipedia page opened on the web after a wiki lookup contradicts it, and says so', async () => {
+  const w = webWorld();
+  w.knowledge.save({ key: 'kn:wikipedia.org:eiffel-tower', host: 'wikipedia.org', title: 'Eiffel Tower', url: 'https://en.wikipedia.org/wiki/Eiffel_Tower', text: 'The Eiffel Tower is 330 metres tall.', sourceKind: 'wiki', ttlClass: 'stable', tool: 'lookup_knowledge' });
+  w.clock.skip(100 * DAY);   // the wiki node is stale, so the page is read from the web
+  const r = await w.open.run({ url: 'https://en.wikipedia.org/wiki/Eiffel_Tower' });
+  assert.equal(w.web.opens, 1);
+  const wiki = w.cortex.node.find({ kind: 'knowledge', key: 'kn:wikipedia.org:eiffel-tower' });
+  assert.equal(wiki.text, 'The Eiffel Tower is 330 metres tall.');
+  assert.equal(w.cortex.neighbors(wiki.id, { types: ['contradicts'] }).length, 1);
+  assert.match(r, /Another source \(wikipedia, en\.wikipedia\.org\) says differently: "The Eiffel Tower is 330 metres tall\."/);
+});
+
+test('web reuse: web switched off with a stale stored search → last known', async () => {
+  const w = webWorld();
+  await w.search.run({ query: 'eiffel tower height' });
+  w.clock.skip(4 * DAY);
+  w.web.on = false;
+  const r = await w.search.run({ query: 'eiffel tower height' });
+  assert.match(r, /last known, from 2026-11-11/);
+});
+
+test('web reuse: a network failure with a stale stored page → last known; with nothing stored the error stands', async () => {
+  const w = webWorld();
+  await w.open.run({ url: 'https://example.com/eiffel' });
+  w.clock.skip(4 * DAY);
+  w.web.fail = Object.assign(new Error('fetch failed'), { code: 'NETWORK' });
+  assert.match(await w.open.run({ url: 'https://example.com/eiffel' }), /last known/);
+  await assert.rejects(w.open.run({ url: 'https://example.com/other' }), /fetch failed/);
+});
+
+test('web reuse: the web skill group hands the store to its tools', async () => {
+  const { createGroup } = require('../src/core/skills/web');
+  const w = world();
+  const web = fakeWeb();
+  const g = createGroup({ web, knowledge: w.knowledge });
+  const runner = createToolRunner(g.tools);
+  await runner.run('web_search', { query: 'eiffel tower height' });
+  await runner.run('web_search', { query: 'eiffel tower height' });
+  assert.equal(web.searches, 1);
+});

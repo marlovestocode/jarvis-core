@@ -6,8 +6,8 @@ const ALIASES = {
   web_open: ['open_page', 'read_webpage', 'fetch_url', 'open_url', 'read_url', 'visit_page'],
 };
 
-function createGroup({ web, getConfig } = {}) {
-  const tools = web ? createWebTools({ web }) : [];
+function createGroup({ web, getConfig, knowledge = null } = {}) {
+  const tools = web ? createWebTools({ web, knowledge }) : [];
   const status = () => (web?.enabled() ? { ok: true, detail: 'web search on' } : { ok: false, detail: 'web search is off in settings' });
   return {
     status,

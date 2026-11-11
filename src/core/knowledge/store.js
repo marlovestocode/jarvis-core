@@ -118,6 +118,11 @@ function createKnowledgeStore({ cortex, now = Date.now, log = () => {}, bus = nu
     } catch (err) { log('knowledge get: ' + err.message); return null; }
   }
 
+  // a node by id as a hit, stale or not (to tell the conflicts of a node just written)
+  function byId(id) {
+    try { return toHit(cortex.node.get(id)); } catch (err) { log('knowledge get: ' + err.message); return null; }
+  }
+
   // the best confident stored answer to a question (plan E5): relevance (recall score without its recency decay,
   // since freshness is the TTL's job) ≥ θ of the max, and ≥ 2/3 of the question's words in the node's title and text
   async function find(query, { allowStale = false } = {}) {
@@ -154,7 +159,7 @@ function createKnowledgeStore({ cortex, now = Date.now, log = () => {}, bus = nu
     try { bus?.emit('net', { source: 'cortex', host: hit.host, ok: true, cached: true, ageMs: hit.ageMs, stale: hit.stale }); } catch { /* listeners */ }
   }
 
-  return { classify, keyFor, keyForUrl, save, get, find, label, conflictNote, reused, TTL };
+  return { classify, keyFor, keyForUrl, save, get, byId, find, label, conflictNote, reused, TTL };
 }
 
 module.exports = { createKnowledgeStore, REUSE_THETA, REUSE_COVERAGE, TTL };
