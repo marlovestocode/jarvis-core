@@ -35,7 +35,6 @@ const { createProactiveEngine } = require('../core/proactive/engine');
 const { createPcHost, SCRIPT: PC_HOST_SCRIPT } = require('../core/pc/host');
 const { buildAllowlist } = require('../core/pc/apps');
 const { createConfirm } = require('../core/pc/confirm');
-const { createActionLog } = require('../core/pc/actions-log');
 const { createOrchestrator } = require('../core/orchestrator');
 const { createPolicy } = require('../core/net/policy');
 const { createFetcher } = require('../core/net/fetcher');
@@ -64,7 +63,7 @@ const { createYtMusic } = require('../core/media/ytmusic');
 const { createYtPlaylists } = require('../core/media/ytplaylists');
 const { createSpeaker } = require('../core/voice/speaker/speaker');
 const { enrollVoice } = require('../core/voice/speaker/enroll');
-const { createPlayLog } = require('../core/music/log');
+const { createHistorySystem } = require('../core/history/system');
 const { createMemorySystem } = require('../core/memory/system');
 const { UNTRUSTED_TOOLS } = require('../core/brain/guard');
 const { createMemorySkill } = require('../core/memory/skill');
@@ -147,7 +146,10 @@ ctx.mediaHost = createSpeechHost({ script: path.join(__dirname, '../core/media/m
 ctx.media = createMediaService({ request: (cmd, args, o) => ctx.mediaHost.request(cmd, args, o), keys: key => pressKey(fetch, key), log: ctx.log });
 // YouTube Music: the JARVIS Chrome extension connects here (127.0.0.1:47830, extension origin only)
 // every finished play the extension reports goes into the local listening log (music_stats)
-ctx.playLog = createPlayLog({ file: path.join(DATA_DIR, 'music-plays.jsonl'), getConfig: ctx.getConfig, log: ctx.log });
+// cortex wave 2: plays, PC actions, the playlist undo journal and mirror, tool calls; the cortex opens below (memorySystem)
+// and is read lazily. The old music-plays.jsonl / actions.log / ytm-undo.json are imported once by history.start().
+ctx.history = createHistorySystem({ getCortex: () => ctx.cortex, dataDir: DATA_DIR, getConfig: ctx.getConfig, log: ctx.log });
+ctx.playLog = ctx.history.playLog;
 let lastLinkToast = 0;
 ctx.notify = (title, body) => {
   if (Date.now() - lastLinkToast < 10 * 60 * 1000) return;   // a stale extension retries all day: one toast per ten minutes
@@ -158,7 +160,7 @@ ctx.linkKey = loadOrCreateLinkKey(path.join(DATA_DIR, 'link.key'), { log: ctx.lo
 ctx.ytmLink = startYtMusicLink({ log: ctx.log, secret: ctx.linkKey, onReject: r => ctx.notify?.('YouTube Music extension is not connected', r.legacy ? 'It is an old version. Reload it in chrome://extensions, then paste the link key from the JARVIS tray menu into its popup.' : 'Its link key does not match. Copy it again from the JARVIS tray menu into the extension popup.'), onChange: connected => ctx.ytPlaylists?.onLink(connected), onPlay: e => ctx.playLog.add(e) });
 ctx.ytm = createYtMusic({ link: ctx.ytmLink });
 // the user's own playlists, read live through the extension (library hint kept on disk for the prompt)
-ctx.ytPlaylists = createYtPlaylists({ link: ctx.ytmLink, ytm: ctx.ytm, getConfig: ctx.getConfig, file: path.join(DATA_DIR, 'cache', 'ytm-library.json'), journalFile: path.join(DATA_DIR, 'ytm-undo.json'), log: ctx.log });
+ctx.ytPlaylists = createYtPlaylists({ link: ctx.ytmLink, ytm: ctx.ytm, getConfig: ctx.getConfig, file: path.join(DATA_DIR, 'cache', 'ytm-library.json'), journal: ctx.history.journal, mirror: ctx.history.mirror, log: ctx.log });
 ctx.mediaSkill = createMediaSkill({ service: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists });
 if (!DEV_RUN) ctx.media.state().catch(err => ctx.log('media host:', err.message));   // warm up: the first read compiles Core Audio (~0.8 s)
 // Long-term memory on the cortex (<data>/cortex.db, cortex wave 1): facts and their review queue, people/pets/places,
@@ -230,13 +232,18 @@ async function pcAllowlist() {
 ctx.pcAllowlist = pcAllowlist;
 // the user's own folders, where Windows really keeps them (Documents may live in OneDrive)
 ctx.pcRoots = [app.getPath('desktop'), app.getPath('documents'), app.getPath('downloads'), path.join(app.getPath('home'), 'Projects')];
-ctx.actionLog = createActionLog({ file: path.join(DATA_DIR, 'actions.log'), log: ctx.log });
+ctx.actionLog = ctx.history.actionLog;
 ctx.confirm = createConfirm({ actionLog: ctx.actionLog });
 ctx.timerStore = createTimerStore({ file: path.join(DATA_DIR, 'timers.json'), log: ctx.log });
 ctx.scheduler = createScheduler({ store: ctx.timerStore, bus: ctx.bus, log: ctx.log });
 // JARVIS's own introspection tools: the checks read ctx live each time they run (src/main/checks.js)
-const self = { getChecks: () => selfChecks(ctx), about: () => ({ version, electron: process.versions.electron, node: process.versions.node, startedAt: ctx.startedAt, dataDir: DATA_DIR }), logFile: LOG_FILE, dataDir: DATA_DIR };
-ctx.catalog = brain.defaultCatalog({ self, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog } });
+// what plays now, for taste seeds (title and artist only; skipped if Windows is slow)
+async function musicNow() {
+  const st = await Promise.race([ctx.media.state(), new Promise((_, rej) => setTimeout(() => rej(new Error('slow')), 600))]);
+  return st?.session?.title ? { title: st.session.title, artist: st.session.artist || '' } : null;
+}
+const self = { getChecks: () => selfChecks(ctx), about: () => ({ version, electron: process.versions.electron, node: process.versions.node, startedAt: ctx.startedAt, dataDir: DATA_DIR }), logFile: LOG_FILE, dataDir: DATA_DIR, toolHistory: ctx.history.toolHistory, activity: { actionLog: ctx.actionLog, playLog: ctx.playLog } };
+ctx.catalog = brain.defaultCatalog({ self, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, taste: ctx.history.taste, musicNow: musicNow, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog } });
 ctx.toolList = ctx.catalog.tools;
 for (const m of ctx.catalog.missing) if (m.error) ctx.log(`skill group ${m.id} failed to load: ${m.error}`);
 ctx.tools = createToolRunner(ctx.toolList, { groups: ctx.catalog.groups });
@@ -257,6 +264,7 @@ ctx.orchestrator = createOrchestrator({
   fastPath: async (text, o) => (await ctx.confirm.handle(text, o)) || (await ctx.memorySkill.handle(text, o)) || ctx.mediaSkill.handle(text, o),
   onQuestionLost: () => ctx.confirm.clear(),
   memoryBlock: ctx.memorySystem.block,
+  onToolCall: e => ctx.history.toolHistory.record(e),
   timeoutMs: 120000, // a cold model load plus thinking can be slow on the first turn
 });
 
@@ -391,11 +399,11 @@ ctx.memwatch = createMemWatch({
   bus: ctx.bus, log: ctx.log,
   sources: {
     fetchCache: ctx.fetcher, wallpaperLink: { stats: () => ctx.bridge?.stats() ?? null }, turns: ctx.orchestrator, voice: ctx.voice,
-    mediaHost: ctx.mediaHost, pcHost: ctx.pcHostProc, speechHost: ctx.speechHost, listeningLog: { stats: () => ({ plays: ctx.playLog.count() }) }, actionLog: ctx.actionLog, cortex: ctx.memorySystem,
+    mediaHost: ctx.mediaHost, pcHost: ctx.pcHostProc, speechHost: ctx.speechHost, listeningLog: ctx.history, actionLog: ctx.actionLog, cortex: ctx.memorySystem,
   },
 });
 ctx.memwatch.start();
-ctx.onQuit = [() => ctx.memwatch.stop(), () => ctx.proactive.stop(), () => ctx.scheduler.stop(), () => ctx.pcHostProc.close(), () => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close(), () => ctx.memorySystem.close()];
+ctx.onQuit = [() => ctx.memwatch.stop(), () => ctx.proactive.stop(), () => ctx.scheduler.stop(), () => ctx.pcHostProc.close(), () => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close(), () => ctx.history.stop(), () => ctx.memorySystem.close()];
 
 app.on('web-contents-created', (_e, wc) => guardWebContents(wc));
 app.on('second-instance', () => ctx.windows?.showChat());
@@ -438,6 +446,7 @@ app.whenReady().then(async () => {
   ctx.bus.on('*', ev => ctx.windows.sendAll('ai:event', ev));
   ctx.enrollVoice = () => enrollVoice(ctx);
   registerIpc(ctx);
+  ctx.history.start();        // one-time imports in time slices, then retention every 6 h
   ctx.memorySystem.start();   // startup sweep (newest 5 ready chats) and the 5 s idle tick
   ctx.tray = createTray({
     openChat: () => ctx.windows.showChat(),
