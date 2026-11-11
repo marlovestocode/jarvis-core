@@ -100,3 +100,28 @@ test('config: endSilenceMs (700 = old) is clamped to 300..1500; continuationGuar
     assert.equal(c.continuationGuard, true);
   }
 });
+
+test('config: memory and cortex defaults (W1 E9) and bad values fall back', () => {
+  const { DEFAULTS, loadConfig } = require('../src/core/config');
+  assert.deepEqual({ ...DEFAULTS.memory }, { autoCapture: true, usePastChats: true });
+  assert.deepEqual({ ...DEFAULTS.cortex }, { embedModel: 'nomic-embed-text' });
+  const dir = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'jcfgm-'));
+  require('node:fs').writeFileSync(require('node:path').join(dir, 'config.json'), JSON.stringify({ memory: { autoCapture: 'yes', usePastChats: false }, cortex: { embedModel: 'bad model; rm -rf' } }));
+  const c = loadConfig(dir);
+  assert.deepEqual(c.memory, { autoCapture: true, usePastChats: false });
+  assert.equal(c.cortex.embedModel, 'nomic-embed-text');
+  require('node:fs').writeFileSync(require('node:path').join(dir, 'config.json'), JSON.stringify({ cortex: { embedModel: 'mxbai-embed-large:latest' } }));
+  assert.equal(loadConfig(dir).cortex.embedModel, 'mxbai-embed-large:latest');
+});
+
+test('settings: applyPatch takes the memory switches and refuses non-booleans', () => {
+  const { DEFAULTS } = require('../src/core/config');
+  const { applyPatch } = require('../src/core/settings');
+  const cur = JSON.parse(JSON.stringify(DEFAULTS));
+  const ok = applyPatch(cur, { memory: { autoCapture: false, usePastChats: false } }, { providers: new Map(), engines: {} });
+  assert.deepEqual(ok.config.memory, { autoCapture: false, usePastChats: false });
+  assert.deepEqual(ok.errors, []);
+  const bad = applyPatch(cur, { memory: { autoCapture: 'no' } }, { providers: new Map(), engines: {} });
+  assert.equal(bad.config.memory.autoCapture, true);
+  assert.equal(bad.errors.length, 1);
+});

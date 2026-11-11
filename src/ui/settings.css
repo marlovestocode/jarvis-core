@@ -34,3 +34,7 @@ input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); }
 .items span { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 11px; }
 #libraryDetail { white-space: pre-line; overflow-wrap: anywhere; }
 [hidden] { display: none !important; }
+.items .origin { display: block; color: var(--muted); font-size: 10px; margin-top: 2px; }
+.items input.inline { flex: 1; min-width: 0; padding: 4px 6px; background: rgba(var(--accent-rgb), 0.06); border: var(--line) solid var(--accent); border-radius: var(--radius); user-select: text; }
+h2 b { color: var(--accent); font-weight: normal; margin-left: 6px; }
+#memConnections { white-space: pre-line; overflow-wrap: anywhere; }

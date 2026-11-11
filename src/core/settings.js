@@ -5,7 +5,7 @@ const { HHMM } = require('./config');
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 function applyPatch(current, patch = {}, { providers, engines }) {
-  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama }, online: { ...current.online }, location: { ...current.location }, news: { feeds: [...current.news.feeds] }, sports: { follow: current.sports.follow.map(x => ({ ...x })) }, music: { ...current.music, aliases: (current.music?.aliases || []).map(x => ({ ...x })) }, proactive: { ...current.proactive }, browser: { ...current.browser }, user: { ...current.user } };
+  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama }, online: { ...current.online }, location: { ...current.location }, news: { feeds: [...current.news.feeds] }, sports: { follow: current.sports.follow.map(x => ({ ...x })) }, music: { ...current.music, aliases: (current.music?.aliases || []).map(x => ({ ...x })) }, proactive: { ...current.proactive }, browser: { ...current.browser }, user: { ...current.user }, memory: { ...current.memory }, cortex: { ...current.cortex } };
   const errors = [];
   if (!isObj(patch)) return { config, errors: ['bad patch'] };
 
@@ -31,6 +31,13 @@ function applyPatch(current, patch = {}, { providers, engines }) {
       else errors.push('Bad fast model');
     }
     config.ollama = next;
+  }
+  if (isObj(patch.memory)) {
+    for (const key of ['autoCapture', 'usePastChats']) {
+      if (!(key in patch.memory)) continue;
+      if (typeof patch.memory[key] === 'boolean') config.memory[key] = patch.memory[key];
+      else errors.push(`Bad memory switch: ${key}`);
+    }
   }
   if (isObj(patch.engines)) {
     for (const kind of ['stt', 'tts', 'wake']) {

@@ -77,6 +77,26 @@
       <p class="hint" id="libraryDetail"></p>
       <button class="action" id="libraryRefresh" type="button">REFRESH STATUS</button>
     </section>
+    <section id="memory">
+      <h2>MEMORY</h2>
+      <p class="hint">What JARVIS keeps about you. It stays on this PC. Facts found in finished chats wait here until you approve them.</p>
+      <label class="row"><span>Learn from finished chats (you review first)</span><input type="checkbox" id="memAuto"></label>
+      <label class="row"><span>Use past chats in answers</span><input type="checkbox" id="memChats"></label>
+      <label class="row"><span id="embedState">Embedding model</span><button type="button" class="action" id="embedInstall" hidden>INSTALL</button></label>
+      <p class="hint" id="embedDetail"></p>
+      <h2>TO REVIEW <b id="pendingCount"></b></h2>
+      <ul id="memPending" class="items"></ul>
+      <div class="editor" id="pendingAll" hidden><button type="button" id="approveAll">APPROVE ALL</button><button type="button" id="rejectAll">REJECT ALL</button></div>
+      <h2>SAVED FACTS <b id="activeCount"></b></h2>
+      <form id="memSearchForm" class="editor"><input id="memQuery" aria-label="Search saved facts" placeholder="Search" maxlength="200"><select id="memTier" aria-label="Kind"><option value="">All</option><option value="profile">Always known</option><option value="note">When relevant</option></select></form>
+      <ul id="memActive" class="items"></ul>
+      <h2>CONNECTIONS</h2>
+      <p class="hint" id="memConnections">Choose LINKS on a fact to see what it is connected to.</p>
+      <h2>CHAT SUMMARIES</h2>
+      <ul id="memSummaries" class="items"></ul>
+      <div class="editor"><button type="button" id="memExport">EXPORT</button><button type="button" id="memImport">IMPORT</button><button type="button" id="sumDeleteAll">DELETE SUMMARIES</button><button type="button" id="memWipe">FORGET EVERYTHING</button></div>
+      <p class="hint" id="memDetail" role="status"></p>
+    </section>
     <section>
       <h2>STARTUP</h2>
       <label class="row"><span>Start with Windows (tray)</span><input type="checkbox" id="startAtLogin"></label>

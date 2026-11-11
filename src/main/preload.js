@@ -25,6 +25,21 @@ contextBridge.exposeInMainWorld('jarvis', {
     speakerStatus: () => ipcRenderer.invoke('speaker:status'),
     speakerEnroll: () => ipcRenderer.invoke('speaker:enroll'),
     speakerClear: () => ipcRenderer.invoke('speaker:clear'),
+    memory: {
+      list: q => ipcRenderer.invoke('memory:list', q),
+      edit: p => ipcRenderer.invoke('memory:edit', p),
+      remove: id => ipcRenderer.invoke('memory:delete', { id }),
+      approve: (ids, text) => ipcRenderer.invoke('memory:approve', text === undefined ? { ids } : { ids, text }),
+      reject: ids => ipcRenderer.invoke('memory:reject', { ids }),
+      wipe: confirm => ipcRenderer.invoke('memory:wipe', { confirm }),
+      neighbors: id => ipcRenderer.invoke('memory:neighbors', { id }),
+      embedder: () => ipcRenderer.invoke('memory:embedder'),
+      installEmbedder: () => ipcRenderer.invoke('memory:installEmbedder'),
+      exportFile: () => ipcRenderer.invoke('memory:export'),
+      importFile: () => ipcRenderer.invoke('memory:import'),
+      summaries: () => ipcRenderer.invoke('summaries:list'),
+      deleteSummary: p => ipcRenderer.invoke('summaries:delete', p),
+    },
   },
   onEvent: fn => {
     const h = (_e, ev) => fn(ev);

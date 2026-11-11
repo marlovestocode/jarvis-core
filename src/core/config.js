@@ -55,10 +55,15 @@ const DEFAULTS = Object.freeze({
   browser: Object.freeze({ enabled: false }),
   // JARVIS speaking unasked (timers): quiet hours and Do-not-disturb give a notification only
   proactive: Object.freeze({ enabled: true, dnd: false, quietStart: '22:00', quietEnd: '07:00', minGapSec: 10, chime: true }),
+  // long-term memory (cortex wave 1): summarize finished chats into the review queue; recall past chats in answers
+  memory: Object.freeze({ autoCapture: true, usePastChats: true }),
+  // the cortex's embedding model in the local Ollama (only pulled after the user clicks Install and confirms)
+  cortex: Object.freeze({ embedModel: 'nomic-embed-text' }),
 });
 
 const VADS = ['silero', 'energy'];
-const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive', 'pc', 'browser'];
+const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive', 'pc', 'browser', 'memory', 'cortex'];
+const MODEL_NAME = /^[\w.:-]{1,64}$/;   // an Ollama model tag, e.g. nomic-embed-text:latest
 const HHMM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;   // "22:00"
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
@@ -106,6 +111,7 @@ function merge(raw) {
         for (const k of ['quietStart', 'quietEnd']) if (!HHMM.test(out[key][k])) out[key][k] = def[k];
         out[key].minGapSec = Math.round(Math.max(3, Math.min(120, out[key].minGapSec)));
       }
+      if (key === 'cortex' && !MODEL_NAME.test(out[key].embedModel)) out[key].embedModel = def.embedModel;
     } else {
       out[key] = v !== undefined && okValue(key, def, v) ? v : def;
       if (key === 'endSilenceMs') out[key] = Math.round(Math.max(300, Math.min(1500, out[key])));
@@ -164,4 +170,4 @@ function inspectConfig(dir) {
   return { ...out, config };
 }
 
-module.exports = { DEFAULTS, HHMM, loadConfig, saveConfig, inspectConfig };
+module.exports = { DEFAULTS, HHMM, MODEL_NAME, loadConfig, saveConfig, inspectConfig };

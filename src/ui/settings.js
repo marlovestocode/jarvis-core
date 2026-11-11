@@ -50,6 +50,7 @@
     $('quietStart').value = c.proactive.quietStart;
     $('quietEnd').value = c.proactive.quietEnd;
     $('startAtLogin').checked = !!c.startAtLogin;
+    if (c.memory) { $('memAuto').checked = !!c.memory.autoCapture; $('memChats').checked = !!c.memory.usePastChats; }
     $('rate').value = c.voiceRate;
     $('rateVal').textContent = Number(c.voiceRate).toFixed(2) + '×';
     $('hkChat').value = c.hotkeys.chat;
@@ -179,6 +180,8 @@
   $('logPlays').addEventListener('change', e => save({ music: { logPlays: e.target.checked } }));
   $('browserOn').addEventListener('change', e => save({ browser: { enabled: e.target.checked } }));
   $('sttGpu').addEventListener('change', e => save({ sttGpu: e.target.checked }));
+  $('memAuto').addEventListener('change', e => save({ memory: { autoCapture: e.target.checked } }));
+  $('memChats').addEventListener('change', e => save({ memory: { usePastChats: e.target.checked } }));
   $('proactiveOn').addEventListener('change', e => save({ proactive: { enabled: e.target.checked } }));
   $('dnd').addEventListener('change', e => save({ proactive: { dnd: e.target.checked } }));
   $('quietStart').addEventListener('change', e => save({ proactive: { quietStart: e.target.value } }));
@@ -230,4 +233,119 @@
 
   S.get().then(d => { render(d); loadMics(); });
   S.speakerStatus().then(v => showVoice(v)).catch(() => {});
+})();
+
+// Settings → Memory (cortex wave 1): review queue, saved facts, connections, chat summaries, embedding model.
+// Everything goes through window.jarvis.settings.memory; the main process validates every payload.
+(() => {
+  const $ = id => document.getElementById(id);
+  const M = window.jarvis.settings.memory;
+  if (!M) { $('memory').hidden = true; return; }
+  const say = t => { $('memDetail').textContent = t || ''; };
+  const TIER = { profile: 'always known', note: 'when relevant' };
+  let pendingIds = [];
+
+  function button(label, fn) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = label;
+    b.addEventListener('click', fn);
+    return b;
+  }
+  function row(text, origin, buttons) {
+    const li = document.createElement('li'), span = document.createElement('span');
+    span.textContent = text;
+    if (origin) { const o = document.createElement('small'); o.className = 'origin'; o.textContent = origin; span.appendChild(o); }
+    li.append(span, ...buttons);
+    return li;
+  }
+  // inline edit: the text becomes an input; Enter saves, Esc cancels
+  function editInline(li, text, onSave) {
+    const input = document.createElement('input');
+    input.className = 'inline'; input.value = text; input.maxLength = 200;
+    li.replaceChildren(input);
+    input.focus();
+    input.addEventListener('keydown', async e => {
+      e.stopPropagation();
+      if (e.key === 'Escape') refresh();
+      if (e.key === 'Enter') { e.preventDefault(); await onSave(input.value.trim()); }
+    });
+  }
+  const check = r => { if (r && r.ok === false) say(r.error || r.reason || 'Not saved.'); return r; };
+
+  async function refresh() {
+    const [pend, act, sums] = await Promise.all([
+      M.list({ status: 'pending' }),
+      M.list({ status: 'active', ...($('memQuery').value.trim() && { query: $('memQuery').value.trim() }), ...($('memTier').value && { tier: $('memTier').value }) }),
+      M.summaries(),
+    ]);
+    pendingIds = (pend.items || []).map(i => i.id);
+    $('pendingCount').textContent = pendingIds.length ? String(pendingIds.length) : '';
+    $('pendingAll').hidden = pendingIds.length < 2;
+    $('memPending').replaceChildren(...(pend.items || []).map(i => {
+      const li = row(i.text, `${TIER[i.tier] || i.tier} · ${i.origin}`, []);
+      li.append(
+        button('APPROVE', async () => { check(await M.approve([i.id])); refresh(); }),
+        button('EDIT', () => editInline(li, i.text, async t => { check(await M.approve([i.id], t)); refresh(); })),
+        button('REJECT', async () => { check(await M.reject([i.id])); refresh(); }));
+      return li;
+    }));
+    if (!pendingIds.length) $('memPending').replaceChildren(row('Nothing to review.', '', []));
+    const st = act.stats || pend.stats;
+    $('activeCount').textContent = st ? `${st.active} / ${st.cap}` : '';
+    $('memActive').replaceChildren(...(act.items || []).map(i => {
+      const li = row(i.text, `${TIER[i.tier] || i.tier} · ${i.origin}`, []);
+      li.append(
+        button('EDIT', () => editInline(li, i.text, async t => { check(await M.edit({ id: i.id, text: t })); refresh(); })),
+        button(i.tier === 'profile' ? 'WHEN RELEVANT' : 'ALWAYS', async () => { check(await M.edit({ id: i.id, tier: i.tier === 'profile' ? 'note' : 'profile' })); refresh(); }),
+        button('LINKS', () => links(i.id)),
+        button('DELETE', async () => { check(await M.remove(i.id)); refresh(); }));
+      return li;
+    }));
+    const sumItems = sums.items || [];
+    $('memSummaries').replaceChildren(...sumItems.map(i => row(i.text, `${i.title || 'chat'}${i.exists ? '' : ' · chat deleted'}`,
+      [button('DELETE', async () => { check(await M.deleteSummary({ sessionId: i.sessionId })); refresh(); })])));
+    if (!sumItems.length) $('memSummaries').replaceChildren(row('No chat summaries yet.', '', []));
+  }
+
+  async function links(id) {
+    const r = await M.neighbors(id);
+    if (!r.ok) { $('memConnections').textContent = r.error; return; }
+    $('memConnections').textContent = r.neighbors.length
+      ? `${r.node.text}\n` + r.neighbors.map(n => `  ${n.type} → ${n.kind}: ${n.text}${n.status === 'active' ? '' : ' (' + n.status + ')'}`).join('\n')
+      : `${r.node.text}\n  nothing linked yet`;
+  }
+
+  async function embedder() {
+    const e = await M.embedder();
+    $('embedState').textContent = `Embedding model: ${e.model || 'nomic-embed-text'}`;
+    $('embedInstall').hidden = !!e.installed || !!e.pulling;
+    $('embedDetail').textContent = e.pulling ? 'Downloading…'
+      : e.installed ? `Installed. Recall uses meaning, not only words${e.queue ? ` (${e.queue} waiting to be indexed)` : ''}.`
+        : 'Not installed: recall matches words only. Install downloads it into your local Ollama.';
+  }
+
+  $('approveAll').addEventListener('click', async () => { check(await M.approve(pendingIds)); refresh(); });
+  $('rejectAll').addEventListener('click', async () => { check(await M.reject(pendingIds)); refresh(); });
+  $('memSearchForm').addEventListener('submit', e => { e.preventDefault(); refresh(); });
+  $('memQuery').addEventListener('change', () => refresh());
+  $('memTier').addEventListener('change', () => refresh());
+  $('embedInstall').addEventListener('click', async () => {
+    $('embedInstall').disabled = true;
+    try { const r = await M.installEmbedder(); say(r.declined ? 'Not downloaded.' : r.ok ? 'Embedding model installed.' : r.error); }
+    finally { $('embedInstall').disabled = false; embedder(); }
+  });
+  $('memExport').addEventListener('click', async () => { const r = await M.exportFile(); say(r.ok ? `Saved ${r.count} items to ${r.path}` : r.cancelled ? '' : r.error); });
+  $('memImport').addEventListener('click', async () => { const r = await M.importFile(); say(r.ok ? `${r.proposed} facts added to review (${r.skipped} skipped).` : r.cancelled ? '' : r.error); refresh(); });
+  $('sumDeleteAll').addEventListener('click', async () => {
+    if (!window.confirm('Delete every chat summary? The chats themselves stay.')) return;
+    check(await M.deleteSummary({ all: true })); refresh();
+  });
+  $('memWipe').addEventListener('click', async () => {
+    if (!window.confirm('Forget everything JARVIS knows about you: every fact, name and chat summary? This cannot be undone.')) return;
+    const r = await M.wipe('FORGET');
+    say(r.ok ? 'Memory cleared.' : r.error);
+    refresh();
+  });
+  refresh().catch(err => say(err.message));
+  embedder().catch(() => {});
 })();

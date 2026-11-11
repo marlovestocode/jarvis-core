@@ -2,6 +2,7 @@
 const { ipcMain, clipboard, globalShortcut } = require('electron');
 const { applyPatch, describe } = require('../core/settings');
 const { searchPlaces, toPlace } = require('../core/knowledge/location');
+const { createMemoryHandlers } = require('./memory-ipc');
 
 function registerIpc(ctx) {
   const { orchestrator, sessions, windows } = ctx;
@@ -101,6 +102,8 @@ function registerIpc(ctx) {
       ctx.applyHotkeys();
     }
   });
+  // Settings → Memory (W1 §6): every verb validates its payload in memory-ipc.js
+  if (ctx.memory && ctx.cortex) for (const [ch, fn] of Object.entries(createMemoryHandlers(ctx))) h(ch, fn);
   h('settings:close', () => { if (windows.settings && !windows.settings.isDestroyed()) windows.settings.close(); });
 }
 
