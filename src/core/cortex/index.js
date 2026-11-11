@@ -31,13 +31,13 @@ function open({ file = ':memory:', log = () => {}, bus = null, embedder = null, 
   const sources = createSources(db, { now });
   const vectors = createVectors(db, { dim: embedder?.dim || 256, model: embedder?.id || 'none' });
   if (embedder) { try { vectors.markStaleIfModelChanged(); } catch (err) { log('cortex: ' + err.message); } }
-  const consolidate = createConsolidate({ db, vectors, embedder, isIdle, log });
-  const nodes = createNodes(db, { now, sources, onWrite: (id, kind) => consolidate.queue.push(id, kind) });
   const edges = createEdges(db, { now });
+  const maint = createMaintenance({ db, file, now, keep: backups, log, onWipe: () => vectors.trim() });
+  const consolidate = createConsolidate({ db, vectors, edges, maintenance: maint, embedder, isIdle, now, log });
+  const nodes = createNodes(db, { now, sources, onWrite: (id, kind) => consolidate.queue.push(id, kind) });
   const events = createEvents(db, { now });
   const queryVector = embedder ? withQueryCache(embedder).query : async () => null;
   const recaller = createRecall({ db, edges, vectors, queryVector, now, log });
-  const maint = createMaintenance({ db, file, now, keep: backups, log, onWipe: () => vectors.trim() });
 
   // every failure leaves as a CortexError (validation codes as they are, anything else 'internal')
   const safe = fn => (...a) => {
