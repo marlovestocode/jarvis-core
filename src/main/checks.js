@@ -5,6 +5,7 @@ const { inspectConfig } = require('../core/config');
 const { statusSafe } = require('../core/settings');
 const { SYSMON } = require('../core/tools/sysmon');
 const { duration } = require('../core/tools/self');
+const { storesLine } = require('../core/self/stores');
 
 const off = detail => ({ off: true, detail });
 const bad = detail => ({ ok: false, detail });
@@ -101,6 +102,8 @@ function selfChecks(ctx, { fetch = globalThis.fetch } = {}) {
     } },
     { id: 'media', run: async () => { await ctx.media.state(); return 'reads what is playing'; } },
     { id: 'timers', run: () => `${ctx.scheduler.list().length} set` },
+    // where each kind of data lives: in the cortex, in its own file, or a file mirrored from the cortex (cortex wave 3 §5)
+    { id: 'data stores', run: () => storesLine() },
     { id: 'hotkeys', run: () => (ctx.hotkeys.failed.length ? bad(`taken by another app: ${ctx.hotkeys.failed.join(', ')}`) : `chat ${cfg().hotkeys.chat}, voice ${cfg().hotkeys.voice}`) },
   ];
 }

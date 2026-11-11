@@ -15,6 +15,8 @@ const REUSE_THETA = 0.55, REUSE_MAX = 1.3, REUSE_COVERAGE = 2 / 3, RECALL_BUDGET
 // current things: a price, a score, "the latest" — never stored, only logged (plan E4)
 const VOLATILE = /\b(?:latest|current(?:ly)?|today|tonight|right now|now|this (?:week|morning|afternoon|evening)|breaking|live|price|prices|cost|stock|shares?|exchange rate|score|scores|weather|forecast)\b/i;
 const SOURCE_KINDS = new Set(['wiki', 'web']);
+// after a stored answer, outside the quoted source text: the model must say where it came from and its age (W3 §5)
+const MEMORY_NOTE = '\nFrom memory: tell the user it comes from what you looked up earlier, and how old it is.';
 
 const slug = s => String(s ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, MAX_SLUG).replace(/-+$/, '');
 const iso = ms => new Date(ms).toISOString();
@@ -162,4 +164,4 @@ function createKnowledgeStore({ cortex, now = Date.now, log = () => {}, bus = nu
   return { classify, keyFor, keyForUrl, save, get, byId, find, label, conflictNote, reused, TTL };
 }
 
-module.exports = { createKnowledgeStore, REUSE_THETA, REUSE_COVERAGE, TTL };
+module.exports = { createKnowledgeStore, REUSE_THETA, REUSE_COVERAGE, TTL, MEMORY_NOTE };

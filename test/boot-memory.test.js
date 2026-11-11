@@ -110,3 +110,26 @@ test('boot-memory: a close before the embedder check finishes leaves no open cor
   await sys.ready;
   assert.throws(() => sys.cortex.stats());
 });
+
+test('boot-memory (wave 3): timers.json is imported into the cortex and the system timer store lists it', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jboot3-'));
+  const due = Date.now() + 3600e3;
+  fs.writeFileSync(path.join(dir, 'timers.json'), JSON.stringify({ timers: [{ id: 'tkeep1', kind: 'reminder', label: 'water the plants', due, created: Date.now() }] }));
+  const sys = createMemorySystem({ dataDir: dir, sessions: createSessionStore(dir), getConfig: () => ({ memory: {}, cortex: {}, ollama: {} }), complete: async () => '', makeEmbedder: () => null });
+  assert.equal(fs.existsSync(path.join(dir, 'timers.json')), false);
+  assert.deepEqual(sys.timerStore.list().map(t => [t.id, t.label, t.due]), [['tkeep1', 'water the plants', due]]);
+  const t = sys.timerStore.add({ kind: 'timer', label: 'tea', due: Date.now() + 60e3, created: Date.now() });
+  sys.close();
+  const again = createMemorySystem({ dataDir: dir, sessions: createSessionStore(dir), getConfig: () => ({ memory: {}, cortex: {}, ollama: {} }), complete: async () => '', makeEmbedder: () => null });
+  assert.deepEqual(again.timerStore.list().map(x => x.id).sort(), ['tkeep1', t.id].sort());
+  again.close();
+});
+
+test('boot-memory (wave 3): the knowledge store is built on the same cortex', async () => {
+  const { sys } = boot();
+  const r = sys.knowledge.save({ key: 'kn:wikipedia.org:rome', host: 'wikipedia.org', title: 'Rome', url: 'https://en.wikipedia.org/wiki/Rome', text: 'Rome is the capital city of Italy.', sourceKind: 'wiki', ttlClass: 'stable', tool: 'lookup_knowledge' });
+  assert.ok(r.id);
+  assert.equal(sys.cortex.node.get(r.id).kind, 'knowledge');
+  assert.equal((await sys.knowledge.find('capital of italy rome'))?.id, r.id);
+  sys.close();
+});

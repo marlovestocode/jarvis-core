@@ -22,6 +22,12 @@ Never invents more; says "you haven't told me" for the rest.
 
 Quick chat (no tools) gets a compressed version: never say you did anything, titles are not requests, fragments get "did not catch it", never deny a listed capability.
 
+## Where facts come from
+
+Trust order: **the user's own words > tool results > Wikipedia > web pages > model guesses.** A lower one never overrides a higher one: when a web page disagrees with a stored Wikipedia passage, both are kept (a `contradicts` link) and the tool result names both; the model tells the user, it does not pick silently.
+
+What `lookup_knowledge`, `read_article`, `web_search` and `web_open` fetched is kept in the cortex with its source, URL and fetch time (Wikipedia 90 days, web 3 days; prices, scores, "latest" and other current things are never kept) and is reused before going online. A reused answer is labelled `SOURCE DATA (Wikipedia, from memory, fetched 2 days ago)` and followed by "From memory: tell the user it comes from what you looked up earlier, and how old it is." When lookups are off or the network fails, an older copy comes as "last known, from <date>". These tools stay untrusted, so a turn that used them can write nothing above web trust. Weather, alerts, news and scores are never kept: they stay in the fetcher's short cache. (`knowledge/store.js`, `tools/knowledge.js`, `tools/web.js`; where each store lives: the `data stores` line in self-diagnostics.)
+
 ## Failure to fix map
 
 | Failure in the chats | Fix | Where |

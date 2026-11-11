@@ -13,6 +13,9 @@ const { createChats } = require('./chats');
 const { createExtractor } = require('./extract');
 const { createCaptureScheduler } = require('./scheduler');
 const { aboutText } = require('../tools/memory');
+const { createKnowledgeStore } = require('../knowledge/store');
+const { createCortexTimerStore } = require('../timers/cortex-store');
+const { importTimersJson } = require('../timers/import');
 
 const TICK_MS = 5000, SLICE_MS = 8, DAY = 864e5;
 const LOCAL = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/;
@@ -40,6 +43,11 @@ function createMemorySystem({
   const cortex = new Proxy({}, { get: (_, k) => { const v = ref.c[k]; return typeof v === 'function' ? v.bind(ref.c) : v; } });
 
   try { importMemoryJson({ cortex, file: path.join(dataDir, 'memory.json'), log }); } catch (err) { log('memory import failed: ' + err.message); }
+
+  // cortex wave 3: timers.json moves in once; looked-up knowledge and the timer store live on the same live handle
+  try { importTimersJson({ cortex, file: path.join(dataDir, 'timers.json'), log, now }); } catch (err) { log('timers import failed: ' + err.message); }
+  const knowledge = createKnowledgeStore({ cortex, bus, log, now });
+  const timerStore = createCortexTimerStore({ cortex, now, log });
 
   const memory = createMemory({ cortex });
   const chats = createChats({ cortex, sessions });
@@ -117,7 +125,7 @@ function createMemorySystem({
   }
 
   return {
-    cortex, memory, chats, block, extractor, scheduler, ready,
+    cortex, memory, chats, block, extractor, scheduler, ready, knowledge, timerStore,
     profile: ({ brief = false } = {}) => block.profile({ brief }),
     about: topic => aboutText(cortex, topic),
     embedderStatus, installEmbedder, tick, start, close, check, onChatRemoved,

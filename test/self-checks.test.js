@@ -106,3 +106,13 @@ test('selfChecks: cortex check ok / off / problem', async () => {
   assert.deepEqual([bad.state, bad.detail], ['fail', 'the cortex is read-only']);
   assert.equal((await run(fakeCtx({ memorySystem: null }))).cortex.state, 'off');
 });
+
+test('selfChecks: data stores says where each kind of data lives (cortex wave 3 §5)', async () => {
+  const r = (await run(fakeCtx()))['data stores'];
+  assert.equal(r.state, 'ok');
+  assert.match(r.detail, /^in cortex: [^;]*memory facts[^;]*knowledge[^;]*timers/);
+  assert.match(r.detail, /file: [^;]*chat history/);
+  const { STORES } = require('../src/core/self/stores');
+  assert.equal(STORES.knowledge, 'cortex');
+  assert.equal(STORES.timers, 'cortex');
+});

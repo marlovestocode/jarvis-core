@@ -300,3 +300,11 @@ test('web reuse: the web skill group hands the store to its tools', async () => 
   await runner.run('web_search', { query: 'eiffel tower height' });
   assert.equal(web.searches, 1);
 });
+
+test('knowledge reuse: an answer from memory tells the model to say so and how old it is', async () => {
+  const w = webWorld();
+  await w.search.run({ query: 'eiffel tower height' });
+  assert.match(await w.search.run({ query: 'eiffel tower height' }), /From memory: tell the user it comes from what you looked up earlier, and how old it is\./);
+  await w.boot().run('lookup_knowledge', { query: 'Peace of Westphalia' });
+  assert.match((await w.boot().run('lookup_knowledge', { query: 'Peace of Westphalia' })).text, /From memory: tell the user/);
+});

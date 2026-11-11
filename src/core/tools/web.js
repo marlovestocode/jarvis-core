@@ -22,11 +22,12 @@ function focusText(text, focus, max) {
 // knowledge (optional, cortex wave 3): a search or page read in the last 3 days is answered from memory, with its age;
 // a volatile search (latest, price, score…) always goes online and is not kept. When the web is off or the network
 // fails, an older copy is given as "last known". A refused query (personal details, limits) is never answered around.
+const { MEMORY_NOTE } = require('../knowledge/store');
 const KEEP_MAX = 2000;
 const fallsBack = (web, err) => !web.enabled?.() || err?.code !== 'REFUSED';
 
 function createWebTools({ web, knowledge = null }) {
-  const remembered = (hit, tool, tail) => { knowledge.reused(hit, tool); return wrap(knowledge.label(hit), hit.text + knowledge.conflictNote(hit)) + tail; };
+  const remembered = (hit, tool, tail) => { knowledge.reused(hit, tool); return wrap(knowledge.label(hit), hit.text + knowledge.conflictNote(hit)) + MEMORY_NOTE + tail; };
   const SEARCH_TAIL = '\nSnippets are often enough. Open a page with web_open only if they are not, name the sites you used in your answer, and say when sources disagree.';
   const search = {
     name: 'web_search',

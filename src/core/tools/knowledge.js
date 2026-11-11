@@ -8,6 +8,7 @@ const { getScores, formatScores } = require('../knowledge/sports');
 const { searchWikiOnline, summaryOnline, articleHtmlOnline } = require('../knowledge/wiki-online');
 const { toPassages, rank, formatPassages, keyWords } = require('../knowledge/passages');
 const { describeAge } = require('../knowledge/age');
+const { MEMORY_NOTE } = require('../knowledge/store');
 
 const BODY_MAX = 2400;
 const OFF = /lookups are off/;
@@ -76,7 +77,7 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus, knowledge = null
   }
 
   const onlineOff = () => { const c = getConfig(); return c.online?.enabled === false || c.online?.wiki === false; };
-  const fromMemory = (hit, tool) => { knowledge.reused(hit, tool); return wrapSource(hit.label || knowledge.label(hit), hit.text + knowledge.conflictNote(hit)); };
+  const fromMemory = (hit, tool) => { knowledge.reused(hit, tool); return wrapSource(knowledge.label(hit), hit.text + knowledge.conflictNote(hit)) + MEMORY_NOTE; };
   // one node per article among the ranked passages, its text exactly what the model was given for it
   function keep(best, query) {
     if (!knowledge) return '';
