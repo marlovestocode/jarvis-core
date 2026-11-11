@@ -20,7 +20,7 @@ test('cortex-api-taint: a tainted turn may add web knowledge', () => {
 });
 
 test('cortex-api-taint: reinforce in a tainted turn changes nothing', () => {
-  const c = cortexLib.open({});
+  const c = cortexLib.open({ now: () => 1_700_000_000_000 });   // fixed clock: no decay between link and read
   const s = c.source.add({ kind: 'user', ref: 'x' });
   const a = c.node.upsert({ kind: 'fact', text: 'Rex has a vet visit', source: s }).id;
   const b = c.node.upsert({ kind: 'entity', key: 'entity:rex', text: 'Rex', source: s }).id;
