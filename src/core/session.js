@@ -15,7 +15,9 @@ function titleFor(messages) {
 
 const MAX_SESSIONS = 200;
 
-function createSessionStore(dir, { maxSessions = MAX_SESSIONS } = {}) {
+// onRemove(id): called after a chat file is deleted, by remove() or by the prune of the oldest files (W1 §7)
+function createSessionStore(dir, { maxSessions = MAX_SESSIONS, onRemove = () => {} } = {}) {
+  const removed = id => { try { onRemove(id); } catch { /* a listener must not break the history */ } };
   const hist = path.join(dir, 'history');
   const broken = path.join(hist, 'broken');
   fs.mkdirSync(hist, { recursive: true });
@@ -79,7 +81,7 @@ function createSessionStore(dir, { maxSessions = MAX_SESSIONS } = {}) {
       files.push({ id, at });
     }
     files.sort((a, b) => b.at - a.at);
-    for (const f of files.slice(maxSessions)) { try { fs.unlinkSync(fileOf(f.id)); } catch { /* gone */ } }
+    for (const f of files.slice(maxSessions)) { try { fs.unlinkSync(fileOf(f.id)); } catch { /* gone */ } removed(f.id); }
     for (const f of files.slice(0, maxSessions)) {
       const s = read(f.id);
       if (s) index.set(s.id, { id: s.id, title: s.title, updated: s.updated });
@@ -95,6 +97,7 @@ function createSessionStore(dir, { maxSessions = MAX_SESSIONS } = {}) {
     if (!ID_RE.test(String(id))) return;
     try { fs.unlinkSync(fileOf(id)); } catch { /* already gone */ }
     index?.delete(id);
+    removed(id);
   }
 
   return { create, load, save, list, remove };

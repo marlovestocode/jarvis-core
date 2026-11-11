@@ -83,3 +83,22 @@ test('session: ids that are not uuids are refused (no path traversal)', () => {
   assert.equal(st.load('../config'), null);
   assert.doesNotThrow(() => st.remove('../../x'));
 });
+
+test('session: onRemove is called for remove() and for each file the prune deletes', () => {
+  const dir = tmp();
+  const first = createSessionStore(dir);
+  const ids = [];
+  for (let i = 0; i < 4; i++) {
+    const s = first.create(); s.messages.push({ role: 'user', content: `chat ${i}` }); first.save(s); ids.push(s.id);
+    const f = path.join(dir, 'history', s.id + '.json');
+    fs.utimesSync(f, new Date(Date.now() - (4 - i) * 60000), new Date(Date.now() - (4 - i) * 60000));
+  }
+  const removed = [];
+  const st = createSessionStore(dir, { maxSessions: 3, onRemove: id => removed.push(id) });
+  st.list();
+  assert.deepEqual(removed, [ids[0]], 'the pruned oldest file');
+  st.remove(ids[3]);
+  assert.deepEqual(removed, [ids[0], ids[3]]);
+  st.remove('not-a-uuid');
+  assert.equal(removed.length, 2);
+});
