@@ -96,6 +96,20 @@ test('cortex-edges: fan-out cap per type', () => {
   assert.equal(edges.neighbors(hub, { limit: 5 }).length, 5);
 });
 
+test('cortex-edges: around a big hub returns the strongest per type, both directions', () => {
+  const { edges, ids, db } = setup(402);
+  const [hub, ...rest] = ids;
+  rest.forEach((id, i) => edges.link(id, hub, 'mentions', { weight: (i + 1) / 1000 }));   // 401 incoming, weights 0.001..0.401
+  edges.link(hub, rest[0], 'by', { weight: 0.9 });                                       // one outgoing of another type
+  const got = edges.around(hub, Date.now() + 0, null);
+  const mentions = got.filter(e => e.type === 'mentions');
+  assert.equal(mentions.length, 20);
+  assert.deepEqual(mentions.map(e => e.id), rest.slice(-20).reverse());                  // the 20 strongest
+  assert.ok(got.some(e => e.type === 'by' && e.id === rest[0]));
+  const plan = db.raw.prepare('EXPLAIN QUERY PLAN SELECT src, weight FROM edge WHERE dst = ? AND type = ? ORDER BY weight DESC LIMIT 40').all(hub).map(r => r.detail).join(' ');
+  assert.match(plan, /edge_dst_type_weight/);                                            // read by index, not all 401 rows
+});
+
 test('cortex-edges: depth 2 returns hop 2 with via and no repeats', () => {
   const { edges, ids: [a, b, c] } = setup();
   edges.link(a, b, 'mentions', { weight: 0.8 });

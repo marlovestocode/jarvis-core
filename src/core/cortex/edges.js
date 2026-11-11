@@ -39,12 +39,29 @@ function createEdges(db, { now = Date.now } = {}) {
 
   const unlink = (src, dst, type) => db.stmt('DELETE FROM edge WHERE src = ? AND dst = ? AND type = ?').run(src, dst, type).changes > 0;
 
+  // One statement per set of types: for each type and direction, the 2×fanOut strongest stored weights by index.
+  // Stored weight is as of last_used, so the effective order can differ a little; 2× headroom absorbs that.
+  const aroundSql = new Map();
+  function aroundStmt(types) {
+    const list = types ? [...types].filter(x => TYPES[x]).sort() : Object.keys(TYPES);
+    const key = list.join(',');
+    let sql = aroundSql.get(key);
+    if (!sql) {
+      sql = list.flatMap(ty => {
+        const k = TYPES[ty].fanOut * 2;
+        return [`SELECT * FROM (SELECT dst AS other, type, weight, last_used FROM edge WHERE src = ?1 AND type = '${ty}' ORDER BY weight DESC LIMIT ${k})`,
+          `SELECT * FROM (SELECT src AS other, type, weight, last_used FROM edge WHERE dst = ?1 AND type = '${ty}' ORDER BY weight DESC LIMIT ${k})`];
+      }).join(' UNION ALL ') || 'SELECT 0 AS other, NULL AS type, 0 AS weight, 0 AS last_used WHERE 0';
+      aroundSql.set(key, sql);
+    }
+    return db.stmt(sql);
+  }
+
   // both directions of one node, effective weights, fan-out capped per type
   function around(id, t, types) {
-    const rows = db.stmt(`SELECT dst AS other, type, weight, last_used FROM edge WHERE src = ?1
-                          UNION ALL SELECT src AS other, type, weight, last_used FROM edge WHERE dst = ?1`).all(id);
+    const rows = aroundStmt(types).all(id);
     const out = [];
-    for (const r of rows) if (!types || types.has(r.type)) out.push({ id: r.other, type: r.type, weight: effective(r.weight, r.last_used, r.type, t) });
+    for (const r of rows) out.push({ id: r.other, type: r.type, weight: effective(r.weight, r.last_used, r.type, t) });
     out.sort((a, b) => b.weight - a.weight);
     const per = {};
     return out.filter(e => (per[e.type] = (per[e.type] || 0) + 1) <= TYPES[e.type].fanOut);
