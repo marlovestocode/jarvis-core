@@ -12,9 +12,12 @@ const PROMPT = 'From the USER lines only, list lasting facts the user stated abo
   'Reply with JSON only: {"summary": "...", "topics": ["..."], "facts": [{"text": "...", "kind": "profile|note"}], "entities": [{"name": "...", "type": "person|pet|place|project|org"}]}';
 const RETRY = 'Reply with JSON only.';
 const MAX_FACTS = 5, MAX_ENTITIES = 6, SUPPORT = 0.6;
+const PASTE = 600;   // a user message longer than this is most likely pasted text: summarized, never a source of facts
 
 const abortError = () => Object.assign(new Error('aborted'), { name: 'AbortError' });
-const unquote = text => String(text ?? '').split('\n').filter(l => !/^\s*>/.test(l)).join('\n').trim();
+// quoted ("> ") lines and fenced blocks are someone else's text
+const unquote = text => String(text ?? '').replace(/```[\s\S]*?(?:```|$)/g, ' ').split('\n').filter(l => !/^\s*>/.test(l)).join('\n').trim();
+const wordsOf = text => new Set(String(text).toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean));
 
 function parse(reply) {
   const s = String(reply ?? '');
@@ -42,7 +45,7 @@ function createExtractor({ complete, memory, chats, isUntrusted = () => false, m
       const m = msgs[i];
       if (m.role !== 'user') continue;
       const u = unquote(m.content);
-      if (u) { lines.push('USER: ' + u.replace(/\s+/g, ' ')); userParts.push(u); }
+      if (u) { lines.push('USER: ' + u.replace(/\s+/g, ' ')); if (u.length <= PASTE) userParts.push(u); }
       // this user message's turn: assistant text only when no outside-text tool ran in it
       let j = i + 1;
       while (j < msgs.length && msgs[j].role !== 'user') j++;
@@ -56,14 +59,14 @@ function createExtractor({ complete, memory, chats, isUntrusted = () => false, m
       if (used + lines[k].length + 1 > maxChars) { if (!kept.length) kept.unshift(lines[k].slice(0, maxChars)); break; }
       kept.unshift(lines[k]); used += lines[k].length + 1;
     }
-    return { text: kept.join('\n'), userText: userParts.join('\n').toLowerCase() };
+    return { text: kept.join('\n'), userText: wordsOf(userParts.join('\n')) };
   }
 
   // a fact is the user's own words when most of its content words are in what the user wrote
   function fromUser(fact, userText) {
     const toks = ftsTokens(fact).filter(t => !['user', 'users'].includes(t));
     if (!toks.length) return false;
-    return toks.filter(t => userText.includes(t)).length / toks.length >= SUPPORT;
+    return toks.filter(t => userText.has(t)).length / toks.length >= SUPPORT;   // whole words: "art" is not in "start"
   }
 
   // run(session, { signal, alive }) → { summary, proposed, entities }; throws AbortError when aborted

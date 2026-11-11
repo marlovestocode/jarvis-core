@@ -13,7 +13,10 @@ const date = ms => new Date(ms).toISOString().slice(0, 10);
 function createChats({ cortex, sessions, now = Date.now }) {
   const keyOf = sessionId => 'chat:' + String(sessionId);
   // one model source per chat file: the summary is the model's guess about what was said
-  const source = sessionId => cortex.source.add({ kind: 'model', ref: `history/${sessionId}.json` });
+  const source = sessionId => {
+    const ref = `history/${sessionId}.json`;
+    return cortex.source.find({ kind: 'model', ref }) ?? cortex.source.add({ kind: 'model', ref });
+  };
   const find = sessionId => cortex.node.find({ kind: 'chat', key: keyOf(sessionId) });
 
   // → node id, or null when the cortex refuses the text (a secret, too long)

@@ -20,6 +20,7 @@ async function aboutText(cortex, topic) {
   for (const n of cortex.neighbors(ent.id, { depth: 2, limit: 20 })) {
     const node = cortex.node.get(n.id);
     if (!node || node.status !== 'active' || !groups[node.kind]) continue;
+    if (node.kind !== 'chat' && n.hop > 1) continue;   // a fact two steps away (same chat) is not about the topic
     groups[node.kind].push(node.kind === 'chat' ? `${node.data?.title || 'chat'} (${date(node.updated)}): ${node.text}` : node.text);
   }
   const lines = [`About ${ent.text}:`];

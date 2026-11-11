@@ -74,6 +74,7 @@ function createMemorySystem({
   }
   async function installEmbedder() {
     if (ref.embedder) return { installed: true };
+    if (pulling) return { installed: false, pulling: true };   // a second click while it downloads
     pulling = true;
     try { await pull(model()); } finally { pulling = false; }
     const ok = await findEmbedder();

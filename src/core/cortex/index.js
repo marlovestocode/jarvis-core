@@ -58,7 +58,7 @@ function open({ file = ':memory:', log = () => {}, bus = null, embedder = null, 
 
   const cortex = {
     CortexError,
-    source: { add: safe(sources.add), get: safe(sources.get) },
+    source: { add: safe(sources.add), get: safe(sources.get), find: safe(sources.find) },
     node: {
       upsert: safe(nodes.upsert), update: safe(nodes.update), get: safe(nodes.get), find: safe(nodes.find), list: safe(nodes.list),
       archive: safe(nodes.archive),

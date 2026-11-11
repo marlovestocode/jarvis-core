@@ -15,7 +15,12 @@ function createSources(db, { now = Date.now } = {}) {
     if (!Number.isInteger(id)) return null;
     return db.stmt('SELECT id, kind, trust, ref, title, at FROM source WHERE id = ?').get(id) ?? null;
   }
-  return { add, get };
+  // the newest source of this kind and ref, so a caller can reuse one row instead of adding another
+  function find({ kind, ref } = {}) {
+    if (!SOURCE_KINDS.has(kind)) return null;
+    return db.stmt('SELECT id FROM source WHERE kind = ? AND ref IS ? ORDER BY id DESC LIMIT 1').get(kind, cut(ref, 500))?.id ?? null;
+  }
+  return { add, get, find };
 }
 
 module.exports = { createSources, TRUST };

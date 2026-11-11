@@ -30,7 +30,7 @@ function createMemory({ cortex, now = Date.now, caps = {}, addTier = 'profile' }
   // one user source per ref (the explicit "remember", the review tab, or the chat a proposal came from)
   function userSource(ref) {
     let id = sourceIds.get(ref);
-    if (!id) { id = cortex.source.add({ kind: 'user', ref }); sourceIds.set(ref, id); }
+    if (!id) { id = cortex.source.find({ kind: 'user', ref }) ?? cortex.source.add({ kind: 'user', ref }); sourceIds.set(ref, id); }
     return id;
   }
 
