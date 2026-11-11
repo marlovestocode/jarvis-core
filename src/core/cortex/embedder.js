@@ -31,7 +31,9 @@ function createFakeEmbedder({ dim = 256, synonyms = {} } = {}) {
 
 // Ollama /api/embed on the local host only, on CPU (num_gpu 0, short keep_alive) so it holds no VRAM.
 // nomic-embed-text wants task prefixes (plan D11); dim > 0 truncates Matryoshka-style, dim 0 keeps the full vector.
-function createOllamaEmbedder({ getConfig, fetch: fetchImpl, model = 'nomic-embed-text', dim = 256, timeoutMs = 30000 } = {}) {
+// Default 768 = full size: the 2026-11-11 quality run (scripts/cortex-quality.js) gave top-10 overlap 0.773 at 256, 0.823 at 384,
+// 0.855 at 512 and 0.993 at 768 (int8), against the 0.95 gate. Layer norm before truncation did not help.
+function createOllamaEmbedder({ getConfig, fetch: fetchImpl, model = 'nomic-embed-text', dim = 768, timeoutMs = 30000 } = {}) {
   const doFetch = fetchImpl || ((...a) => globalThis.fetch(...a));
   const host = () => {
     const h = String((getConfig?.() || {}).ollama?.host || 'http://127.0.0.1:11434').trim().replace(/\/+$/, '');

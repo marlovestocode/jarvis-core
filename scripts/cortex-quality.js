@@ -9,7 +9,7 @@ const embedders = require('../src/core/cortex/embedder');
 
 const arg = (name, dflt) => { const i = process.argv.indexOf('--' + name); return i > 0 ? process.argv[i + 1] : dflt; };
 const kind = arg('embedder', 'fake');
-const dim = Number(arg('dim', 256));
+const dim = Number(arg('dim', 768));
 const K = 10, GATE = 0.95;
 
 function makeEmbedder() {

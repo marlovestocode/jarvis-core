@@ -33,6 +33,14 @@ test('cortex-embedder: ollama request runs on CPU with role prefixes and truncat
   assert.deepEqual(calls.at(-1).body.input, ['search_document: Rex is my dog']);
 });
 
+test('cortex-embedder: default keeps the full 768 dims (truncation failed the quality gate)', async () => {
+  const { f } = fakeFetch();
+  const e = createOllamaEmbedder({ getConfig: cfg('http://127.0.0.1:11434'), fetch: f });
+  assert.equal(e.dim, 768);
+  const [v] = await e.embed(['Rex is my dog']);
+  assert.equal(v.length, 768);
+});
+
 test('cortex-embedder: refuses a non-local host', async () => {
   const { f, calls } = fakeFetch();
   const e = createOllamaEmbedder({ getConfig: cfg('https://example.com'), fetch: f });

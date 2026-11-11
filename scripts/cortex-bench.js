@@ -10,7 +10,7 @@ const { execFileSync } = require('node:child_process');
 
 const arg = (name, dflt) => { const i = process.argv.indexOf('--' + name); return i > 0 ? process.argv[i + 1] : dflt; };
 const N = { nodes: +arg('nodes', 50000), edges: +arg('edges', 200000), vectors: +arg('vectors', 20000), queries: +arg('queries', 1000) };
-const DIM = 256;
+const DIM = 768;   // the real embedder's default (quality gate, see embedder.js)
 const GATES = { recallP95: 15, upsertMean: 1, bootMs: 300, memMB: 64, dbMB: 100 };
 
 function rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 2 ** 32; }; }
