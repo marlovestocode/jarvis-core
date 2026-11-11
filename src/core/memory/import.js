@@ -66,4 +66,4 @@ function importMemoryJson({ cortex, file, log = () => {}, now = Date.now } = {})
   return live ? { imported, skipped } : { imported, skipped, from: path.basename(src) };
 }
 
-module.exports = { importMemoryJson };
+module.exports = { importMemoryJson, bakName };
