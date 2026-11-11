@@ -47,11 +47,13 @@ function createMemorySystem({
   const extractor = createExtractor({ complete, memory, chats, isUntrusted });
   const scheduler = createCaptureScheduler({ sessions, extractor, chats, isIdle, getConfig, notify, log, now });
 
+  let closed = false;
+  // close first, then open: the old handle's close writes clean_close=1, the new open writes 0 and keeps crash detection on
   function reopen(embedder) {
-    const old = ref.c;
+    if (closed) return;
+    try { ref.c.close(); } catch (err) { log('cortex close: ' + err.message); }
     ref.c = openCortex({ file, log, bus, embedder, isIdle, now });
     ref.embedder = embedder;
-    try { old.close(); } catch (err) { log('cortex close: ' + err.message); }
     log(`cortex: ${embedder ? 'embedding with ' + embedder.id : 'keyword recall only'}`);
   }
 
@@ -107,6 +109,7 @@ function createMemorySystem({
   }
 
   function close() {
+    closed = true;
     if (timer) clearInterval(timer);
     scheduler.abort();
     ref.c.close();

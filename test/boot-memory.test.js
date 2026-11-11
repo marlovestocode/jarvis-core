@@ -96,3 +96,17 @@ test('boot-memory: store.js is gone and nothing requires it', () => {
   walk(__dirname);
   assert.deepEqual(hits, []);
 });
+
+test('boot-memory: reopening with the embedder keeps the session marked unclean (crash detection stays on)', async () => {
+  const { sys } = boot({ installed: true });
+  await sys.ready;
+  assert.equal(sys.cortex.meta.get('clean_close'), '0');
+  sys.close();
+});
+
+test('boot-memory: a close before the embedder check finishes leaves no open cortex', async () => {
+  const { sys } = boot({ installed: true });
+  sys.close();
+  await sys.ready;
+  assert.throws(() => sys.cortex.stats());
+});
