@@ -6,7 +6,7 @@ const { getMeta, setMeta } = require('./maintenance');
 const EMBED_KINDS = new Set(['fact', 'entity', 'chat', 'knowledge', 'reminder']);
 const BATCH = 16, SIMILAR = 0.82, DUPLICATE = 0.95, NEIGHBORS = 5;
 const STALE_DAYS = 180, DAY = 864e5, HOUR = 36e5;
-const PRUNE_SRCS = 500, ARCHIVE_ROWS = 200, WARM_ROWS = 2000;
+const PRUNE_SRCS = 60, ARCHIVE_ROWS = 200, WARM_ROWS = 800;   // sized from the 50k bench: each step ≈ 8 ms or less
 const yieldNow = () => new Promise(r => setImmediate(r));
 
 function createConsolidate({ db, vectors, edges, maintenance = null, embedder = null, isIdle = () => true, now = Date.now, log = () => {} }) {
@@ -91,31 +91,46 @@ function createConsolidate({ db, vectors, edges, maintenance = null, embedder = 
     const t0 = performance.now();
     const r = edges.prune({ fromSrc: pruneFrom, limit: PRUNE_SRCS });
     pruneFrom = r.nextSrc ?? 0;
+    return performance.now() - t0;
+  }
+
+  // knowledge/chat unused for 180 days are archived (never if the user said it); hourly, it scans those kinds
+  function archiveOld() {
     db.stmt(`UPDATE node SET status = 'archived', updated = ?1 WHERE id IN (
                SELECT n.id FROM node n WHERE n.kind IN ('knowledge', 'chat') AND n.status = 'active' AND coalesce(n.last_used, n.updated) < ?2
                AND NOT EXISTS (SELECT 1 FROM provenance p JOIN source s ON s.id = p.source_id WHERE p.node_id = n.id AND s.kind = 'user')
                LIMIT ${ARCHIVE_ROWS})`).run(now(), now() - STALE_DAYS * DAY);
-    return performance.now() - t0;
   }
 
-  // 5. housekeeping by period: optimize daily, checkpoint hourly, backup daily
-  function housekeeping(did) {
-    const t0 = performance.now(), t = now();
-    const due = (key, every) => { const last = Number(getMeta(db, key)) || 0; return !last || t - last >= every; };
-    if (due('hk_optimize', DAY)) { db.raw.exec('PRAGMA optimize'); setMeta(db, 'hk_optimize', t); did.push('optimize'); }
-    if (maintenance && due('hk_check', DAY)) {
+  // 5. housekeeping: at most one due job per tick, since a backup or a full check is not a few-ms job
+  const JOBS = [
+    ['archive', HOUR, () => archiveOld()],
+    ['optimize', DAY, () => db.raw.exec('PRAGMA optimize')],
+    ['check', DAY, () => {
+      if (!maintenance) return false;
       // boot skips the full scan after a clean close, so it runs here instead; a failure forces it at the next boot
       const qc = maintenance.quickCheck();
       if (qc === 'ok') db.stmt("DELETE FROM meta WHERE key = 'check_failed'").run();
-      else { setMeta(db, 'check_failed', t); log('cortex: daily quick_check failed: ' + qc); }
-      setMeta(db, 'hk_check', t); did.push('check');
+      else { setMeta(db, 'check_failed', now()); log('cortex: daily quick_check failed: ' + qc); }
+    }],
+    ['checkpoint', HOUR, () => db.raw.exec('PRAGMA wal_checkpoint(TRUNCATE)')],
+    ['backup', DAY, () => {
+      if (!maintenance) return false;
+      try { return !!maintenance.backup(); } catch (err) { log('cortex backup failed: ' + err.message); return false; }
+    }],
+  ];
+  function housekeeping(did) {
+    const t = now();
+    for (const [name, every, run] of JOBS) {
+      const last = Number(getMeta(db, 'hk_' + name)) || 0;
+      if (last && t - last < every) continue;
+      const t0 = performance.now();
+      const ran = run() !== false;
+      setMeta(db, 'hk_' + name, t);
+      if (ran) did.push(name);
+      return performance.now() - t0;
     }
-    if (due('hk_checkpoint', HOUR)) { db.raw.exec('PRAGMA wal_checkpoint(TRUNCATE)'); setMeta(db, 'hk_checkpoint', t); did.push('checkpoint'); }
-    if (maintenance && due('hk_backup', DAY)) {
-      try { if (maintenance.backup()) did.push('backup'); } catch (err) { log('cortex backup failed: ' + err.message); }
-      setMeta(db, 'hk_backup', t);
-    }
-    return performance.now() - t0;
+    return null;
   }
 
   async function tick({ deadlineMs = 8, isIdle: idle = isIdle } = {}) {

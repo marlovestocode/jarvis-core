@@ -153,17 +153,24 @@ test('cortex-consolidate: housekeeping runs once per period', async () => {
   const { c, src, advance } = setup({ file: path.join(dir, 'cortex.db') });
   c.node.upsert({ kind: 'fact', text: 'Rex is my dog', source: src('user') });
   const backups = () => fs.readdirSync(dir).filter(f => /backup/.test(f)).length;
-  let r = await c.consolidate.tick({ deadlineMs: 1000 });
-  assert.ok(r.did.includes('backup') && r.did.includes('optimize') && r.did.includes('checkpoint') && r.did.includes('check'));
-  r = await c.consolidate.tick({ deadlineMs: 1000 });
-  assert.ok(!r.did.includes('backup') && !r.did.includes('checkpoint'));
+  const JOBS = ['archive', 'optimize', 'check', 'checkpoint', 'backup'];
+  // one housekeeping job per tick (each can be slow); run ticks until nothing is due
+  async function round(n = 8) {
+    const seen = [];
+    for (let i = 0; i < n; i++) {
+      const r = await c.consolidate.tick({ deadlineMs: 1000 });
+      const jobs = r.did.filter(d => JOBS.includes(d));
+      assert.ok(jobs.length <= 1, 'one job per tick: ' + jobs);
+      seen.push(...jobs);
+    }
+    return seen;
+  }
+  assert.deepEqual((await round()).sort(), [...JOBS].sort());   // each once, none twice in its period
   assert.equal(backups(), 1);
   advance(61 * 60e3);
-  r = await c.consolidate.tick({ deadlineMs: 1000 });
-  assert.ok(r.did.includes('checkpoint') && !r.did.includes('backup'));
+  assert.deepEqual((await round()).sort(), ['archive', 'checkpoint']);   // hourly jobs only
   advance(DAY);
-  r = await c.consolidate.tick({ deadlineMs: 1000 });
-  assert.ok(r.did.includes('backup'));
+  assert.deepEqual((await round()).sort(), [...JOBS].sort());
   assert.equal(backups(), 2);
   c.close();
 });
