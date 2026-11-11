@@ -20,7 +20,11 @@ function wrapSource(label, body) {
 const offText = err => `${err.message[0].toUpperCase()}${err.message.slice(1)}, so I could not check. Answer from what you know and say it is not live data.`;
 const obj = (properties, required) => ({ type: 'object', properties, ...(required ? { required } : {}), additionalProperties: false });
 
-function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
+const WIKI_URL = t => 'https://en.wikipedia.org/wiki/' + encodeURIComponent(String(t).trim().replace(/ /g, '_')).replace(/%2F/g, '/');
+
+// knowledge (optional, cortex wave 3): stored answers are reused before going online and fresh ones are kept.
+// The offline library is local already, so its passages are not stored.
+function createKnowledgeTools({ fetcher, kiwix, getConfig, bus, knowledge = null }) {
   let libName = null;
   async function libraryName() {
     if (libName) return libName;
@@ -68,7 +72,21 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
       return s ? [{ title: s.title, section: 'Summary', text: s.extract }] : [];
     }));
     const best = rank(pages.flat(), query, 5);
-    return best.length ? { label: `Wikipedia, online, fetched ${describeAge(age, stale)}`, text: formatPassages(best, BODY_MAX) } : null;
+    return best.length ? { label: `Wikipedia, online, fetched ${describeAge(age, stale)}`, text: formatPassages(best, BODY_MAX), best } : null;
+  }
+
+  const onlineOff = () => { const c = getConfig(); return c.online?.enabled === false || c.online?.wiki === false; };
+  const fromMemory = (hit, tool) => { knowledge.reused(hit, tool); return wrapSource(hit.label || knowledge.label(hit), hit.text + knowledge.conflictNote(hit)); };
+  // one node per article among the ranked passages, its text exactly what the model was given for it
+  function keep(best, query) {
+    if (!knowledge) return '';
+    let note = '';
+    for (const title of [...new Set(best.map(p => p.title))]) {
+      const key = knowledge.keyFor({ host: 'wikipedia.org', title });
+      const r = knowledge.save({ key, host: 'wikipedia.org', title, url: WIKI_URL(title), text: formatPassages(best.filter(p => p.title === title), BODY_MAX), sourceKind: 'wiki', ttlClass: 'stable', tool: 'lookup_knowledge', query });
+      if (r.id && !note) note = knowledge.conflictNote(knowledge.get(key));
+    }
+    return note;
   }
 
   async function lookup({ query }) {
@@ -79,14 +97,20 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
       bus?.emit('net', { source: 'wiki', host: 'offline', offline: true, ok: true, cached: false, ms: 0, library: await libraryName() });
       return wrapSource(off.label, off.text);
     }
-    const cfg = getConfig();
-    if (cfg.online?.enabled === false || cfg.online?.wiki === false) {
+    const live = knowledge && knowledge.classify(q) !== 'volatile';
+    const fresh = live ? await knowledge.find(q) : null;
+    if (fresh) return fromMemory(fresh, 'lookup_knowledge');
+    const lastKnown = async () => { const h = live ? await knowledge.find(q, { allowStale: true }) : null; return h ? fromMemory(h, 'lookup_knowledge') : null; };
+    if (onlineOff()) {
+      const h = await lastKnown();
+      if (h) return h;
       return kiwix?.available()
         ? `The offline library has nothing on "${q}" and online lookups are off. Answer from what you know and say you could not check.`
         : 'The offline library is not installed and online lookups are off, so I could not look that up. Answer from what you know and say you could not check.';
     }
-    const on = await onlinePassages(q);
-    if (on) return wrapSource(on.label, on.text);
+    let on;
+    try { on = await onlinePassages(q); } catch (err) { const h = await lastKnown(); if (h) return h; throw err; }
+    if (on) { const note = keep(on.best, q); return wrapSource(on.label, on.text + note); }
     return `Wikipedia has nothing on "${q}". Say you could not find it; do not guess.`;
   }
 
@@ -97,10 +121,15 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
     if (kiwix?.available()) {
       try { html = await kiwix.articleByTitle(t); label = `Wikipedia, offline library ${await libraryName()}`; } catch { html = null; }
     }
+    let key = null;
     if (!html) {
-      const cfg = getConfig();
-      if (cfg.online?.enabled === false || cfg.online?.wiki === false) return `"${t}" is not in the offline library and online lookups are off.`;
-      const a = await articleHtmlOnline(fetcher, t);
+      key = knowledge ? knowledge.keyFor({ host: 'wikipedia.org', title: t, section: section ? String(section) : 'article' }) : null;
+      const fresh = key ? knowledge.get(key) : null;
+      if (fresh) return fromMemory(fresh, 'read_article');
+      const lastKnown = () => { const h = key ? knowledge.get(key, { allowStale: true }) : null; return h ? fromMemory(h, 'read_article') : null; };
+      if (onlineOff()) return lastKnown() || `"${t}" is not in the offline library and online lookups are off.`;
+      let a;
+      try { a = await articleHtmlOnline(fetcher, t); } catch (err) { const h = lastKnown(); if (h) return h; throw err; }
       if (!a) return `There is no Wikipedia article titled "${t}". Try lookup_knowledge to find the right title.`;
       html = a.html; label = `Wikipedia, online, fetched ${describeAge(a.ageMs, a.stale)}`;
     }
@@ -111,7 +140,12 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
       if (hit.length) ps = hit;
     }
     if (/offline library/.test(label)) bus?.emit('net', { source: 'wiki', host: 'offline', offline: true, ok: true, cached: false, ms: 0, library: await libraryName() });
-    return wrapSource(label, formatPassages(ps, BODY_MAX));
+    let note = '';
+    if (key) {
+      const r = knowledge.save({ key, host: 'wikipedia.org', title: t, section: section ? String(section) : undefined, url: WIKI_URL(t), text: formatPassages(ps, BODY_MAX), sourceKind: 'wiki', ttlClass: 'stable', tool: 'read_article', query: t });
+      if (r.id) note = knowledge.conflictNote(knowledge.get(key));
+    }
+    return wrapSource(label, formatPassages(ps, BODY_MAX) + note);
   }
 
   const tools = [

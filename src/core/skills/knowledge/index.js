@@ -8,8 +8,8 @@ const ALIASES = {
   lookup_knowledge: ['wikipedia', 'search'],
 };
 
-function createGroup({ fetcher, kiwix, getConfig, bus } = {}) {
-  const tools = fetcher ? createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) : [];
+function createGroup({ fetcher, kiwix, getConfig, bus, knowledge = null } = {}) {
+  const tools = fetcher ? createKnowledgeTools({ fetcher, kiwix, getConfig, bus, knowledge }) : [];
   // online lookups can be switched off; the offline library still answers facts when it is installed
   const status = () => (getConfig?.()?.online?.enabled !== false ? { ok: true, detail: 'online lookups on' } : kiwix?.available?.() === true ? { ok: true, detail: 'online lookups off, offline library only' } : { ok: false, detail: 'online lookups are off and there is no offline library' });
   return { status, id: 'knowledge', label: 'Facts, Wikipedia, weather, news and sports scores', triggers: [
