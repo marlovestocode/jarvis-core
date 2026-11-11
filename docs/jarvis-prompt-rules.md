@@ -8,7 +8,9 @@ The rules live in `src/core/brain/prompt.js` (`RULES`, `BRIEF_RULES`, `userBlock
 **Who it talks to** (`userBlock`): name, owner of this PC, home city and units, followed teams, voice enrolled, the user's own "about" text, saved memory.
 Never invents more; says "you haven't told me" for the rest.
 
-**Capabilities right now** (live, built in `main.js capsLine`): wake word on/off, owner voice enrolled/gate, YouTube Music extension connected or not, media/volume, math/time/system/weather/news/scores/Wikipedia, STT engine, memory.
+**Capabilities right now** (live, built in `main.js capsLine`): wake word on/off, owner voice enrolled/gate, YouTube Music extension connected or not, listening log, STT engine, saved memory, and one line listing **every skill group** with its label (`skills.capsLine`: media, ytmusic, timers, knowledge, system, pc, math, memory, windows, audio-display, connectivity, clipboard-capture, files, browser with its state off / not connected / connected).
+
+**Tools per turn.** The model is only given the tools of the groups the request needs (`selectGroups`: trigger scoring, top 2 groups, +1 for a group used the turn before; no match = core + knowledge; quick chat = no tools). `more_skills({ group })` loads another group for the rest of the turn, and calling a tool of an unloaded group loads it automatically; both share a cap of 2 extra groups per turn and never skip `risk: 'confirm'` or the tainted-turn refusal. Rule 5 still holds: a group that is not loaded is still listed in Capabilities, so it is never "not available".
 
 **Rules**
 1. **Actions.** You act only through tools. Say you opened, played, paused, set, added, turned on or changed something only after a tool result in this turn confirms it. No control of lights, appliances, brightness, displays or other apps beyond your tools. If a tool failed or is missing, say exactly that.
@@ -31,7 +33,9 @@ Quick chat (no tools) gets a compressed version: never say you did anything, tit
 | Invented answers for "tell me about...", "how many...", "did...", "which..." | Router now sends these to the tool tier; prompt rule 4 | `brain/router.js` |
 | "I have no wake word", "I can't do math", "can't adjust volume", "can't recognise your voice" | Live capabilities line and rule 5 | `main.js capsLine`, `prompt.js` |
 | "Extension not connected" after it connected | Capabilities line shows live link state; rule 5 says re-call the tool | `prompt.js` |
-| Calls to `ytm_music`, `get_stock_data` that do not exist | Known wrong names map to the real tool; unknown names return the list of tools that exist | `tools/registry.js` |
+| Calls to `ytm_music`, `get_stock_data` that do not exist | Known wrong names map to the real tool (each tool owns its `aliases`); unknown names return the list of tools that exist | `skills/*/index.js`, `tools/registry.js` |
+| 40+ tool definitions on every deep turn (slow prompt, wrong tool picked) | Skill groups: only the groups the request needs are offered; `more_skills` and auto-load recover a wrong pick; the capabilities line lists all groups (rule 5) | `skills/select.js`, `tools/registry.js turn()`, `orchestrator.js` |
+| Text read from a page, file or the clipboard steering a risky action | Tools that return outside text are `untrusted`: the turn is tainted, so no `confirm` tool can start (also through auto-load); clipboard writes are refused in a tainted turn; page, file and clipboard text is returned quoted | `tools/registry.js`, `brain/guard.js`, `tools/browser.js`, `tools/files.js`, `skills/clipboard-capture` |
 | Replies calling the user "J.A.R.V.I.S." | Rule 6 and the name block | `prompt.js` |
 
 ## Already fixed in newer code (the old chats pre-date it)

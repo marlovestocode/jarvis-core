@@ -75,3 +75,20 @@ read-only commands (`ping`, `monitors`, `foreground`, `windows`). Start JARVIS n
 - [ ] Turn the settings switch off again → every browser tool answers "Browser control is off in settings." without reaching Chrome.
 - [ ] Reload the extension while JARVIS runs → "Chrome extension not connected." until it reconnects (within about 30 s or press Reconnect).
 - [ ] Chrome pages (`chrome://`), the Web Store and local files cannot be read with "read this page".
+
+## Measurements
+Spec size (`node eval/spec-tokens.js`, 85 deep golden utterances, fake deps, no model):
+```
+flat baseline:        17249 chars, 43 tools (pre-migration manifest)
+selected (mean):      3663 chars over 85 deep golden turns
+reduction:            78.8%
+tools loaded (mean):  11.2
+```
+Note: the baseline is today's 43-tool list; the selected specs already include every new tool, so a flat list of all tools would be larger still.
+
+Live tool-choice eval (`JARVIS_EVAL_GROUP=tools JARVIS_EVAL_STUBS=1 node eval/run.js app`, model `jarvis-worker:latest`, fake PC host/timers/media, one run each, results in `eval/results-tools-{before,after}.json`):
+- before (tip of `feat/pc-actions`, flat list, 43 tools): 8/28
+- after (this branch, skill groups): 15/28
+- Most of that gap is the 18 questions about tools that did not exist before. On the 10 questions about tools that already existed both runs pass 8/10 (before missed set_timer and calculate, after missed set_timer and ytm_play_library). One run on a small model is noisy: read it as "not lower", not as a measured improvement.
+- Many failures on both sides are the router sending short commands ("Switch to the next virtual desktop", "Take a screenshot") to the quick-chat tier with no tools. That is existing router behaviour (it only keeps tools for ACTION/FACT/etc. phrases) and is the obvious next thing to improve.
+- Two failures after are `Too many tool rounds` (read_document, rename_files): the model kept retrying the tool; worth a look with the real model.

@@ -1,6 +1,8 @@
 // Live quality eval against local Ollama (not part of npm test).
 //   node eval/run.js raw  [model]   model alone: no system prompt, no tools
-//   node eval/run.js app            full jarvis-core brain: prompt, router, tools
+//   node eval/run.js app            full jarvis-core brain: prompt, router, tools (skill groups when this branch has them)
+// Env: JARVIS_EVAL_GROUP=tools  only the tool-choice questions; JARVIS_EVAL_STUBS=1  fake PC host, timers, media... for every
+//      tool (the eval never touches the real PC); JARVIS_EVAL_OUT=<file>  write the results there.
 // Writes eval/results-<mode>.json and prints a score.
 const fs = require('node:fs');
 const path = require('node:path');
@@ -22,6 +24,8 @@ function numbers(text) {
 }
 
 function grade(q, answer, result = {}) {
+  // tool choice: the model called the expected tool (against stub hosts, so what the tool answered does not matter)
+  if (q.pick) return (result.tools || []).includes(q.pick) && !result.error;
   if (q.tool) return (result.toolResults || []).some(t => t.name === q.tool && t.ok) && !result.error;
   if (q.text) return String(answer).toLowerCase().replace(/[\s,]/g, '').includes(q.text.toLowerCase().replace(/[\s,]/g, ''));
   const tol = q.tol === 0 ? 0.5 : Math.abs(q.num) * q.tol + 1e-12;
@@ -78,6 +82,7 @@ function appFactory({ before = false } = {}) {
   const { createOrchestrator } = require('../src/core/orchestrator');
   const { loadConfig, DEFAULTS } = require('../src/core/config');
   const brain = before ? baselineBrain() : require('../src/core/brain');
+  const stubs = process.env.JARVIS_EVAL_STUBS ? require('../test/helpers/tool-deps').toolDeps() : {};
   const { createPolicy } = require('../src/core/net/policy');
   const { createFetcher } = require('../src/core/net/fetcher');
   const { createKiwix } = require('../src/core/knowledge/kiwix');
@@ -97,11 +102,21 @@ function appFactory({ before = false } = {}) {
     providers.add(NullProvider);
     providers.add(createOllamaProvider({ getConfig: () => config }));
     const fetcher = createFetcher({ policy: createPolicy(() => config), bus, cacheDir: path.join(dir, 'cache') });
-    const tools = createToolRunner(brain.defaultTools({ getStatus: async () => ({ ...(await probe.get()), model: config.ollama.model }), ...(!before ? { fetcher, kiwix, getConfig: () => config, bus } : {}) }));
+    const deps = { ...stubs, getStatus: async () => ({ ...(await probe.get()), model: config.ollama.model }), ...(!before ? { fetcher, kiwix, getConfig: () => config, bus } : {}) };
+    // this branch: skill groups, like the app; an older branch has only the flat list
+    const grouped = !before && typeof brain.defaultCatalog === 'function';
+    let tools, selectGroups, caps;
+    if (grouped) {
+      const catalog = brain.defaultCatalog(deps);
+      const skills = require('../src/core/skills');
+      tools = createToolRunner(catalog.tools, { groups: catalog.groups });
+      selectGroups = (text, o) => skills.selectGroups(text, o, catalog);
+      caps = skills.capsLine(catalog, { browser: 'off' });
+    } else tools = createToolRunner(brain.defaultTools(deps));
     const orc = createOrchestrator({
-      bus, sessions, providers, tools, getConfig: () => config,
+      bus, sessions, providers, tools, getConfig: () => config, selectGroups,
       systemPrompt: brain.systemPrompt, route: brain.route, timeoutMs: 120000,
-      promptInfo: () => ({ hardware: probe.cached() }),
+      promptInfo: () => ({ hardware: probe.cached(), ...(caps ? { caps } : {}) }),
     });
     return { orc, sessions, events };
   };
@@ -128,13 +143,13 @@ async function run() {
       console.log(`${ok ? 'PASS' : 'FAIL'} ${q.id.padEnd(12)} ${String(r.ms).padStart(6)} ms ${r.route ? '[' + r.route + '] ' : ''}${r.tools?.length ? '{' + r.tools.join(',') + '} ' : ''}${String(r.answer).replace(/\s+/g, ' ').slice(0, 110)}`);
     }
   } finally { make?.close(); }
-  const groups = Object.fromEntries(['brain', 'fact', 'live'].map(group => {
+  const groups = Object.fromEntries(['brain', 'fact', 'live', 'tools'].map(group => {
     const rs = rows.filter(r => r.group === group);
     return [group, { pass: rs.filter(r => r.ok).length, total: rs.length, offlineRetrieved: rs.filter(r => r.sources?.some(s => s.offline)).length }];
   }));
   console.log(`\nSCORE ${mode}: ${pass}/${questions.length}, total ${(totalMs / 1000).toFixed(1)} s; ${JSON.stringify(groups)}`);
-  const file = path.join(__dirname, `results-${mode}.json`);
-  if (fs.existsSync(file)) fs.copyFileSync(file, file.replace('.json', `-previous-${Date.now()}.json`));
+  const file = process.env.JARVIS_EVAL_OUT || path.join(__dirname, `results-${mode}.json`);
+  if (!process.env.JARVIS_EVAL_OUT && fs.existsSync(file)) fs.copyFileSync(file, file.replace('.json', `-previous-${Date.now()}.json`));
   fs.writeFileSync(file, JSON.stringify({ mode, model, at: new Date().toISOString(), pass, total: questions.length, totalMs, groups, rows }, null, 2));
 }
 
