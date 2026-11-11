@@ -1,5 +1,5 @@
 // The JARVIS brain: prompt, router and the full tool set, in one place.
-const { systemPrompt } = require('./prompt');
+const { systemPrompt, nowLine } = require('./prompt');
 const { route } = require('./router');
 const { loadGroups, buildCatalog } = require('../skills');
 
@@ -12,4 +12,4 @@ function defaultTools(opts = {}) {
   return defaultCatalog(opts).tools;
 }
 
-module.exports = { systemPrompt, route, defaultTools, defaultCatalog };
+module.exports = { systemPrompt, nowLine, route, defaultTools, defaultCatalog };

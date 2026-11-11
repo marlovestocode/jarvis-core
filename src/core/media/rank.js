@@ -14,17 +14,53 @@ const tokens = s => norm(s).split(' ').filter(Boolean);
 const STOP = new Set(['the', 'a', 'an', 'of', 'by', 'feat', 'ft', 'featuring', 'official', 'audio', 'video', 'music', 'hd', 'hq', 'version', 'remastered', 'remaster']);
 const content = s => tokens(s).filter(t => !STOP.has(t));
 
+// Speech-to-text and spelling drift ("mornin'" vs "morning", "suicide boys" vs "suicideboys")
+// must not stop a match, so tokens compare fuzzily instead of exactly.
+function lev(a, b) {
+  const p = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = p[0]; p[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = p[j];
+      p[j] = Math.min(p[j] + 1, p[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = tmp;
+    }
+  }
+  return p[b.length];
+}
+const strSim = (a, b) => (a === b ? 1 : 1 - lev(a, b) / Math.max(a.length, b.length));
+const NUM = /^\d+$/;
+function tokSim(a, b) {
+  if (a === b) return 1;
+  if (NUM.test(a) || NUM.test(b)) return 0;   // "5" is not "15"
+  const [s, l] = a.length <= b.length ? [a, b] : [b, a];
+  let sim = strSim(a, b);
+  if (l.length - s.length <= 2 && (l.startsWith(s) || l.endsWith(s))) sim = Math.max(sim, 0.8);   // "n" / "in", "mornin" / "morning"
+  return sim >= 0.7 ? sim : 0;
+}
+// Best one-to-one pairing of tokens (greedy); returns the summed similarity.
+function softMatch(a, b) {
+  const used = new Set();
+  let sum = 0;
+  for (const t of a) {
+    let best = 0, at = -1;
+    b.forEach((u, i) => { if (used.has(i)) return; const s = tokSim(t, u); if (s > best) { best = s; at = i; } });
+    if (at >= 0) { used.add(at); sum += best; }
+  }
+  return sum;
+}
+const compactSim = (a, b) => { const x = a.join(''), y = b.join(''); return x && y && x.length >= 4 && y.length >= 4 ? Math.max(0, strSim(x, y) - 0.1) / 0.9 : 0; };
+
 function dice(a, b) {
   if (!a.length || !b.length) return 0;
-  const B = new Set(b);
-  let n = 0;
-  for (const t of new Set(a)) if (B.has(t)) n++;
-  return (2 * n) / (new Set(a).size + B.size);
+  const A = [...new Set(a)], B = [...new Set(b)];
+  const soft = (2 * softMatch(A, B)) / (A.length + B.length);
+  return Math.min(1, Math.max(soft, compactSim(A, B) >= 0.85 ? compactSim(A, B) : 0));
 }
 function coverage(q, have) {
   if (!q.length) return 0;
-  const H = new Set(have);
-  return q.filter(t => H.has(t)).length / q.length;
+  const soft = softMatch(q, have) / q.length;
+  return Math.min(1, Math.max(soft, compactSim(q, have) >= 0.85 ? compactSim(q, have) : 0));
 }
 
 function parseRequest(text) {

@@ -94,8 +94,22 @@ test('network citations belong to their turn, persist, and are never sent to the
   assert.ok(fp.calls.at(-1).messages.every(m => !('lookups' in m)));
 });
 
+test('a repeated identical tool call is not run again and the model is told to answer', async () => {
+  const fp = createFakeProvider([
+    [{ type: 'tool_call', id: 'a', name: 'get_time', args: {} }, { type: 'done' }],
+    [{ type: 'tool_call', id: 'b', name: 'get_time', args: {} }, { type: 'done' }],
+    [{ type: 'token', text: 'It is noon.' }, { type: 'done' }],
+  ]);
+  const { orc, s, ran, sessions } = setup(fp);
+  const res = await orc.send(s.id, 'time?', { source: 'text' });
+  assert.equal(res.reply, 'It is noon.');
+  assert.equal(ran.length, 1);
+  const tool = sessions.load(s.id).messages.filter(m => m.role === 'tool');
+  assert.match(tool[1].content, /already made this exact call/);
+});
+
 test('tool loop capped at 5 rounds → error Too many tool rounds', async () => {
-  const fp = createFakeProvider([{ type: 'tool_call', id: 'c', name: 'get_time', args: {} }, { type: 'done' }]);
+  const fp = createFakeProvider(Array.from({ length: 7 }, (_, i) => [{ type: 'tool_call', id: `c${i}`, name: 'get_time', args: { n: i } }, { type: 'done' }]));
   const { events, orc, s, ran, sessions } = setup(fp);
   const res = await orc.send(s.id, 'loop', { source: 'text' });
   assert.equal(res.error, 'Too many tool rounds');
@@ -333,4 +347,24 @@ test('contextMax: tool definitions and room for the answer are taken out of the 
   assert.ok(chars + specChars * 1.3 + 400 <= 4000, `history ${chars} + tools ${specChars} must leave room in 4000 chars`);
   assert.equal(sent.at(-1).content, 'Q'.repeat(100));
   assert.ok(sent.length < 11);
+});
+
+test('stamp: each user message carries its own send time to the provider, the same text every turn, and history stays clean', async () => {
+  const fp = createFakeProvider([[{ type: 'tool_call', id: 'c1', name: 'get_time', args: {} }, { type: 'done' }], [{ type: 'token', text: 'ok' }, { type: 'done' }]]);
+  const { sessions, orc, s } = setup(fp, { orc: { stamp: d => `Now: ${d.getTime()}.`, systemPrompt: () => 'SYS' } });
+  await orc.send(s.id, 'first', { source: 'text' });
+  await new Promise(r => setTimeout(r, 5));
+  await orc.send(s.id, 'second', { source: 'text' });
+  const users = c => c.messages.filter(m => m.role === 'user').map(m => m.content);
+  const saved = sessions.load(s.id).messages.filter(m => m.role === 'user');
+  assert.deepEqual(saved.map(m => m.content), ['first', 'second']);
+  assert.ok(saved[0].at > 0 && saved[1].at > saved[0].at);
+  assert.deepEqual(users(fp.calls[0]), [`first\n\nNow: ${saved[0].at}.`]);
+  assert.deepEqual(users(fp.calls[1]), users(fp.calls[0]));                               // the tool round: same prompt
+  assert.deepEqual(users(fp.calls[2]), [`first\n\nNow: ${saved[0].at}.`, `second\n\nNow: ${saved[1].at}.`]);   // the old message is byte-identical
+  assert.equal(fp.calls[0].messages[0].content, 'SYS');
+  // a message from before stamps existed (no `at`) is sent as it is
+  const old = sessions.create(); old.messages.push({ role: 'user', content: 'old' }, { role: 'assistant', content: 'a' }); sessions.save(old);
+  await orc.send(old.id, 'new', { source: 'text' });
+  assert.equal(users(fp.calls.at(-1))[0], 'old');
 });

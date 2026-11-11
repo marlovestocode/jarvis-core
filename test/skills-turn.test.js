@@ -209,11 +209,18 @@ test('orchestrator: lastGroups includes groups loaded mid-turn and is per sessio
 
 test('orchestrator: fast tier sends no tools', async () => {
   const fp = createFakeProvider([{ type: 'token', text: 'ok' }, { type: 'done' }]);
-  let asked = 0;
-  const { orc, s } = orcSetup(fp, { selectGroups: () => { asked++; return ['core']; }, route: () => ({ tier: 'fast', think: false, tools: false, reason: 'chat' }) });
+  const { orc, s } = orcSetup(fp, { selectGroups: () => ['core', 'knowledge'], route: () => ({ tier: 'fast', think: false, tools: false, reason: 'chat' }) });
   await orc.send(s.id, 'hi', { source: 'text' });
   assert.equal(fp.calls[0].tools, undefined);
-  assert.equal(asked, 0);
+});
+
+test('orchestrator: a quick-chat turn that clearly matches a skill group gets tools', async () => {
+  const fp = createFakeProvider([{ type: 'token', text: 'ok' }, { type: 'done' }]);
+  const { orc, s } = orcSetup(fp, { selectGroups: () => ['core', 'windows'], route: () => ({ tier: 'fast', think: false, tools: false, reason: 'chat' }) });
+  await orc.send(s.id, 'take a screenshot', { source: 'text' });
+  assert.ok(fp.calls[0].tools, 'tools offered');
+  assert.equal(fp.calls[0].hints.tier, 'deep');
+  assert.equal(fp.calls[0].hints.reason, 'skill match');
 });
 
 test('orchestrator: a failed turn does not move lastGroups', async () => {

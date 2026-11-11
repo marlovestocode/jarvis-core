@@ -97,7 +97,7 @@ const near = (a, b, tol) => Number.isFinite(a) && Number.isFinite(b) && Math.abs
 
 function createMediaService({ request, keys, timeoutMs = 2500, verifyMs = 1800, pollMs = 150, sleep = ms => new Promise(r => setTimeout(r, ms)), log = () => {} } = {}) {
   const call = (cmd, args) => Promise.race([
-    request(cmd, args),
+    request(cmd, args, { timeoutMs }),
     new Promise((_, rej) => setTimeout(() => rej(new Error('media host timed out')), timeoutMs)),
   ]);
 

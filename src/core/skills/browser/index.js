@@ -15,6 +15,7 @@ function createGroup({ browserLink, getConfig = () => ({}), pc } = {}) {
       { re: /\b(?:browser|chrome|recent|latest) downloads\b|\bdownload(?:ed)? history\b|\bwhat did i download\b/i, w: 3 },   // "downloads" alone is the folder
       { re: /\b(?:this|the|that) page\b|\bopen\b.*\b(?:website|site|web ?page)\b/i, w: 3 },
     ],
+    status: () => (!getConfig()?.browser?.enabled ? { ok: false, detail: 'off in settings' } : browserLink.connected ? { ok: true, detail: 'extension connected' } : { ok: false, detail: 'Chrome extension not connected' }),
     tools: createBrowserTools({ link: browserLink, getConfig, confirm: pc?.confirm || null }).map(t => own(t)),
   };
 }

@@ -1,11 +1,20 @@
 // Skill groups: tools regrouped by area. Each group file exports createGroup(deps) → Group | null.
-// Group = { id, label, triggers, hint?, tools }
-const ORDER = ['core', 'media', 'ytmusic', 'timers', 'knowledge', 'system', 'pc', 'math', 'memory', 'windows', 'audio-display', 'connectivity', 'clipboard-capture', 'files', 'browser'];
+// Group = { id, label, triggers, hint?, tools, status? }
+// status() → { ok, detail } (may be async): whether the group can work right now (extension connected, sysmon up...).
+const ORDER = ['core', 'media', 'ytmusic', 'timers', 'knowledge', 'system', 'pc', 'math', 'memory', 'windows', 'audio-display', 'connectivity', 'clipboard-capture', 'files', 'browser', 'self'];
 
+// The groups that loaded, in ORDER. The array also carries .missing: [{ id, error? }], the groups left out:
+// error is set when the group file threw (one broken group must not stop the app), absent when it simply
+// has no tools with these dependencies.
 function loadGroups(deps = {}) {
-  return ORDER
-    .map(id => require(`./${id}`).createGroup(deps))
-    .filter(g => g && g.tools.length);
+  const groups = [];
+  groups.missing = [];
+  for (const id of ORDER) {
+    let g;
+    try { g = require(`./${id}`).createGroup(deps); } catch (err) { groups.missing.push({ id, error: err?.message || String(err) }); continue; }
+    if (g && g.tools.length) groups.push(g); else groups.missing.push({ id });
+  }
+  return groups;
 }
 
 function buildCatalog(groups) {
@@ -19,7 +28,7 @@ function buildCatalog(groups) {
   }
   // aliases never shadow a real tool name
   for (const g of groups) for (const tool of g.tools) for (const a of tool.aliases || []) if (!byName.has(a)) byName.set(a, { tool, groupId: g.id });
-  return { groups, tools, ids: groups.map(g => g.id), byName, groupOf: name => byName.get(name)?.groupId ?? null };
+  return { groups, tools, ids: groups.map(g => g.id), missing: groups.missing || [], byName, groupOf: name => byName.get(name)?.groupId ?? null };
 }
 
 // One line for the prompt's Capabilities: every group, so the model knows what exists when a group is not loaded.

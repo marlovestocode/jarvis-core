@@ -115,7 +115,7 @@ function appFactory({ before = false } = {}) {
     } else tools = createToolRunner(brain.defaultTools(deps));
     const orc = createOrchestrator({
       bus, sessions, providers, tools, getConfig: () => config, selectGroups,
-      systemPrompt: brain.systemPrompt, route: brain.route, timeoutMs: 120000,
+      systemPrompt: brain.systemPrompt, stamp: brain.nowLine, route: brain.route, timeoutMs: 120000,
       promptInfo: () => ({ hardware: probe.cached(), ...(caps ? { caps } : {}) }),
     });
     return { orc, sessions, events };

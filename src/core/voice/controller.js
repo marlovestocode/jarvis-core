@@ -19,6 +19,11 @@ const SPEAK_OVERLAP_MS = 1000; // "utterance" open, so waiting for silence delay
 // Speaking-only, because only speech is stopped: also the mishearings Whisper gave over echo ("Javas", "Java's").
 const WAKE_ANY = /\b(?:(?:hey|ok|okay|hi|yo)[\s,]+)?(?:jarvis|jarvas|jervis|javis|javas|javus|java's)\b[\s,.!?:;-]*/gi;
 
+// A speech-to-text call that never answers must not hold the controller. Whisper splits audio into 14 s chunks, so the
+// 31 s capture is 3 inferences (~0.1-0.3 s each); the rest is a cold server start (30 s) and a possible CPU restart.
+const STT_CAPTURE_TIMEOUT_MS = 60000;
+const STT_WAKE_TIMEOUT_MS = 30000;   // idle (≤ 8 s) and speaking (≤ 3 s) windows are one inference each
+
 const norm = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 // Continuation guard: a turn that ends on one of these words was probably cut by a pause, not finished.
@@ -50,7 +55,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
   const speakVad = vadFactory({ silenceMs: 500, maxMs: SPEAK_MAX_MS });
   let spChunks = [], spMs = 0, spBusy = false;
   let stripWake = false;       // the current capture began with a spoken interrupt
-  let ext = 0, held = null, contTimer = null, during = null;   // continuation guard: extensions, first transcript, wait timer, frames heard while transcribing
+  let ext = 0, held = null, contTimer = null, during = null, duringMs = 0;   // continuation guard: extensions, first transcript, wait timer, frames heard while transcribing
   let current = null;          // the TTS stream/handle now speaking
   let spoken = '';             // what JARVIS has said this turn (echo check)
   let lastSend = Promise.resolve();
@@ -73,7 +78,20 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     logged.add(kind);
     bus.emit('log', { level: 'warn', text: `${kind} failed: ${err?.message || err}. Using text only.` });
   }
+  function logHung(kind, err) {
+    if (logged.has(kind)) return;
+    logged.add(kind);
+    bus.emit('log', { level: 'warn', text: `${kind}: speech-to-text ${err.message}; listening again.` });
+  }
   function abortOp() { if (op) { op.abort(); op = null; } }
+  // transcribe(), but gives up after `ms`: aborts the call (engines that take a signal stop) and rejects.
+  function transcribeWithin(audio, sampleRate, ms, ac) {
+    let timer;
+    const hung = new Promise((_, reject) => { timer = setTimeout(() => { ac.abort(); reject(Object.assign(new Error(`timed out after ${ms / 1000} s`), { timedOut: true })); }, ms); });
+    ac.signal.addEventListener('abort', () => clearTimeout(timer), { once: true });   // cancel(): nothing left to time
+    const call = (async () => pick('stt').transcribe(audio, sampleRate, ac.signal))();
+    return Promise.race([call, hung]).finally(() => clearTimeout(timer));
+  }
 
   function listen() {
     stripWake = false;
@@ -107,7 +125,12 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       return;
     }
     if (mode === 'speaking') { speakingFeed(pcm, sampleRate); return; }
-    if (mode === 'working' && during) { during.push(pcm); return; }   // speech that goes on while the guard's transcript is pending
+    if (mode === 'working' && during) {   // speech that goes on while the guard's transcript is pending
+      during.push(pcm); duringMs += pcm.length / sampleRate * 1000;
+      // same cap as the capture: a speech-to-text call that never answers must not hold the mic stream for ever
+      while (duringMs > MAX_BUFFER_MS && during.length > 1) { const c = during.shift(); duringMs -= c.length / sampleRate * 1000; }
+      return;
+    }
     if (mode !== 'listening') return;
     const r = vad.push(pcm, sampleRate);
     if (r === 'start') trace.mark('speech_start');
@@ -151,11 +174,11 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     const parts = chunks, partsMs = chunkMs;
     const pcm = concat(chunks);
     chunks = []; chunkMs = 0;
-    if (getConfig().continuationGuard) during = [];
+    if (getConfig().continuationGuard) { during = []; duringMs = 0; }
     op = new AbortController();
     let text = '';
     try {
-      text = String(await pick('stt').transcribe(pcm, rate, op.signal) || '').trim();
+      text = String(await transcribeWithin(pcm, rate, STT_CAPTURE_TIMEOUT_MS, op) || '').trim();
     } catch (err) {
       if (my !== turn) return;
       logOnce('Speech-to-text', err);
@@ -212,7 +235,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     idleChunks = []; idleMs = 0; idleVad.reset();
     if (!heard || idleBusy) return;
     idleBusy = true;
-    pick('stt').transcribe(audio, sampleRate).then(async t => {
+    transcribeWithin(audio, sampleRate, STT_WAKE_TIMEOUT_MS, new AbortController()).then(async t => {
       idleBusy = false;
       const said = String(t || '').trim();
       if (mode !== 'idle' || !WAKE_PREFIX.test(said)) return;   // not for JARVIS: forget it
@@ -223,7 +246,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       mode = 'working';
       rate = sampleRate;
       await runText(said, my);
-    }, () => { idleBusy = false; });
+    }, err => { idleBusy = false; if (err.timedOut) logHung('Wake word listening', err); });
   }
 
   // While speaking: each utterance over the ×3 threshold is transcribed; only "Jarvis, …" counts.
@@ -241,12 +264,12 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     if (!heard || spBusy) return;
     spBusy = true;
     const cut = r === 'max';   // the window closed while sound went on: the phrase may be split
-    pick('stt').transcribe(audio, sampleRate).then(async t => {
+    transcribeWithin(audio, sampleRate, STT_WAKE_TIMEOUT_MS, new AbortController()).then(async t => {
       const said = String(t || '').trim();
       // JARVIS's own voice is mixed into this audio, so the bar is a little lower than for the idle wake
       if (speaker && [...said.matchAll(WAKE_ANY)].length && !(await speakerOk(audio, sampleRate, true))) { spBusy = false; return; }
       spBusy = false; onSpeakingUtterance(said, cut);
-    }, () => { spBusy = false; });
+    }, err => { spBusy = false; if (err.timedOut) logHung('Interrupt listening', err); });
   }
   function resetSpeaking() { spChunks = []; spMs = 0; speakVad.reset(); speakVad.setGain(SPEAKING_GAIN); }
   // After a "Jarvis", the rest of the transcript may be more echo: keep it only if most of its words
@@ -473,6 +496,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     get speaking() { return mode === 'speaking'; },
     get active() { return mode !== 'idle'; },
     get mode() { return mode; },
+    stats: () => ({ captureMs: Math.round(chunkMs), pendingMs: during ? Math.round(duringMs) : 0, capMs: MAX_BUFFER_MS }),
   };
 }
 

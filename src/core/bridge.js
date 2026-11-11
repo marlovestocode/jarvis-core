@@ -8,6 +8,7 @@ const http = require('node:http');
 const HOST = '127.0.0.1';
 const DEFAULT_PORTS = [47801, 47802, 47803, 47804, 47805, 47806];
 const LEVEL_MIN_MS = 1000 / 30; // ≤ 30 Hz per source
+const CLIENT_MAX_BUFFER = 1024 * 1024;   // bytes waiting for one client; over this it is not reading and is dropped
 
 const okOrigin = o => !o || o === 'null' || o === 'file://' || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(o);
 
@@ -21,8 +22,9 @@ function listen(server, port) {
   });
 }
 
-async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PORTS, pingMs = 15000 }) {
+async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PORTS, pingMs = 15000, clientMaxBuffer = CLIENT_MAX_BUFFER }) {
   const clients = new Set();
+  let dropped = 0;
   let port = null;
   let lastState = { type: 'state', t: Date.now(), state: 'idle' };
   let lastProvider = null;
@@ -32,8 +34,14 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
 
   const okHost = h => h === `${HOST}:${port}` || h === `localhost:${port}`; // blocks DNS rebinding
 
+  // A stalled client (a paused wallpaper) would make Node hold every event for it in memory.
+  // It is dropped instead; EventSource reconnects (retry: 3000) and gets the current state again.
+  function send(res, text) {
+    if (res.writableLength > clientMaxBuffer) { clients.delete(res); dropped++; res.destroy(); return; }
+    res.write(text);
+  }
   function write(res, ev) {
-    res.write(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`);
+    send(res, `event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`);
   }
 
   const offBus = bus.on('*', ev => {
@@ -102,7 +110,7 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
     throw new Error(`bridge could not bind any port (${ports.join(', ')}): ${lastErr?.code || lastErr?.message}`);
   }
 
-  const ping = setInterval(() => { for (const res of clients) res.write(': ping\n\n'); }, pingMs);
+  const ping = setInterval(() => { for (const res of clients) send(res, ': ping\n\n'); }, pingMs);
   ping.unref?.();
 
   function close() {
@@ -113,7 +121,7 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
     return new Promise(r => server.close(() => r()));
   }
 
-  return { port, address: server.address().address, close, clients: () => clients.size };
+  return { port, address: server.address().address, close, clients: () => clients.size, stats: () => ({ clients: clients.size, dropped, capBytes: clientMaxBuffer }) };
 }
 
 module.exports = { startBridge, okOrigin, DEFAULT_PORTS };

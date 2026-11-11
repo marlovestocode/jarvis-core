@@ -279,6 +279,85 @@ async function run(ctx, outDir) {
       while (!win().isVisible() && Date.now() - t0 < 15000) await wait(100);
       step('visible after hotkey', { visible: win().isVisible(), ms: Date.now() - t0 });
       if (win().isVisible()) await shot('chat-hotkey');
+    } else if (mode === 'self') {
+      // the introspection tools against the real app, once the boot has finished
+      await ctx.booted;
+      const scope = ctx.tools.turn(['core', 'self']);
+      for (const [name, args] of [['self_diagnostics', {}], ['skills_list', {}], ['skills_list', { group: 'self' }], ['self_config', {}], ['self_log', { show: 'all', lines: 30 }], ['self_log', {}]]) {
+        const t0 = Date.now();
+        const r = await scope.run(name, args, { turn: { source: 'text', tainted: false } });
+        step(name, { args, ok: r.ok, ms: Date.now() - t0, text: r.text });
+      }
+    } else if (mode === 'soak') {
+      // Memory soak: the real app and chat window, a scripted model, a synthetic load every few seconds (a chat turn through
+      // the page, a burst of mic levels, one play, one PC action). One snapshot a minute goes to <out>/soak.jsonl.
+      // JARVIS_SOAK_MINUTES (default 20). Run it with JARVIS_DATA_DIR set: it writes chats and logs there.
+      await ctx.booted;
+      const minutes = Number(process.env.JARVIS_SOAK_MINUTES) || 20;
+      const reply = 'Sure. Here is a **short** answer with `code`, a list:\n- one\n- two\nand a few more words to fill a line. '.repeat(3);
+      ctx.providers.add({
+        id: 'soak', label: 'Soak', capabilities: { tools: false },
+        async status() { return { ready: true, contextMax: 8192 }; },
+        async *chat() { for (let i = 0; i < reply.length; i += 12) { await wait(2); yield { type: 'token', text: reply.slice(i, i + 12) }; } yield { type: 'done', usage: {} }; },
+      });
+      ctx.config = { ...ctx.config, provider: 'soak', wakeEnabled: false };
+      ctx.windows.showChat();
+      await wait(800);
+      const file = path.join(outDir, 'soak.jsonl');
+      const t0 = Date.now();
+      const snap = n => {
+        const m = ctx.memwatch.snapshot();
+        const procs = app.getAppMetrics().map(p => ({ type: p.type, wsMB: Math.round(p.memory.workingSetSize / 1024) }));
+        const line = { minute: n, rssMB: m.rssMB, heapMB: m.heapMB, externalMB: m.externalMB, level: m.level, procs, parts: m.components, chatMsgs: ctx.sessions.load(ctx.sessionId)?.messages.length ?? 0 };
+        fs.appendFileSync(file, JSON.stringify(line) + '\n');
+        return line;
+      };
+      snap(0);
+      let turns = 0, nextSnap = 1, last = null;
+      while (Date.now() - t0 < minutes * 60000) {
+        await type('soak question ' + (++turns));
+        for (let i = 0; i < 150; i++) ctx.bus.emit('level', { source: 'mic', rms: Math.random() * 0.1 });
+        ctx.playLog.add({ videoId: 'vid' + String(turns % 500).padStart(6, '0'), startedAt: Date.now() - 200000, listenedMs: 180000, duration: 200, title: 'Song ' + (turns % 500), artist: 'Artist ' + (turns % 50), reason: 'ended' });
+        ctx.actionLog.write({ what: 'focus', args: { name: 'App ' + turns }, result: 'ok', ok: true });
+        const t1 = Date.now();
+        while (ctx.orchestrator.busy && Date.now() - t1 < 30000) await wait(50);
+        await wait(2500);
+        if ((Date.now() - t0) / 60000 >= nextSnap) { last = snap(nextSnap); nextSnap++; }
+      }
+      last = snap(Math.round((Date.now() - t0) / 600) / 100);   // the minute, to 0.01
+      const rows = fs.readFileSync(file, 'utf8').trim().split('\n').map(l => JSON.parse(l));
+      step('soak', { minutes, turns, first: rows[0], last, peakRssMB: Math.max(...rows.map(r => r.rssMB)), snapshots: rows.length });
+    } else if (mode === 'ttft') {
+      // Where a voice turn's wait goes: send → provider call (our own work) → first token (the model). Every /api/chat body is
+      // saved to <out>/body-N.json so the model's own timings can be read by replaying it against Ollama.
+      await ctx.booted;
+      const realFetch = globalThis.fetch;
+      let bodies = 0, fetchAt = 0;
+      globalThis.fetch = async (url, init) => {
+        if (String(url).endsWith('/api/chat')) { fetchAt = Date.now(); fs.writeFileSync(path.join(outDir, `body-${++bodies}.json`), init.body); }
+        return realFetch(url, init);
+      };
+      const rounds = [];
+      for (const q of (process.env.JARVIS_TTFT_QUESTIONS || 'tell me a joke|what is the capital of France|how far away is the moon|turn the volume down a bit').split('|')) {
+        for (let rep = 0; rep < 2; rep++) {
+          const ev = {}; let first = 0, firstTool = 0;
+          const off = ctx.bus.on('*', e => {
+            const now = Date.now();
+            if (e.type === 'state' && e.state === 'thinking') ev.thinking = now;
+            if (e.type === 'route') { ev.route = now; ev.tier = e.tier; ev.think = e.think; }
+            if (e.type === 'token' && !first) first = now;
+            if (e.type === 'tool' && e.phase === 'start' && !firstTool) firstTool = now;
+          });
+          bodies = bodies; fetchAt = 0;
+          const t0 = Date.now();
+          const res = await ctx.orchestrator.send(null, q, { source: 'voice' });
+          off();
+          rounds.push({ q, rep, tier: ev.tier, think: ev.think, toThinkingMs: ev.thinking - t0, toRouteMs: ev.route - t0, toFetchMs: fetchAt ? fetchAt - t0 : null, toFirstTokenMs: first ? first - t0 : null, fetchToFirstTokenMs: first && fetchAt ? first - fetchAt : null, toolStartMs: firstTool ? firstTool - t0 : null, totalMs: Date.now() - t0, replyChars: String(res.reply || '').length, bodyFile: `body-${bodies}.json` });
+          await wait(500);
+        }
+      }
+      globalThis.fetch = realFetch;
+      step('ttft', { rounds });
     } else if (extra[mode]) {
       await extra[mode]({ ctx, step, js, dom, type, shot, wait });
     } else {

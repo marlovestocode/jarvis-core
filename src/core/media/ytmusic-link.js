@@ -50,15 +50,16 @@ function startYtMusicLink({ log = () => {}, ports = PORTS, extensionId = EXTENSI
   function attach(s, head) {
     if (sock) { try { sock.end(frame(8)); } catch { /* old one gone */ } }
     sock = s; info = null;
-    let text = [];
+    let text = [], textBytes = 0;
     const parse = createParser((fin, op, data) => {
       if (op === 8) { s.end(frame(8)); return; }
       if (op === 9) { s.write(frame(10, data)); return; }
       if (op === 10) return;
       if (op === 1 || op === 0) {
-        text.push(data);
+        text.push(data); textBytes += data.length;
+        if (textBytes > MAX_FRAME) throw new Error('message too large');   // fragments of one message that never ends
         if (!fin) return;
-        const msg = Buffer.concat(text).toString('utf8'); text = [];
+        const msg = Buffer.concat(text).toString('utf8'); text = []; textBytes = 0;
         onMessage(msg);
       }
     });

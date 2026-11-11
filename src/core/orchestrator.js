@@ -5,19 +5,20 @@ const MSG_OVERHEAD_CHARS = 32;  // about 8 tokens of chat template per message (
 const TOOL_CHAR_WEIGHT = 1.3;   // tool JSON is about 3 chars per token, prose about 4
 const REPLY_SHARE = 0.1;        // of the window, kept free for the model's answer (at most REPLY_CHARS)
 const REPLY_CHARS = 4000;
+const LAST_GROUPS_MAX = 64;     // sessions whose last skill groups are remembered (follow-up bonus only)
 
 function busyError() { return new Error('BUSY'); }
 
 // Newest messages whose content fits in contextMax tokens (chars/4 estimate).
 // The newest message is always sent, even when it alone is too big.
-function fitWindow(messages, contextMax, reserveChars = 0) {
+function fitWindow(messages, contextMax, reserveChars = 0, stampChars = 0) {
   if (!contextMax) return messages;
   const budget = contextMax * CHARS_PER_TOKEN - reserveChars;
   const out = [];
   let used = 0;
   for (let i = messages.length - 1; i >= 0; i--) {
     // content, plus the template tokens around every message and any tool-call JSON the model sees
-    const len = String(messages[i].content || '').length + MSG_OVERHEAD_CHARS + (messages[i].toolCalls ? JSON.stringify(messages[i].toolCalls).length : 0);
+    const len = String(messages[i].content || '').length + (messages[i].at ? stampChars : 0) + MSG_OVERHEAD_CHARS + (messages[i].toolCalls ? JSON.stringify(messages[i].toolCalls).length : 0);
     if (out.length && used + len > budget) break;
     out.unshift(messages[i]);
     used += len;
@@ -36,13 +37,16 @@ function forProvider(m) {
 }
 
 // systemPrompt(ctx) → string: sent first every round, never saved.
+// stamp(date) → string: added to the end of every user message that has an `at` (its send time), in the provider's copy only.
+// The clock lives here, not in the system prompt, and each message keeps its own stamp, so the prompt is the same text from
+// one turn to the next and the provider's cache survives the minute changing.
 // route(text, { source }) → { tier, think, ... }: per-turn hints for the provider.
 // promptInfo() → { hardware, media } (or a promise of it): facts for the prompt.
 // fastPath(text, { source }) → null | { reply, record?, tool, ok }: a skill that answers without the model
 // (media commands). An empty reply is silent; record is what the chat history keeps.
 const { unbackedClaim, UNBACKED_FIX, UNTRUSTED_TOOLS, NEEDS_OK } = require('./brain/guard');
 
-function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, route, selectGroups, promptInfo = () => ({}), fastPath, onQuestionLost = () => {} }) {
+function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, onQuestionLost = () => {} }) {
   let current = null; // AbortController of the running turn
   const lastGroups = new Map();   // session id → skill groups the last turn used (follow-up bonus)
 
@@ -126,7 +130,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
     try {
       let s = sessionId ? sessions.load(sessionId) : null;
       if (!s) s = sessions.create();
-      s.messages.push({ role: 'user', content: String(text) });
+      s.messages.push({ role: 'user', content: String(text), at: Date.now() });
       sessions.save(s);
       bus.emit('state', { state: 'thinking' });
 
@@ -154,10 +158,16 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       const p = pickProvider();
       const st = await providerStatus(p);
       bus.emit('provider', { id: p.id, label: p.label, ready: !!st.ready });
-      const hints = route ? route(String(text), { source }) : undefined;
+      let hints = route ? route(String(text), { source }) : undefined;
+      let picked = selectGroups && tools?.turn ? selectGroups(String(text), { lastGroups: lastGroups.get(s.id) || [], source }) : null;
+      // a short command ("take a screenshot") can look like chat to the router while a skill group clearly matches:
+      // quick chat has no tools and would only pretend to act, so the match wins
+      if (hints?.tools === false && picked?.some(id => id !== 'core' && id !== 'knowledge')) {
+        hints = { ...hints, tier: 'deep', tools: true, think: false, reason: 'skill match' };
+      }
       const toolsOn = !!(p.capabilities?.tools && tools && hints?.tools !== false);
       // skill groups: only the groups this request needs are offered; the scope can load more mid-turn
-      const scope = toolsOn && selectGroups && tools.turn ? tools.turn(selectGroups(String(text), { lastGroups: lastGroups.get(s.id) || [], source })) : null;
+      const scope = toolsOn && picked ? tools.turn(picked) : null;
       const currentSpecs = () => {
         if (!toolsOn) return undefined;
         const sp = scope ? scope.specs() : tools.specs();
@@ -170,7 +180,8 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       if (hints) bus.emit('route', { tier: hints.tier, think: !!hints.think, reason: hints.reason, model });
       let sys = null;
       let info = {};
-      const buildSys = () => systemPrompt({ source, now: new Date(), tools: (useTools || []).map(t => t.name), model, brief: hints?.tools === false, groupHints: scope ? scope.hints() : [], ...info });
+      const turnNow = new Date();
+      const buildSys = () => systemPrompt({ source, now: turnNow, tools: (useTools || []).map(t => t.name), model, brief: hints?.tools === false, groupHints: scope ? scope.hints() : [], ...info });
       if (systemPrompt) {
         try { info = (await promptInfo({ source, hints })) || {}; } catch { info = {}; }
         sys = buildSys();
@@ -182,6 +193,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       let error;
       let stopped = false;
       let toolRounds = 0;
+      const seenCalls = new Set();   // name+args of every call this turn
       let okTools = 0;   // tools that ran, did not fail and can back an action claim (lookups cannot)
       const turn = { source, tainted: false };   // tainted: text from outside (pages, files) came in this turn
       let question = null;   // a confirm tool is waiting for the user's yes: this is the question
@@ -202,7 +214,11 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
         // the tool definitions are part of the prompt too; JSON costs more tokens per char than prose.
         // When they were left out, a full window made Ollama cut the start of the prompt (system prompt and tools), and the model answered nothing.
         const toolChars = useTools ? Math.ceil(JSON.stringify(useTools).length * TOOL_CHAR_WEIGHT) : 0;
-        let window = fitWindow(s.messages, st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min(REPLY_CHARS, Math.floor((st.contextMax || 0) * CHARS_PER_TOKEN * REPLY_SHARE))).map(forProvider);
+        let window = fitWindow(s.messages, st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min(REPLY_CHARS, Math.floor((st.contextMax || 0) * CHARS_PER_TOKEN * REPLY_SHARE)), stamp ? stamp(turnNow).length + 2 : 0).map(m => {
+          const o = forProvider(m);
+          if (stamp && m.role === 'user' && m.at) o.content = `${o.content}\n\n${stamp(new Date(m.at))}`;   // its own send time, the same text every turn
+          return o;
+        });
         if (sys) window = [{ role: 'system', content: sys }, ...window];
         sentChars = window.reduce((n, m) => n + String(m.content || '').length, 0);
         let round;
@@ -238,8 +254,16 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           bus.emit('tool', { id: call.id, name: call.name, phase: 'start' });
           inTool = true;
           let res;
-          try { res = await (scope || tools).run(call.name, call.args, { signal: ac.signal, turn }); }
-          finally { inTool = false; }
+          // the model re-sent a call it already made this turn: do not run it again, tell it to answer
+          const sig = `${call.name}:${JSON.stringify(call.args ?? {})}`;
+          if (seenCalls.has(sig)) {
+            res = { ok: false, text: 'Error: you already made this exact call this turn and got its result. Do not repeat it; answer the user with what you have, or say what failed.' };
+          } else {
+            seenCalls.add(sig);
+            try { res = await (scope || tools).run(call.name, call.args, { signal: ac.signal, turn }); }
+            finally { inTool = false; }
+          }
+          inTool = false;
           bus.emit('tool', { id: call.id, name: call.name, phase: 'end', ok: res.ok });
           if (res.untrusted || UNTRUSTED_TOOLS.has(call.name)) turn.tainted = true;
           if (res.ok && String(res.text).startsWith(NEEDS_OK)) question = String(res.text).slice(NEEDS_OK.length);
@@ -259,7 +283,11 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
         }
       }
 
-      if (scope && !error && !stopped) lastGroups.set(s.id, scope.loaded().filter(id => id !== 'core'));
+      if (scope && !error && !stopped) {
+        lastGroups.delete(s.id);   // newest last
+        lastGroups.set(s.id, scope.loaded().filter(id => id !== 'core'));
+        if (lastGroups.size > LAST_GROUPS_MAX) lastGroups.delete(lastGroups.keys().next().value);
+      }
 
       // never leave a risky action armed behind a question the user did not hear
       if (question && !asked) { try { onQuestionLost(); } catch { /* best effort */ } }
@@ -307,6 +335,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
     stop,
     announce,
     get busy() { return current !== null; },
+    stats: () => ({ sessions: lastGroups.size, cap: LAST_GROUPS_MAX }),
   };
 }
 

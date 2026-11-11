@@ -71,8 +71,9 @@ function createWindows({ hideOnBlur = true } = {}) {
   }
 
   function sendAll(channel, payload) {
+    const meter = payload?.type === 'level';   // 50 per second while the mic is open: only a window on screen draws it
     for (const w of [chat, settings]) {
-      if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
+      if (w && !w.isDestroyed() && !(meter && !w.isVisible())) w.webContents.send(channel, payload);
     }
   }
 

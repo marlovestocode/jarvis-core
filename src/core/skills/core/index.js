@@ -9,7 +9,7 @@ const moreSkills = {
   params: { type: 'object', properties: { group: { type: 'string', description: 'group id, e.g. pc, media, math' } }, required: ['group'], additionalProperties: false },
   risk: 'safe',
   async run({ group } = {}, ctx = {}) {
-    if (!ctx.skills) return 'All skills are already available.';
+    if (!ctx.skills?.load) return 'All skills are already available.';
     const r = ctx.skills.load(group);
     if (!r.ok) throw new Error(r.text);
     return r.text;

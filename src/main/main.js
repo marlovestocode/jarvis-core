@@ -18,6 +18,7 @@ const HIDDEN = process.argv.includes('--hidden');          // started by Windows
 const DEV_RUN = !!(process.env.JARVIS_DATA_DIR || process.env.JARVIS_SELFTEST);
 
 const { createBus } = require('../core/bus');
+const { createMemWatch } = require('../core/memwatch');
 const { loadConfig, saveConfig } = require('../core/config');
 const { createSessionStore } = require('../core/session');
 const { createRegistry } = require('../core/providers/provider');
@@ -70,11 +71,21 @@ const { createStartup } = require('./startup');
 const { createWindows } = require('./windows');
 const { createTray } = require('./tray');
 const { registerIpc } = require('./ipc');
+const { selfChecks } = require('./checks');
+const { SYSMON } = require('../core/tools/sysmon');
 
 const version = require('../../package.json').version;
+const LOG_FILE = path.join(DATA_DIR, 'jarvis.log');
+// append-only text files stay small: past 512 KB the file becomes <file>.old (one generation) and a new one starts
+function rotateIfBig(file) {
+  if (fs.existsSync(file) && fs.statSync(file).size > 512 * 1024) fs.renameSync(file, file + '.old');
+}
 
 const ctx = {
   dataDir: DATA_DIR,
+  version,
+  startedAt: Date.now(),
+  bootLog: [],   // every boot stage result, for the self-check
   config: loadConfig(DATA_DIR),
   sessionId: null,
   hotkeys: { failed: [], registered: [] },
@@ -85,9 +96,8 @@ const ctx = {
     console.log('[jarvis]', ...a);
     // started by Task Scheduler there is no console: keep a small log next to the config
     try {
-      const file = path.join(DATA_DIR, 'jarvis.log');
-      if (fs.existsSync(file) && fs.statSync(file).size > 512 * 1024) fs.renameSync(file, file + '.old');
-      fs.appendFileSync(file, line + '\n');
+      rotateIfBig(LOG_FILE);
+      fs.appendFileSync(LOG_FILE, line + '\n');
     } catch { /* logging must never break the app */ }
   },
 };
@@ -108,7 +118,7 @@ async function jarvisStatus() {
   let model = p.label;
   if (c.provider === 'ollama') model = `${c.ollama.model}${c.ollama.auto ? ` (quick chat: ${c.ollama.fastModel})` : ''} via Ollama`;
   let sysmon = 'not running';
-  try { sysmon = (await fetch('http://127.0.0.1:47800/health', { signal: AbortSignal.timeout(800) })).ok ? 'running' : 'not running'; } catch { /* down */ }
+  try { sysmon = (await fetch(`${SYSMON}/health`, { signal: AbortSignal.timeout(800) })).ok ? 'running' : 'not running'; } catch { /* down */ }
   return {
     ...(await ctx.hardware.get()),
     model,
@@ -124,7 +134,7 @@ ctx.kiwix = createKiwix({ exe: path.join(__dirname, '../../engines/kiwix/kiwix-s
 // Media: what is playing and its controls, read from Windows by one PowerShell host (src/core/media).
 // Media keys through sysmon remain the fallback when the host cannot run.
 ctx.mediaHost = createSpeechHost({ script: path.join(__dirname, '../core/media/media-host.ps1'), log: ctx.log, name: 'media host' });
-ctx.media = createMediaService({ request: (cmd, args) => ctx.mediaHost.request(cmd, args), keys: key => pressKey(fetch, key), log: ctx.log });
+ctx.media = createMediaService({ request: (cmd, args, o) => ctx.mediaHost.request(cmd, args, o), keys: key => pressKey(fetch, key), log: ctx.log });
 // YouTube Music: the JARVIS Chrome extension connects here (127.0.0.1:47830, extension origin only)
 // every finished play the extension reports goes into the local listening log (music_stats)
 ctx.playLog = createPlayLog({ file: path.join(DATA_DIR, 'music-plays.jsonl'), getConfig: ctx.getConfig, log: ctx.log });
@@ -158,7 +168,7 @@ function userInfo() {
 // timers, alarms and reminders: <data>/timers.json; firing puts 'timer' on the bus (started in the boot stage)
 // PC control: one PowerShell host for apps/windows/Recycle Bin; risky actions wait for the user's yes
 ctx.pcHostProc = createSpeechHost({ script: PC_HOST_SCRIPT, log: ctx.log, name: 'pc host' });
-ctx.pcHost = createPcHost({ request: (cmd, args) => ctx.pcHostProc.request(cmd, args) });
+ctx.pcHost = createPcHost({ request: (cmd, args, o) => ctx.pcHostProc.request(cmd, args, o) });
 ctx.pcStartApps = null;   // Start menu list, read at boot and then every 10 minutes when asked
 ctx.pcStartAt = 0;
 async function pcAllowlist() {
@@ -167,18 +177,22 @@ async function pcAllowlist() {
   }
   return buildAllowlist(ctx.pcStartApps, ctx.config.pc.apps);
 }
+ctx.pcAllowlist = pcAllowlist;
 // the user's own folders, where Windows really keeps them (Documents may live in OneDrive)
 ctx.pcRoots = [app.getPath('desktop'), app.getPath('documents'), app.getPath('downloads'), path.join(app.getPath('home'), 'Projects')];
 ctx.actionLog = createActionLog({ file: path.join(DATA_DIR, 'actions.log'), log: ctx.log });
 ctx.confirm = createConfirm({ actionLog: ctx.actionLog });
 ctx.timerStore = createTimerStore({ file: path.join(DATA_DIR, 'timers.json'), log: ctx.log });
 ctx.scheduler = createScheduler({ store: ctx.timerStore, bus: ctx.bus, log: ctx.log });
-ctx.catalog = brain.defaultCatalog({ browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog } });
+// JARVIS's own introspection tools: the checks read ctx live each time they run (src/main/checks.js)
+const self = { getChecks: () => selfChecks(ctx), about: () => ({ version, electron: process.versions.electron, node: process.versions.node, startedAt: ctx.startedAt, dataDir: DATA_DIR }), logFile: LOG_FILE, dataDir: DATA_DIR };
+ctx.catalog = brain.defaultCatalog({ self, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog } });
 ctx.toolList = ctx.catalog.tools;
+for (const m of ctx.catalog.missing) if (m.error) ctx.log(`skill group ${m.id} failed to load: ${m.error}`);
 ctx.tools = createToolRunner(ctx.toolList, { groups: ctx.catalog.groups });
 ctx.orchestrator = createOrchestrator({
   bus: ctx.bus, sessions: ctx.sessions, providers: ctx.providers, tools: ctx.tools, getConfig: ctx.getConfig,
-  systemPrompt: brain.systemPrompt, route: brain.route,
+  systemPrompt: brain.systemPrompt, stamp: brain.nowLine, route: brain.route,
   selectGroups: (text, o) => skills.selectGroups(text, o, ctx.catalog),
   // the model always sees what is playing, read fresh for the turn (skipped if Windows is slow)
   promptInfo: async () => {
@@ -244,6 +258,7 @@ ctx.engines.wake.add({
 });
 // configured engine → Windows → None; each fallback logs its reason once (it used to be silent)
 const engine = createEnginePick({ registries: ctx.engines, getConfig: ctx.getConfig, log: ctx.log });
+ctx.pickEngine = engine;
 // Silero VAD when config.vad is 'silero': one shared model, own state per VAD; energy VAD otherwise or on failure
 ctx.sileroVad = createSileroProvider({ modelPath: path.join(ENGINES, 'vad', 'silero_vad.onnx'), isOn: () => ctx.config.vad === 'silero', log: ctx.log });
 ctx.sileroVad.getModel();   // start loading now so the first capture already has it
@@ -258,7 +273,11 @@ ctx.voice = createVoiceController({
   getConfig: ctx.getConfig, getSessionId: () => ctx.sessionId, setSessionId: id => { ctx.sessionId = id; },
   vadOptions: { silenceMs: ctx.config.endSilenceMs }, // config.endSilenceMs; read at start
   vadFactory: opts => createModelVad({ ...opts, getModel: ctx.sileroVad.getModel, onError: ctx.sileroVad.onError }),
-  writeTrace: sum => fs.appendFile(path.join(app.getPath('userData'), 'voice-trace.jsonl'), JSON.stringify({ at: new Date().toISOString(), ...sum }) + '\n', () => {}),
+  writeTrace: sum => {
+    const file = path.join(app.getPath('userData'), 'voice-trace.jsonl');
+    rotateIfBig(file);   // one stat per finished voice turn; the controller already catches a throw
+    fs.appendFile(file, JSON.stringify({ at: new Date().toISOString(), ...sum }) + '\n', () => {});
+  },
 });
 ctx.micOk = true;
 ctx.startVoice = () => {
@@ -282,7 +301,15 @@ ctx.proactive = createProactiveEngine({
     ctx.sessions.save(s);
   },
 });
-ctx.bus.on('log', ev => ctx.log(ev.text));
+// warnings keep their level in the log, and a failed tool or turn is written down too (self_log reads these)
+ctx.bus.on('log', ev => ctx.log(ev.level === 'warn' || ev.level === 'error' ? `${ev.level}: ${ev.text}` : ev.text));
+ctx.bus.on('tool', ev => {
+  if (ev.phase !== 'end' || ev.ok !== false) return;
+  const why = ctx.tools.stats().get(ev.name)?.lastError;
+  ctx.log(`tool failed: ${ev.name}${why ? ` (${why})` : ''}`);
+});
+ctx.bus.on('state', ev => { if (ev.state === 'error') ctx.log(`turn error: ${ev.detail}`); });
+process.on('unhandledRejection', err => ctx.log('unhandled rejection:', err?.stack || String(err)));
 // "Jarvis" heard: a short chime says it is listening (the orb flares too)
 ctx.bus.on('wake', () => { ctx.log('wake word heard'); ctx.mic?.play(chime(), 22050).catch(() => {}); });
 ctx.updateMic = () => { if (!ctx.mic) return; if (ctx.voice.active || ctx.config.wakeEnabled) ctx.mic.start(); else ctx.mic.stop(); };
@@ -292,7 +319,16 @@ ctx.bus.on('state', () => {
   // with the wake word on, the mic stays open (local only) so "Jarvis, <command>" keeps its first words
   if (ctx.voice.active || ctx.config.wakeEnabled) ctx.mic.start(); else ctx.mic.stop();
 });
-ctx.onQuit = [() => ctx.scheduler.stop(), () => ctx.pcHostProc.close(), () => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close()];
+// memory: every part with a budget reports its numbers here (self_diagnostics shows them); see core/memwatch.js
+ctx.memwatch = createMemWatch({
+  bus: ctx.bus, log: ctx.log,
+  sources: {
+    fetchCache: ctx.fetcher, wallpaperLink: { stats: () => ctx.bridge?.stats() ?? null }, turns: ctx.orchestrator, voice: ctx.voice,
+    mediaHost: ctx.mediaHost, pcHost: ctx.pcHostProc, speechHost: ctx.speechHost, listeningLog: { stats: () => ({ plays: ctx.playLog.count() }) }, actionLog: ctx.actionLog,
+  },
+});
+ctx.memwatch.start();
+ctx.onQuit = [() => ctx.memwatch.stop(), () => ctx.proactive.stop(), () => ctx.scheduler.stop(), () => ctx.pcHostProc.close(), () => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close()];
 
 app.on('web-contents-created', (_e, wc) => guardWebContents(wc));
 app.on('second-instance', () => ctx.windows?.showChat());
@@ -380,7 +416,7 @@ app.whenReady().then(async () => {
     { stage: 'pc', run: async () => `${(await pcAllowlist()).length} apps allowed` },
     { stage: 'timers', run: async () => { const r = ctx.scheduler.start(); return `${r.armed} set${r.fired ? `, ${r.fired} missed while off` : ''}`; } },
     { stage: 'sysmon', run: async () => {
-      const r = await fetch('http://127.0.0.1:47800/health', { signal: AbortSignal.timeout(1000) }).catch(() => null);
+      const r = await fetch(`${SYSMON}/health`, { signal: AbortSignal.timeout(1000) }).catch(() => null);
       return r?.ok ? 'linked' : { ok: false, detail: 'not running' };
     } },
     { stage: 'voice', run: async () => {
@@ -393,7 +429,7 @@ app.whenReady().then(async () => {
       return `${stt.label} + ${tts.label}${ctx.config.wakeEnabled ? ' + wake word' : ''}`;
     } },
   ]).then(r => { ctx.log(`boot ${r.ok ? 'ok' : 'partial'} in ${r.ms} ms`); return r; });
-  ctx.bus.on('boot', e => { if (e.stage !== 'done') ctx.log(`boot ${e.stage}: ${e.ok ? 'ok' : 'OFF'} ${e.detail} (${e.ms} ms)`); });
+  ctx.bus.on('boot', e => { ctx.bootLog.push(e); if (e.stage !== 'done') ctx.log(`boot ${e.stage}: ${e.ok ? 'ok' : 'OFF'} ${e.detail} (${e.ms} ms)`); });
 });
 
 module.exports = { ctx };

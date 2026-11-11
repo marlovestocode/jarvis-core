@@ -5,7 +5,7 @@ const { HHMM } = require('./config');
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 function applyPatch(current, patch = {}, { providers, engines }) {
-  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama }, online: { ...current.online }, location: { ...current.location }, news: { feeds: [...current.news.feeds] }, sports: { follow: current.sports.follow.map(x => ({ ...x })) }, music: { ...current.music, aliases: (current.music?.aliases || []).map(x => ({ ...x })) }, proactive: { ...current.proactive }, browser: { ...current.browser } };
+  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama }, online: { ...current.online }, location: { ...current.location }, news: { feeds: [...current.news.feeds] }, sports: { follow: current.sports.follow.map(x => ({ ...x })) }, music: { ...current.music, aliases: (current.music?.aliases || []).map(x => ({ ...x })) }, proactive: { ...current.proactive }, browser: { ...current.browser }, user: { ...current.user } };
   const errors = [];
   if (!isObj(patch)) return { config, errors: ['bad patch'] };
 
@@ -165,4 +165,4 @@ async function describe({ config, providers, engines, hotkeyFailures = [], statu
   return { config, providers: p, engines: { stt, tts, wake }, models, hotkeyFailures: [...hotkeyFailures], library };
 }
 
-module.exports = { applyPatch, describe };
+module.exports = { applyPatch, describe, statusSafe };

@@ -6,6 +6,7 @@
 const RATE = 16000;
 const FRAME = 512;
 const CONTEXT = 64;
+const MAX_QUEUE = 156;   // frames waiting for inference (about 5 s): past this the model is not keeping up
 
 async function loadSilero({ modelPath, ort }) {
   // one thread: the default pool uses every core and spin-waits between runs, measured ~197% of a core
@@ -26,17 +27,23 @@ function createSileroStream(model, { onProb = () => {}, onError = () => {} } = {
   const { ort, names } = model;
   const sr = new ort.Tensor('int64', BigInt64Array.from([BigInt(RATE)]), []);
   let state, context, pending, pendingN, gen = 0, chain = Promise.resolve();
+  let queued = 0, stalled = false;
 
   function reset() {
-    gen++;
+    gen++; queued = 0; stalled = false;
     state = new Float32Array(2 * 128);
     context = new Float32Array(CONTEXT);
     pending = new Float32Array(FRAME); pendingN = 0;
   }
 
   function runFrame(frame, my) {
+    if (stalled) return;
+    // each waiting frame holds its audio: stop queueing and report it (the caller falls back to the energy VAD)
+    if (queued >= MAX_QUEUE) { stalled = true; onError(new Error('inference is not keeping up with the microphone')); return; }
+    queued++;
     chain = chain.then(async () => {
       if (my !== gen) return;
+      queued--;
       const input = new Float32Array(CONTEXT + FRAME);
       input.set(context); input.set(frame, CONTEXT);
       context = frame.slice(FRAME - CONTEXT);

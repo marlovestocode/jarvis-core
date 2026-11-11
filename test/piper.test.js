@@ -88,6 +88,18 @@ test('piper: abort stops playback and drops queued sentences', async () => {
   assert.ok(played.length <= 1, `played ${played.length}`);
 });
 
+test('piper: a cut reply leaves no WAV behind (queued sentences are still written by piper)', async () => {
+  const { tts, removed } = setup();
+  const ac = new AbortController();
+  const s = tts.createStream({ rate: 1, signal: ac.signal });
+  s.push('First sentence.'); s.push('Second.'); s.push('Third.'); s.push('Fourth.');
+  s.end();
+  setTimeout(() => ac.abort(), 8);   // during the first sentence
+  await s.done;
+  await new Promise(r => setTimeout(r, 40));
+  assert.deepEqual([...removed].sort(), ['C:\\out\\1.wav', 'C:\\out\\2.wav', 'C:\\out\\3.wav', 'C:\\out\\4.wav']);
+});
+
 test('piper: text is one line (newlines would split it); empty text is skipped', async () => {
   const { tts, spawn, played } = setup();
   const s = tts.createStream({ rate: 1 });

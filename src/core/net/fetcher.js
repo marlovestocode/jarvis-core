@@ -1,6 +1,8 @@
 // The ONLY way core code reaches the internet (spec §3). Every request: policy check before any socket,
 // GET only, no cross-host redirects, 8 s timeout, 2 MB cap, TTL cache in memory + disk, 'net' bus event.
 // Disk cache lets JARVIS answer "last known" when the network is down; such results carry stale + age.
+// Budgets: the memory cache holds at most memMaxChars (least recently used go first, their disk copy stays);
+// the disk cache drops files too old to be served and then the oldest ones over diskMaxBytes.
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -11,8 +13,41 @@ const DEFAULT_MAX_BYTES = 2 * 1024 * 1024;
 const MAX_REDIRECTS = 3;
 const STALE_MAX_MS = 7 * 24 * 3600 * 1000;   // "last known" older than a week is not worth saying
 
-function createFetcher({ policy, fetch: doFetch = (...a) => globalThis.fetch(...a), bus, cacheDir, now = Date.now, timeoutMs = DEFAULT_TIMEOUT_MS, maxBytes = DEFAULT_MAX_BYTES }) {
-  const mem = new Map();   // url -> { at, text }
+const MEM_MAX_CHARS = 8 * 1024 * 1024;
+const DISK_MAX_BYTES = 64 * 1024 * 1024;
+const PRUNE_EVERY_MS = 3600 * 1000;
+const CACHE_FILE = /^[0-9a-f]{40}\.json$/;    // only files this module wrote: on Windows <data>/cache is also Chromium's "Cache" folder
+
+function createFetcher({ policy, fetch: doFetch = (...a) => globalThis.fetch(...a), bus, cacheDir, now = Date.now, timeoutMs = DEFAULT_TIMEOUT_MS, maxBytes = DEFAULT_MAX_BYTES, memMaxChars = MEM_MAX_CHARS, diskMaxBytes = DISK_MAX_BYTES }) {
+  const mem = new Map();   // url -> { at, text }, least recently used first
+  let memChars = 0, evicted = 0, lastPrune = 0;
+
+  function remember(url, entry) {
+    const old = mem.get(url);
+    if (old) { mem.delete(url); memChars -= old.text.length; }
+    if (entry.text.length > memMaxChars) return;   // larger than the whole budget: disk only
+    mem.set(url, entry); memChars += entry.text.length;
+    for (const [k, e] of mem) {
+      if (memChars <= memMaxChars) break;
+      mem.delete(k); memChars -= e.text.length; evicted++;
+    }
+  }
+
+  // File times are wall-clock, so this uses Date.now() and not the injected clock.
+  function pruneDisk() {
+    if (!cacheDir || Date.now() - lastPrune < PRUNE_EVERY_MS) return;
+    lastPrune = Date.now();
+    try {
+      const files = fs.readdirSync(cacheDir).filter(f => CACHE_FILE.test(f))
+        .map(f => { const p = path.join(cacheDir, f), st = fs.statSync(p); return { p, at: st.mtimeMs, size: st.size }; })
+        .sort((a, b) => b.at - a.at);
+      let total = 0;
+      for (const f of files) {
+        total += f.size;
+        if (Date.now() - f.at > STALE_MAX_MS || total > diskMaxBytes) fs.rmSync(f.p, { force: true });
+      }
+    } catch { /* cache is best effort */ }
+  }
   const keyFile = url => cacheDir && path.join(cacheDir, crypto.createHash('sha1').update(url).digest('hex') + '.json');
 
   function readDisk(url) {
@@ -24,6 +59,7 @@ function createFetcher({ policy, fetch: doFetch = (...a) => globalThis.fetch(...
     const f = keyFile(url);
     if (!f) return;
     try { fs.mkdirSync(cacheDir, { recursive: true }); fs.writeFileSync(f, JSON.stringify({ url, at: entry.at, text: entry.text })); } catch { /* cache is best effort */ }
+    pruneDisk();
   }
   const emit = p => { try { bus?.emit('net', p); } catch { /* listeners */ } };
 
@@ -82,7 +118,7 @@ function createFetcher({ policy, fetch: doFetch = (...a) => globalThis.fetch(...
     const t = now();
     const hit = mem.get(url) || readDisk(url);
     if (hit && ttlMs > 0 && t - hit.at < ttlMs) {
-      mem.set(url, hit);
+      remember(url, hit);
       emit({ source, host, ok: true, ms: 0, cached: true, ageMs: t - hit.at });
       return { data: hit.text, cached: true, ageMs: t - hit.at };
     }
@@ -90,7 +126,7 @@ function createFetcher({ policy, fetch: doFetch = (...a) => globalThis.fetch(...
     try {
       const text = await fetchOnce(source, url, headers);
       const entry = { at: now(), text };
-      mem.set(url, entry); writeDisk(url, entry);
+      remember(url, entry); writeDisk(url, entry);
       emit({ source, host, ok: true, ms: Date.now() - t0, cached: false, ageMs: 0 });
       return { data: text, cached: false, ageMs: 0 };
     } catch (err) {
@@ -109,7 +145,11 @@ function createFetcher({ policy, fetch: doFetch = (...a) => globalThis.fetch(...
     try { return { ...r, data: JSON.parse(r.data) }; } catch { throw new Error(`bad JSON from ${new URL(url).hostname}`); }
   }
 
-  return { getText, getJson };
+  return {
+    getText, getJson,
+    stats: () => ({ entries: mem.size, chars: memChars, capChars: memMaxChars, evicted }),
+    trim() { mem.clear(); memChars = 0; },   // under memory pressure: the disk copies still answer
+  };
 }
 
 module.exports = { createFetcher, UA, DEFAULT_TIMEOUT_MS, DEFAULT_MAX_BYTES };

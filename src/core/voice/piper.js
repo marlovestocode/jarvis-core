@@ -3,6 +3,7 @@
 // later ones are still being synthesized, so speech starts after the first sentence.
 // play(pcm, rate, { signal, onLevel }) → Promise is supplied by the app (renderer audio).
 const fs = require('node:fs');
+const path = require('node:path');
 const childProcess = require('node:child_process');
 
 // small async queue usable with for-await
@@ -33,6 +34,13 @@ function createPiperTts({
     for (const p of pending) p.reject(new Error('piper restarted'));
     pending = [];
     try { fs.mkdirSync(outDir, { recursive: true }); } catch { /* exists or test path */ }
+    // WAVs a crash or a cut reply left behind: nothing reads a file this old again
+    try {
+      for (const f of fs.readdirSync(outDir)) {
+        const p = path.join(outDir, f);
+        if (/\.wav$/i.test(f) && Date.now() - fs.statSync(p).mtimeMs > 600000) remove(p);
+      }
+    } catch { /* test path */ }
     const lengthScale = String(Math.round(100 / Math.max(0.5, Math.min(2, rate))) / 100);
     const kid = spawn(exe, ['-m', model, '--output_dir', outDir, '--length_scale', lengthScale, '-q'], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     proc = kid; procRate = rate;
@@ -77,6 +85,7 @@ function createPiperTts({
     let finishing = false, playing = false;   // finishSentence(): end the sentence now playing, drop the rest
     const kick = () => { if (wake) { const w = wake; wake = null; w(); } };
 
+    let taken = 0;   // jobs whose WAV was read or removed
     const done = (async () => {
       try {
         for (let i = 0; ; i++) {
@@ -84,12 +93,15 @@ function createPiperTts({
           if (signal?.aborted || finishing || i >= jobs.length) break;
           let path;
           try { path = await jobs[i]; } catch (err) { if (signal?.aborted || finishing) break; throw err; }
+          taken = i + 1;
           if (signal?.aborted || finishing) { remove(path); break; }
           playing = true;
           try { await play(pcmOf(path), sampleRate, { signal, onLevel: v => levels.put(v) }); } finally { playing = false; }
         }
       } finally {
         levels.close();
+        // a cut reply: piper still writes the queued sentences, and nothing else would delete those files
+        for (const job of jobs.slice(taken)) job.then(remove, () => {});
       }
     })();
     signal?.addEventListener('abort', kick, { once: true });

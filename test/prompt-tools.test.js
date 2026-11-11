@@ -19,7 +19,7 @@ function allTools() {
   const any = new Proxy({}, { get: (t, k) => (k === 'then' ? undefined : () => ({})) });
   const scheduler = createScheduler({ store: createTimerStore({ file: path.join(dir, 't.json') }), bus: createBus(), setTimer: () => 1, clearTimer: () => {} });
   const pc = { host: createFakePcHost(), getAllowlist: async () => [], roots: [dir], confirm: createConfirm({}), actionLog: createActionLog({ file: path.join(dir, 'a.log') }) };
-  return defaultTools({ getStatus: async () => ({}), fetch: async () => ({}), fetcher: any, kiwix: any, getConfig: () => DEFAULTS, bus: createBus(), media: any, ytm: any, ytPlaylists: any, memory: any, playLog: any, scheduler, pc });
+  return defaultTools({ ...require('./helpers/tool-deps').toolDeps(), scheduler, pc });   // every group, the newer ones too
 }
 
 test('prompt: names every registered tool', () => {

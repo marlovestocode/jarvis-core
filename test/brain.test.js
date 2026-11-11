@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { systemPrompt } = require('../src/core/brain/prompt');
+const { systemPrompt, nowLine } = require('../src/core/brain/prompt');
 const { route } = require('../src/core/brain/router');
 
 const TOOLS = ['calculate', 'convert_units', 'jarvis_status', 'get_time'];
@@ -9,8 +9,11 @@ test('prompt: identity, date, tool guidance, no LaTeX, hardware facts', () => {
   const p = systemPrompt({ source: 'text', now: new Date('2026-11-09T19:00:00'), tools: TOOLS, model: 'jarvis-worker:latest',
     hardware: { cpu: 'Ryzen 5 5600X', gpu: 'RTX 3050 8 GB', ramGB: 15.9 } });
   assert.match(p, /J\.A\.R\.V\.I\.S/);
-  assert.match(p, /2026-11-09/);
-  assert.match(p, /Monday/);
+  assert.doesNotMatch(p, /2026-11-09|Monday|19:00/, 'the clock is not in the system prompt: it would break the model cache every minute');
+  assert.match(p, /ends with a "Now:" line/);
+  assert.match(nowLine(new Date('2026-11-09T19:00:00')), /^Now: 2026-11-09 Monday 19:00 \(.+\)\.$/);
+  assert.equal(systemPrompt({ source: 'text', now: new Date('2026-11-09T19:01:00'), tools: TOOLS }), systemPrompt({ source: 'text', now: new Date('2030-01-01T03:30:00'), tools: TOOLS }));
+  assert.equal(systemPrompt({ brief: true, now: new Date('2026-11-09T19:01:00') }), systemPrompt({ brief: true, now: new Date('2030-01-01T03:30:00') }));
   assert.match(p, /calculate/);
   assert.match(p, /jarvis_status/);
   assert.match(p, /LaTeX/);

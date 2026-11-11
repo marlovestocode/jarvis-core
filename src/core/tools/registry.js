@@ -1,4 +1,5 @@
-// Tool definitions + runner. Tool: { name, description, params: JSONSchema, async run(args, ctx) → string, timeoutMs?, aliases?, untrusted? }
+// Tool definitions + runner. Tool: { name, description, params: JSONSchema, async run(args, ctx) → string, timeoutMs?, aliases?, untrusted?, risk? }
+// ctx.skills = { catalog, stats(), load?(group), loaded?() }: load and loaded only inside a turn with skill groups.
 // aliases: names the model has made up in the past for this tool.
 // untrusted: the result is text from outside (taints the turn, never backs an action claim).
 const { buildCatalog } = require('../skills');
@@ -11,6 +12,17 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
   const names = [...byName.keys()];
   for (const t of tools) for (const a of t.aliases || []) if (!byName.has(a)) byName.set(a, t);
   const catalog = groups ? buildCatalog(groups) : null;
+  // what tools see as ctx.skills: the catalog calls are dispatched from, and how each tool has done since start
+  const stats = new Map();   // tool name → { calls, fails, lastError, lastAt }
+  const view = { catalog: catalog || buildCatalog([{ id: 'all', label: 'All tools', triggers: [], tools }]), stats: () => new Map(stats) };
+  function note(tool, res) {
+    const s = stats.get(tool.name) || { calls: 0, fails: 0, lastError: '', lastAt: 0 };
+    s.calls++;
+    s.lastAt = Date.now();
+    if (!res.ok) { s.fails++; s.lastError = res.text; }
+    stats.set(tool.name, s);
+    return res;
+  }
 
   const unknown = name => ({ ok: false, text: `Error: unknown tool ${name}. Tools that exist: ${names.join(', ')}. Use one of those, or say you cannot do it.` });
   const tainted = (tool, ctx) => tool.risk === 'confirm' && (!ctx.turn || ctx.turn.tainted);
@@ -30,9 +42,9 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
         timer = setTimeout(() => rej(new Error(`tool ${name} timed out`)), tool.timeoutMs || timeoutMs);
       });
       const text = await Promise.race([Promise.resolve().then(() => tool.run(args || {}, ctx)), timeout]);
-      return { ok: true, text: String(text), ...flag };
+      return note(tool, { ok: true, text: String(text), ...flag });
     } catch (err) {
-      return { ok: false, text: `Error: ${err?.message || err}`, ...flag };
+      return note(tool, { ok: false, text: `Error: ${err?.message || err}`, ...flag });
     } finally {
       clearTimeout(timer);
     }
@@ -40,7 +52,7 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
 
   async function run(name, args, ctx = {}) {
     const tool = byName.get(name);
-    return tool ? exec(tool, name, args, ctx) : unknown(name);
+    return tool ? exec(tool, name, args, { ...ctx, skills: view }) : unknown(name);
   }
 
   // One turn's view: only the loaded groups' tools are offered; more can be loaded (cap of 2) by more_skills
@@ -76,7 +88,7 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
     async function scopedRun(name, args, ctx = {}) {
       const tool = byName.get(name);
       if (!tool) return unknown(name);
-      const c = { ...ctx, skills: { load } };
+      const c = { ...ctx, skills: { ...view, load, loaded: () => [...loaded] } };
       if (!inScope(tool)) {
         // refuse before loading anything: auto-load never gets around risk or taint
         if (tainted(tool, c)) return taintedText;
@@ -97,7 +109,7 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
     };
   }
 
-  return { specs, run, turn };
+  return { specs, run, turn, stats: view.stats };
 }
 
 module.exports = { createToolRunner, MAX_EXTRA_LOADS };

@@ -4,6 +4,18 @@
 const path = require('node:path');
 
 const SCRIPT = path.join(__dirname, 'pc-host.ps1');
+// How long each command may take before the caller stops waiting (the host handles one line at a time, so a hung
+// command blocks the ones behind it too: their own limits then fail them in turn). Commands not listed wait without
+// a limit: recycle (Windows may ask the user and a big folder is slow), power (sleep returns only after the PC wakes).
+const QUICK_MS = 10000;
+const LIMIT_MS = {
+  startApps: 30000, launch: 15000, audioDevices: 15000, audioSetDefault: 15000, screenshot: 15000,
+  wifi: 20000, bluetooth: 20000, setWifi: 30000, setBluetooth: 30000,   // netsh / PnP queries; WinRT calls wait up to 8 s each
+  ping: QUICK_MS, windows: QUICK_MS, foreground: QUICK_MS, monitors: QUICK_MS, place: QUICK_MS, moveToMonitor: QUICK_MS,
+  desktopSwitch: QUICK_MS, desktopMove: QUICK_MS, alive: QUICK_MS, closeMain: QUICK_MS, kill: QUICK_MS, focus: QUICK_MS,
+  brightness: QUICK_MS, setBrightness: QUICK_MS, displays: QUICK_MS, nightLight: QUICK_MS, battery: QUICK_MS, powerPlans: QUICK_MS,
+  setPowerPlan: QUICK_MS, focusAssist: QUICK_MS, clipboardRead: QUICK_MS, clipboardWrite: QUICK_MS, lock: QUICK_MS,
+};
 const POWER = ['shutdown', 'restart', 'sleep'];
 
 // ConvertTo-Json turns a one-item array into a bare value; null means none
@@ -19,7 +31,7 @@ function needText(s, what) {
 }
 
 function createPcHost({ request }) {
-  const call = async (cmd, args = {}) => request(cmd, args);
+  const call = async (cmd, args = {}) => request(cmd, args, LIMIT_MS[cmd] ? { timeoutMs: LIMIT_MS[cmd] } : undefined);
   const wrap = fn => async (...a) => fn(...a);   // argument errors become rejections, like host errors
 
   return {
@@ -133,4 +145,4 @@ function createPcHost({ request }) {
   };
 }
 
-module.exports = { createPcHost, SCRIPT, LAYOUTS };
+module.exports = { createPcHost, SCRIPT, LAYOUTS, LIMIT_MS };

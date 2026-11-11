@@ -191,3 +191,15 @@ test('link: plays reported by the extension (live and as a batch kept while JARV
   ext.s.destroy();
   await link.close();
 });
+
+test('rank: a loosely spoken title and artist still win (no exact title needed)', () => {
+  const { parseRequest, rank } = require('../src/core/media/rank');
+  const cands = [
+    { title: "5 'N the Mornin'", artists: ['$uicideboy$'], type: 'song', play: {} },
+    { title: 'In the Morning', artists: ['Some Band'], type: 'song', play: {} },
+    { title: '5 in the Morning', artists: ['Cover Guy'], type: 'song', play: {} },
+  ];
+  const r = rank(parseRequest('play 5 in the morning by suicide boys'), cands);
+  assert.equal(r[0].c.artists[0], '$uicideboy$');
+  assert.ok(r[0].score >= 0.35);
+});

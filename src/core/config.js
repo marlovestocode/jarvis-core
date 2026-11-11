@@ -49,11 +49,11 @@ const DEFAULTS = Object.freeze({
     maxBulk: 25,                        // most songs added to a playlist in one go
     logPlays: true,                     // keep a local log of what you listen to (music_stats); off stops logging
   }),
-  // JARVIS speaking unasked (timers): quiet hours and Do-not-disturb give a notification only
   // PC control: extra apps JARVIS may open, { "spoken name": "C:\path\app.exe" or a Start menu AppID }
   pc: Object.freeze({ apps: Object.freeze({}) }),
   // browser skills (tabs, page text, history...) through the Chrome extension: off until the user turns it on in settings
   browser: Object.freeze({ enabled: false }),
+  // JARVIS speaking unasked (timers): quiet hours and Do-not-disturb give a notification only
   proactive: Object.freeze({ enabled: true, dnd: false, quietStart: '22:00', quietEnd: '07:00', minGapSec: 10, chime: true }),
 });
 
@@ -134,4 +134,34 @@ function saveConfig(dir, config) {
   fs.renameSync(tmp, file);
 }
 
-module.exports = { DEFAULTS, HHMM, loadConfig, saveConfig };
+// config.json against what is in effect (for self_config and the self-check). Reads only.
+//   ignored: keys in the file that are unknown, or whose value was refused or adjusted by merge()
+//   changed: settings in effect that differ from DEFAULTS
+//   broken:  an earlier unreadable config.json was set aside as config.broken.json
+function inspectConfig(dir) {
+  const file = path.join(dir, 'config.json');
+  const out = { file, exists: false, error: '', broken: fs.existsSync(path.join(dir, 'config.broken.json')), ignored: [], changed: [] };
+  let raw = {};
+  try {
+    raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    out.exists = true;
+    if (!isObj(raw)) { out.error = 'config.json is not an object'; raw = {}; }
+  } catch (err) {
+    if (err.code !== 'ENOENT') { out.exists = true; out.error = err.message; }
+  }
+  const config = merge(raw);
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  for (const [key, v] of Object.entries(raw)) {
+    if (!Object.hasOwn(DEFAULTS, key)) out.ignored.push(key);
+    else if (NESTED.includes(key) && isObj(v)) {
+      for (const [k, sv] of Object.entries(v)) if (!Object.hasOwn(DEFAULTS[key], k) || !same(sv, config[key][k])) out.ignored.push(`${key}.${k}`);
+    } else if (!same(v, config[key])) out.ignored.push(key);
+  }
+  for (const [key, def] of Object.entries(DEFAULTS)) {
+    if (NESTED.includes(key)) { for (const k of Object.keys(def)) if (!same(config[key][k], def[k])) out.changed.push(`${key}.${k}`); }
+    else if (!same(config[key], def)) out.changed.push(key);
+  }
+  return { ...out, config };
+}
+
+module.exports = { DEFAULTS, HHMM, loadConfig, saveConfig, inspectConfig };

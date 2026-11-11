@@ -3,6 +3,8 @@
 const path = require('node:path');
 const { BrowserWindow, ipcMain } = require('electron');
 
+const READY_MS = 10000;
+
 function toInt16(data) {
   if (data instanceof Int16Array) return data;
   if (ArrayBuffer.isView(data)) return new Int16Array(data.buffer, data.byteOffset, Math.floor(data.byteLength / 2));
@@ -63,15 +65,22 @@ function createMic({ getDeviceId, onFrame, onStatus, log = () => {} }) {
     else if (m.phase === 'error') p.failed(m.error);
     else p.ended();
   });
-  const whenReady = () => new Promise(res => {
+  // The page loads on first use. If it never does (window closed or crashed), stop polling after READY_MS instead of for ever.
+  const whenReady = () => new Promise((res, rej) => {
     ensure();
-    const check = () => (ready ? res() : setTimeout(check, 20));
+    const t0 = Date.now();
+    const check = () => {
+      if (ready) res();
+      else if (Date.now() - t0 > READY_MS) rej(new Error('the mic window did not load'));
+      else setTimeout(check, 20);
+    };
     check();
   });
 
   async function play(pcm, rate, { signal, onLevel } = {}) {
     if (signal?.aborted) return;
     await whenReady();
+    if (signal?.aborted) return;       // cancelled while the page was loading: the abort listener below would never fire
     const id = ++playSeq;
     const durMs = pcm.length / rate * 1000;
     await new Promise((resolve, reject) => {
