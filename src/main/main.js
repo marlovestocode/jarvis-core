@@ -1,7 +1,7 @@
 // JARVIS core: Electron shell around src/core. Local only.
 const path = require('node:path');
 const fs = require('node:fs');
-const { app, globalShortcut, session, Notification, clipboard, shell } = require('electron');
+const { app, globalShortcut, session, Notification, clipboard, shell, dialog } = require('electron');
 
 // Data in %APPDATA%\jarvis-core (JARVIS_DATA_DIR overrides it, for self-tests).
 const DATA_DIR = process.env.JARVIS_DATA_DIR || path.join(app.getPath('appData'), 'jarvis-core');
@@ -65,7 +65,8 @@ const { createYtPlaylists } = require('../core/media/ytplaylists');
 const { createSpeaker } = require('../core/voice/speaker/speaker');
 const { enrollVoice } = require('../core/voice/speaker/enroll');
 const { createPlayLog } = require('../core/music/log');
-const { createMemory } = require('../core/memory/store');
+const { createMemorySystem } = require('../core/memory/system');
+const { UNTRUSTED_TOOLS } = require('../core/brain/guard');
 const { createMemorySkill } = require('../core/memory/skill');
 const os = require('node:os');
 const { registerHotkeys } = require('./hotkeys');
@@ -107,7 +108,8 @@ const ctx = {
 };
 
 ctx.bus = createBus({ onError: err => ctx.log('listener error:', err?.message) });
-ctx.sessions = createSessionStore(DATA_DIR);
+// deleting a chat (or the prune of the oldest files) also removes its summary from the cortex
+ctx.sessions = createSessionStore(DATA_DIR, { onRemove: id => ctx.memorySystem?.onChatRemoved(id) });
 ctx.providers = createRegistry();
 ctx.providers.add(NullProvider);
 ctx.providers.add(createOllamaProvider({ getConfig: () => ctx.config }));
@@ -159,8 +161,41 @@ ctx.ytm = createYtMusic({ link: ctx.ytmLink });
 ctx.ytPlaylists = createYtPlaylists({ link: ctx.ytmLink, ytm: ctx.ytm, getConfig: ctx.getConfig, file: path.join(DATA_DIR, 'cache', 'ytm-library.json'), journalFile: path.join(DATA_DIR, 'ytm-undo.json'), log: ctx.log });
 ctx.mediaSkill = createMediaSkill({ service: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists });
 if (!DEV_RUN) ctx.media.state().catch(err => ctx.log('media host:', err.message));   // warm up: the first read compiles Core Audio (~0.8 s)
-ctx.memory = createMemory({ file: path.join(DATA_DIR, 'memory.json'), log: ctx.log });
-ctx.memorySkill = createMemorySkill({ memory: ctx.memory, setName: name => ctx.saveConfig({ ...ctx.config, user: { ...ctx.config.user, name } }) });
+// Long-term memory on the cortex (<data>/cortex.db, cortex wave 1): facts and their review queue, people/pets/places,
+// one summary per chat. memory.json is imported once and renamed. Capture and consolidation run only while idle:
+// no turn in flight, voice not listening or speaking, 30 s since the last turn.
+let voiceState = 'idle', lastActivity = Date.now();
+const memoryIdle = () => !ctx.orchestrator?.busy && voiceState !== 'listening' && voiceState !== 'speaking' && Date.now() - lastActivity >= 30000;
+// the chat model answers the extractor (quick tier, no thinking); runs only when idle, so it never competes with a turn
+async function completeQuick(messages, { signal } = {}) {
+  const p = ctx.providers.get(ctx.config.provider);
+  if (!p || p.id === 'null') throw new Error('no model chosen');
+  let text = '';
+  for await (const c of p.chat({ messages, signal, hints: { tier: 'fast', think: false, tools: false } })) {
+    if (c.type === 'token') text += String(c.text ?? '');
+    else if (c.type === 'done') break;
+  }
+  return text;
+}
+ctx.memorySystem = createMemorySystem({
+  dataDir: DATA_DIR, log: ctx.log, bus: ctx.bus, sessions: ctx.sessions, getConfig: ctx.getConfig, isIdle: memoryIdle, complete: completeQuick,
+  notify: (title, body) => { if (Notification.isSupported()) new Notification({ title, body, silent: true }).show(); },
+  isUntrusted: name => UNTRUSTED_TOOLS.has(name) || !!ctx.catalog?.byName?.get(name)?.tool?.untrusted,
+});
+ctx.cortex = ctx.memorySystem.cortex;
+ctx.memory = ctx.memorySystem.memory;
+ctx.chats = ctx.memorySystem.chats;
+ctx.onSessionSwitch = prev => ctx.memorySystem.scheduler.onSwitch(prev);
+ctx.embedder = { status: () => ctx.memorySystem.embedderStatus(), install: () => ctx.memorySystem.installEmbedder() };
+// Settings → Memory dialogs: the download confirm names the model and its size; files only where the user picks
+const settingsWin = () => (ctx.windows?.settings && !ctx.windows.settings.isDestroyed() ? ctx.windows.settings : null);
+const withWin = (fn, o) => (settingsWin() ? fn(settingsWin(), o) : fn(o));
+ctx.dialog = {
+  confirm: async message => (await withWin(dialog.showMessageBox, { type: 'question', buttons: ['Download', 'Cancel'], defaultId: 1, cancelId: 1, message, detail: 'It goes into your local Ollama. Nothing else leaves this PC.' })).response === 0,
+  saveFile: async name => { const r = await withWin(dialog.showSaveDialog, { defaultPath: path.join(app.getPath('documents'), name), filters: [{ name: 'JSON', extensions: ['json'] }] }); return r.canceled ? null : r.filePath; },
+  openFile: async () => { const r = await withWin(dialog.showOpenDialog, { properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] }); return r.canceled ? null : r.filePaths[0]; },
+};
+ctx.memorySkill = createMemorySkill({ memory: ctx.memory, about: topic => ctx.memorySystem.about(topic), setName: name => ctx.saveConfig({ ...ctx.config, user: { ...ctx.config.user, name } }) });
 // What JARVIS can do right now, from live state: the model must not deny these or claim what is not here.
 function capsLine() {
   const c = ctx.config, on = v => (v ? 'on' : 'off');
@@ -201,7 +236,7 @@ ctx.timerStore = createTimerStore({ file: path.join(DATA_DIR, 'timers.json'), lo
 ctx.scheduler = createScheduler({ store: ctx.timerStore, bus: ctx.bus, log: ctx.log });
 // JARVIS's own introspection tools: the checks read ctx live each time they run (src/main/checks.js)
 const self = { getChecks: () => selfChecks(ctx), about: () => ({ version, electron: process.versions.electron, node: process.versions.node, startedAt: ctx.startedAt, dataDir: DATA_DIR }), logFile: LOG_FILE, dataDir: DATA_DIR };
-ctx.catalog = brain.defaultCatalog({ self, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog } });
+ctx.catalog = brain.defaultCatalog({ self, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog } });
 ctx.toolList = ctx.catalog.tools;
 for (const m of ctx.catalog.missing) if (m.error) ctx.log(`skill group ${m.id} failed to load: ${m.error}`);
 ctx.tools = createToolRunner(ctx.toolList, { groups: ctx.catalog.groups });
@@ -210,14 +245,18 @@ ctx.orchestrator = createOrchestrator({
   systemPrompt: brain.systemPrompt, stamp: brain.nowLine, route: brain.route,
   selectGroups: (text, o) => skills.selectGroups(text, o, ctx.catalog),
   // the model always sees what is playing, read fresh for the turn (skipped if Windows is slow)
-  promptInfo: async () => {
+  promptInfo: async ({ hints } = {}) => {
     let media;
     try { media = mediaPromptLine(await Promise.race([ctx.media.state(), new Promise((_, rej) => setTimeout(() => rej(new Error('slow')), 600))])); } catch { media = undefined; }
-    return { hardware: ctx.hardware.cached() || undefined, media, library: ctx.ytPlaylists.digest() || undefined, memory: ctx.memory.digest() || undefined, user: userInfo(), caps: capsLine(), hotkeys: ctx.config.hotkeys };
+    // the profile (always-known facts) in the system prompt; the rest is recalled per turn by memoryBlock
+    let profile = { text: '', ids: [] };
+    try { profile = ctx.memorySystem.profile({ brief: hints?.tools === false }); } catch (err) { ctx.log('memory profile failed:', err.message); }
+    return { hardware: ctx.hardware.cached() || undefined, media, library: ctx.ytPlaylists.digest() || undefined, memory: profile.text || undefined, memoryIds: profile.ids, user: userInfo(), caps: capsLine(), hotkeys: ctx.config.hotkeys };
   },
   // a pending PC action reads the user's own reply first (yes / no); nothing else can confirm it
   fastPath: async (text, o) => (await ctx.confirm.handle(text, o)) || (await ctx.memorySkill.handle(text, o)) || ctx.mediaSkill.handle(text, o),
   onQuestionLost: () => ctx.confirm.clear(),
+  memoryBlock: ctx.memorySystem.block,
   timeoutMs: 120000, // a cold model load plus thinking can be slow on the first turn
 });
 
@@ -331,6 +370,12 @@ ctx.bus.on('tool', ev => {
   ctx.log(`tool failed: ${ev.name}${why ? ` (${why})` : ''}`);
 });
 ctx.bus.on('state', ev => { if (ev.state === 'error') ctx.log(`turn error: ${ev.detail}`); });
+// memory jobs wait for quiet: any turn or voice activity resets the idle clock, and a turn starting stops a capture job
+ctx.bus.on('state', ev => {
+  voiceState = ev.state;
+  lastActivity = Date.now();
+  if (ev.state === 'thinking' || ev.state === 'listening') ctx.memorySystem.scheduler.abort();
+});
 process.on('unhandledRejection', err => ctx.log('unhandled rejection:', err?.stack || String(err)));
 // "Jarvis" heard: a short chime says it is listening (the orb flares too)
 ctx.bus.on('wake', () => { ctx.log('wake word heard'); ctx.mic?.play(chime(), 22050).catch(() => {}); });
@@ -346,11 +391,11 @@ ctx.memwatch = createMemWatch({
   bus: ctx.bus, log: ctx.log,
   sources: {
     fetchCache: ctx.fetcher, wallpaperLink: { stats: () => ctx.bridge?.stats() ?? null }, turns: ctx.orchestrator, voice: ctx.voice,
-    mediaHost: ctx.mediaHost, pcHost: ctx.pcHostProc, speechHost: ctx.speechHost, listeningLog: { stats: () => ({ plays: ctx.playLog.count() }) }, actionLog: ctx.actionLog,
+    mediaHost: ctx.mediaHost, pcHost: ctx.pcHostProc, speechHost: ctx.speechHost, listeningLog: { stats: () => ({ plays: ctx.playLog.count() }) }, actionLog: ctx.actionLog, cortex: ctx.memorySystem,
   },
 });
 ctx.memwatch.start();
-ctx.onQuit = [() => ctx.memwatch.stop(), () => ctx.proactive.stop(), () => ctx.scheduler.stop(), () => ctx.pcHostProc.close(), () => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close()];
+ctx.onQuit = [() => ctx.memwatch.stop(), () => ctx.proactive.stop(), () => ctx.scheduler.stop(), () => ctx.pcHostProc.close(), () => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close(), () => ctx.memorySystem.close()];
 
 app.on('web-contents-created', (_e, wc) => guardWebContents(wc));
 app.on('second-instance', () => ctx.windows?.showChat());
@@ -393,6 +438,7 @@ app.whenReady().then(async () => {
   ctx.bus.on('*', ev => ctx.windows.sendAll('ai:event', ev));
   ctx.enrollVoice = () => enrollVoice(ctx);
   registerIpc(ctx);
+  ctx.memorySystem.start();   // startup sweep (newest 5 ready chats) and the 5 s idle tick
   ctx.tray = createTray({
     openChat: () => ctx.windows.showChat(),
     talk: () => ctx.startVoice(),
@@ -436,6 +482,11 @@ app.whenReady().then(async () => {
         return w.loaded.join(' + ') || st.detail;
       }
       return st.detail;
+    } },
+    { stage: 'memory', run: async () => {
+      await ctx.memorySystem.ready;
+      const c = ctx.memorySystem.check();
+      return c.level === 'bad' ? { ok: false, detail: c.detail } : `${ctx.memory.count()} facts, ${c.level === 'ok' ? 'meaning + keyword recall' : 'keyword recall'}`;
     } },
     { stage: 'pc', run: async () => `${(await pcAllowlist()).length} apps allowed` },
     { stage: 'timers', run: async () => { const r = ctx.scheduler.start(); return `${r.armed} set${r.fired ? `, ${r.fired} missed while off` : ''}`; } },

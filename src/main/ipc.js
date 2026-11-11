@@ -34,8 +34,10 @@ function registerIpc(ctx) {
 
   h('ai:send', text => send(String(text || '').slice(0, 200000)));
   h('ai:stop', () => { orchestrator.stop(); ctx.voice?.cancel(); });
-  h('ai:new', () => { const s = sessions.create(); sessions.save(s); ctx.sessionId = s.id; return s; });
-  h('ai:open', id => { const s = sessions.load(id); if (s) ctx.sessionId = s.id; return s || currentSession(); });
+  // leaving a chat lets memory summarize it (when it is ready and JARVIS is idle)
+  const switched = prev => { if (prev && prev !== ctx.sessionId) ctx.onSessionSwitch?.(prev); };
+  h('ai:new', () => { const prev = ctx.sessionId; const s = sessions.create(); sessions.save(s); ctx.sessionId = s.id; switched(prev); return s; });
+  h('ai:open', id => { const prev = ctx.sessionId; const s = sessions.load(id); if (s) ctx.sessionId = s.id; switched(prev); return s || currentSession(); });
   h('ai:current', () => currentSession());
   h('ai:clear', () => {
     if (orchestrator.busy) return currentSession();

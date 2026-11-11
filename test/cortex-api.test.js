@@ -143,3 +143,22 @@ test('cortex-api: touch counts flush on close', () => {
   assert.equal(d.node.get(vet).uses, 1);
   d.close();
 });
+
+test('cortex-api: nodes written before an embedder existed are embedded after a reopen with one (W1 E8)', async () => {
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const { createFakeEmbedder } = require('../src/core/cortex/embedder');
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'jcbf-')), 'cortex.db');
+  let c = cortexLib.open({ file });
+  const s = c.source.add({ kind: 'user', ref: 'x' });
+  for (const t of ['Rex is my dog', 'I live in Abilene', 'I like jazz']) c.node.upsert({ kind: 'fact', text: t, source: s });
+  c.node.upsert({ kind: 'track', text: 'Some song title', source: s });
+  c.close();
+  c = cortexLib.open({ file, embedder: createFakeEmbedder({ dim: 64 }) });
+  assert.equal(c.consolidate.queue, 3, 'only the kinds that get vectors');
+  for (let i = 0; i < 5 && c.consolidate.queue; i++) await c.consolidate.tick({ deadlineMs: 50 });
+  assert.equal(c.stats().vectors, 3);
+  c.close();
+  c = cortexLib.open({ file, embedder: createFakeEmbedder({ dim: 64 }) });
+  assert.equal(c.consolidate.queue, 0, 'nothing missing on the next open');
+  c.close();
+});

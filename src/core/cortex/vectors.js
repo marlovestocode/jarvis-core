@@ -122,6 +122,9 @@ function createVectors(db, { dim = 256, model = 'none' } = {}) {
     return prev !== null && (prev !== model || Number(prevDim) !== dim);
   }
   const staleCount = () => db.stmt('SELECT count(*) n FROM vec WHERE model IS NOT ? OR dim != ?').get(model, dim).n;
+  // live nodes of these kinds with no vector at all (written while no embedder was set), oldest first
+  const missingIds = (kinds, limit = 100000) => db.stmt(`SELECT n.id FROM node n WHERE n.status != 'archived' AND n.kind IN (SELECT value FROM json_each(?))
+    AND NOT EXISTS (SELECT 1 FROM vec v WHERE v.node_id = n.id) ORDER BY n.id LIMIT ?`).all(JSON.stringify(kinds), limit).map(r => r.id);
   const staleIds = (limit = 16) => db.stmt('SELECT node_id FROM vec WHERE model IS NOT ? OR dim != ? LIMIT ?').all(model, dim, limit).map(r => r.node_id);
 
   function stats() {
@@ -129,7 +132,7 @@ function createVectors(db, { dim = 256, model = 'none' } = {}) {
   }
   function trim() { m = null; }
 
-  return { dim, model, put, remove, search, has, warm, isWarm: () => !!m?.complete, markStaleIfModelChanged, staleCount, staleIds, stats, trim, forget: dropRow };
+  return { dim, model, put, remove, search, has, warm, isWarm: () => !!m?.complete, markStaleIfModelChanged, staleCount, staleIds, missingIds, stats, trim, forget: dropRow };
 }
 
 module.exports = { l2normalize, truncate, quantize, dequantize, dotI8, createVectors };

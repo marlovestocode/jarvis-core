@@ -51,6 +51,12 @@ function selfChecks(ctx, { fetch = globalThis.fetch } = {}) {
         + (w?.dropped ? `; ${w.dropped} stalled wallpaper connections dropped` : '');
       return m.level === 'ok' ? text : bad(`${m.level}: ${text}`);
     } },
+    // the cortex (long-term memory): opens, integrity, embedding model, index queue, last backup
+    { id: 'cortex', run: () => {
+      if (!ctx.memorySystem) return off('memory is not started');
+      const c = ctx.memorySystem.check();
+      return c.level === 'ok' ? c.detail : c.level === 'off' ? off(c.detail) : bad(c.detail);
+    } },
     { id: 'model', timeoutMs: 6000, run: async () => {
       const p = ctx.providers.get(cfg().provider);
       if (!p) return bad(`unknown provider "${cfg().provider}"`);

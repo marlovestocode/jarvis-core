@@ -11,7 +11,7 @@ const { createEvents } = require('./events');
 const { createVectors } = require('./vectors');
 const { withQueryCache } = require('./embedder');
 const { createRecall } = require('./recall');
-const { createConsolidate } = require('./consolidate');
+const { createConsolidate, EMBED_KINDS } = require('./consolidate');
 const { openChecked, createMaintenance, setMeta, getMeta } = require('./maintenance');
 
 const { CortexError } = guard;
@@ -35,6 +35,8 @@ function open({ file = ':memory:', log = () => {}, bus = null, embedder = null, 
   const maint = createMaintenance({ db, file, now, keep: backups, log, onWipe: () => vectors.trim() });
   const consolidate = createConsolidate({ db, vectors, edges, maintenance: maint, embedder, isIdle, now, log });
   const nodes = createNodes(db, { now, sources, onWrite: (id, kind) => consolidate.queue.push(id, kind) });
+  // nodes written while no embedder was set join the embed queue (W1 E8: the model was installed later)
+  if (embedder) { try { for (const id of vectors.missingIds([...EMBED_KINDS])) consolidate.queue.push(id); } catch (err) { log('cortex backfill: ' + err.message); } }
   const events = createEvents(db, { now });
   const queryVector = embedder ? withQueryCache(embedder).query : async () => null;
   const recaller = createRecall({ db, edges, vectors, queryVector, now, log });

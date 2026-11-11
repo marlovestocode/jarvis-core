@@ -4,7 +4,7 @@ class CortexError extends Error {
   constructor(code, message) { super(message || code); this.name = 'CortexError'; this.code = code; }
 }
 
-// Never keep secrets: passwords, keys, card-like numbers. Same pattern as src/core/memory/store.js (wave 1 removes that copy).
+// Never keep secrets: passwords, keys, card-like numbers. The one copy (the old memory store's was removed in wave 1).
 const SECRET = /\b(?:password|passcode|passphrase|pin\s*(?:code|number)?|api[\s_-]?key|secret|token|cvv|ssn|social security)\b|\b(?:\d[ -]?){13,19}\b/i;
 
 // Per-kind text caps (plan D10). The keys are the closed set of node kinds (plan D9).

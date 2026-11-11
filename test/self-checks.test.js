@@ -32,6 +32,7 @@ function fakeCtx(over = {}) {
     scheduler: { list: () => [{}, {}] },
     hotkeys: { failed: [], registered: ['Control+Space'] },
     memwatch: { check: () => ({ level: 'ok', rssMB: 60, peakMB: 60, warnMB: 400, components: {} }) },
+    memorySystem: { check: () => ({ level: 'ok', detail: 'ollama:nomic-embed-text@768; 12 nodes' }) },
     ...over,
   };
 }
@@ -95,4 +96,13 @@ test('selfChecks: real faults are problems, each with its reason', async () => {
     media: 'media host exited',
     hotkeys: 'taken by another app: Control+Space',
   });
+});
+
+test('selfChecks: cortex check ok / off / problem', async () => {
+  assert.equal((await run(fakeCtx())).cortex.detail, 'ollama:nomic-embed-text@768; 12 nodes');
+  const off = (await run(fakeCtx({ memorySystem: { check: () => ({ level: 'off', detail: 'nomic-embed-text is not installed' }) } }))).cortex;
+  assert.equal(off.state, 'off');
+  const bad = (await run(fakeCtx({ memorySystem: { check: () => ({ level: 'bad', detail: 'the cortex is read-only' }) } }))).cortex;
+  assert.deepEqual([bad.state, bad.detail], ['fail', 'the cortex is read-only']);
+  assert.equal((await run(fakeCtx({ memorySystem: null }))).cortex.state, 'off');
 });
