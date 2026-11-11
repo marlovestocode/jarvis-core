@@ -8,7 +8,7 @@ It talks only to JARVIS on this PC (`127.0.0.1:47830`), and JARVIS accepts only 
 1. Open Chrome and go to `chrome://extensions`.
 2. Turn on **Developer mode** (top right).
 3. Click **Load unpacked**.
-4. Pick this folder: `C:\Users\gdani\Projects\Apps\jarvis-core\extension`
+4. Pick the `extension` folder inside your jarvis-core clone.
 5. Check the card says **JARVIS for YouTube Music** with ID `kekfpeebafdohogkjmlnakddhbpednea`.
 6. Click the puzzle icon in the toolbar and pin the extension (optional, shows status).
 7. Restart JARVIS (tray icon → Quit, then start it again) so it opens the link.
