@@ -59,7 +59,7 @@ function createVectors(db, { dim = 256, model = 'none' } = {}) {
   // The matrix loads in node-id order, a slice at a time (warm), so the idle job never stalls on all of it at once;
   // search() completes a partial load. `upTo` = highest node id loaded so far.
   function loadSome(rows) {
-    if (!m) { m = alloc(Math.max(64, db.stmt('SELECT count(*) n FROM vec WHERE dim = ?').get(dim).n)); m.upTo = 0; m.complete = false; }
+    if (!m) { m = alloc(Math.max(64, rows)); m.upTo = 0; m.complete = false; }   // grows by doubling as slices arrive
     if (m.complete) return;
     const got = db.stmt('SELECT node_id, scale, v FROM vec WHERE dim = ? AND node_id > ? ORDER BY node_id LIMIT ?').all(dim, m.upTo, rows);
     for (const r of got) { if (!m.row.has(r.node_id)) append(r.node_id, r.scale, asI8(r.v)); m.upTo = r.node_id; }

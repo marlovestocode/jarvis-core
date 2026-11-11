@@ -4,8 +4,8 @@ Things the automated tests and the bench cannot prove. None of these is verified
 
 ## Needs your yes first
 
-- [ ] **Download the embedding model.** `ollama pull nomic-embed-text` (~270 MB). Not installed as of 2026-11-11.
-- [ ] **Real recall-quality check** (after the download, with the GPU free or JARVIS stopped):
+- [x] **Download the embedding model.** Pulled 2026-11-11 with your yes (274 MB).
+- [x] **Real recall-quality check** — done 2026-11-11: 256 → 0.773, 384 → 0.823, 512 → 0.855, 768 → 0.993 (PASS); default is 768. (after the download, with the GPU free or JARVIS stopped):
   `node scripts/cortex-quality.js --embedder ollama --dim 256` → must print `GATE PASS` (overlap@10 ≥ 0.95 between int8/256 and full float32).
   If it fails, rerun with `--dim 384`, then `--dim 512`, and use the smallest dim that passes (spec §6.3).
 
