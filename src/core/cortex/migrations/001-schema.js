@@ -39,7 +39,8 @@ module.exports = {
 
       CREATE TABLE vec(
         node_id INTEGER PRIMARY KEY REFERENCES node(id) ON DELETE CASCADE,
-        dim INTEGER NOT NULL, scale REAL NOT NULL, v BLOB NOT NULL);
+        dim INTEGER NOT NULL, scale REAL NOT NULL, v BLOB NOT NULL,
+        model TEXT);   -- embed model that made it; a different current model = stale (spec §6.2)
 
       CREATE TABLE event(
         id INTEGER PRIMARY KEY, at INTEGER NOT NULL, kind TEXT NOT NULL,
