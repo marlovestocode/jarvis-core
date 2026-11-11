@@ -7,7 +7,7 @@ const { toolDeps } = require('./helpers/tool-deps');
 const manifest = require('./fixtures/tool-manifest.json');
 
 // Tools added by later skill-group work (not part of the pre-migration snapshot)
-const ADDED = ['more_skills'];
+const ADDED = ['more_skills', 'recall_chats', 'memory_about'];   // recall_chats, memory_about: cortex wave 1
 const ORIGINAL_GROUPS = ['core', 'media', 'ytmusic', 'timers', 'knowledge', 'system', 'pc', 'math', 'memory'];
 const original = tools => tools.filter(t => manifest.some(m => m.name === t.name));
 
