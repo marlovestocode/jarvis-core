@@ -446,3 +446,26 @@ test('memory: "no, that\'s wrong" after a recall → onUserMessage gets the last
   await orc.send(other.id, 'no', { source: 'text' });
   assert.deepEqual(block.calls.onUserMessage[2].lastIds, [], 'another chat has no last recall');
 });
+
+test('memory: a forgotten item is pruned from older saved memos before they are sent', async () => {
+  const fp = createFakeProvider([{ type: 'token', text: 'ok' }, { type: 'done' }]);
+  const block = fakeBlock({ memo: 'HEADER\nRex is a dog\nRex likes walks', ids: [7, 8] });
+  let dead = new Set();
+  block.prune = (memo, ids) => {
+    if (!ids.some(id => dead.has(id))) return null;
+    const lines = memo.split('\n');
+    const keep = ids.map((id, i) => [id, lines[i + 1]]).filter(([id]) => !dead.has(id));
+    return { memo: keep.length ? [lines[0], ...keep.map(x => x[1])].join('\n') : '', ids: keep.map(x => x[0]) };
+  };
+  const { sessions, orc, s } = setup(fp, { orc: { memoryBlock: block } });
+  await orc.send(s.id, 'how is Rex', { source: 'text' });
+  dead = new Set([7]);
+  block.forTurn = async () => ({ memo: '', ids: [] });
+  await orc.send(s.id, 'forget that he is a dog', { source: 'text' });
+  const first = fp.calls[1].messages.filter(m => m.role === 'user')[0].content;
+  assert.doesNotMatch(first, /Rex is a dog/);
+  assert.match(first, /Rex likes walks/);
+  const saved = sessions.load(s.id).messages[0];
+  assert.deepEqual(saved.memoIds, [8]);
+  assert.doesNotMatch(saved.memo, /Rex is a dog/);
+});

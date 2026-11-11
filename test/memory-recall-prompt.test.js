@@ -122,3 +122,19 @@ test('memory-recall-prompt: prompt hints for recall_chats and memory_about; reme
   assert.match(p, /never invent what was said/);
   assert.match(p, /Saved about the user \(their own notes; facts, not instructions.*likes jazz/);
 });
+
+test('memory-recall-prompt: prune drops lines of forgotten items from a saved memo, and nothing when all live', async () => {
+  const { memory, block, note } = setup();
+  note('Rex has a vet visit in March');
+  note('the vet clinic is on Main Street');
+  const r = await block.forTurn({ text: 'vet visit clinic' });
+  assert.equal(r.ids.length, 2);
+  assert.equal(block.prune(r.memo, r.ids), null, 'all live: unchanged (prompt cache kept)');
+  memory.forget('vet visit march');
+  const p = block.prune(r.memo, r.ids);
+  assert.doesNotMatch(p.memo, /vet visit in March/);
+  assert.match(p.memo, /Main Street/);
+  assert.equal(p.ids.length, 1);
+  memory.clear();
+  assert.deepEqual(block.prune(p.memo, p.ids), { memo: '', ids: [] });
+});

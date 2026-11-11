@@ -225,7 +225,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
         const prev = s.messages.slice(0, turnStart).reverse().find(m => m.role === 'user');
         try {
           const r = await memoryBlock.forTurn({ text: String(text), previousUserText: prev ? String(prev.content) : '', brief: hints?.tools === false, profileIds: info.memoryIds || [] });
-          if (r?.memo) { s.messages[turnStart].memo = String(r.memo); recalled = r.ids || []; sessions.save(s); }
+          if (r?.memo) { s.messages[turnStart].memo = String(r.memo); s.messages[turnStart].memoIds = [...(r.ids || [])]; recalled = r.ids || []; sessions.save(s); }
         } catch (err) { bus.emit('log', { level: 'warn', text: `Memory recall failed: ${err?.message || err}` }); }
       }
       const t0 = Date.now();
@@ -258,6 +258,16 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
         }
         // the tool definitions are part of the prompt too; JSON costs more tokens per char than prose.
         // When they were left out, a full window made Ollama cut the start of the prompt (system prompt and tools), and the model answered nothing.
+        // a memo whose item was forgotten since loses that line (memory must not keep sending what the user removed)
+        if (memoryBlock?.prune) {
+          for (const m of s.messages) {
+            if (m.role !== 'user' || !m.memo || !Array.isArray(m.memoIds)) continue;
+            let p = null;
+            try { p = memoryBlock.prune(m.memo, m.memoIds); } catch { p = null; }
+            if (!p) continue;
+            if (p.memo) { m.memo = p.memo; m.memoIds = p.ids; } else { delete m.memo; delete m.memoIds; }
+          }
+        }
         const toolChars = useTools ? Math.ceil(JSON.stringify(useTools).length * TOOL_CHAR_WEIGHT) : 0;
         let window = fitWindow(s.messages.map((m, i) => (m.role === 'tool' ? { ...m, content: capText(m.content, i < turnStart ? TOOL_CHARS_OLD : TOOL_CHARS_NOW) }
           : m.role === 'user' && m.memo ? { ...m, content: `${m.content}

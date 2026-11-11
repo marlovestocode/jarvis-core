@@ -33,7 +33,19 @@ function createMemoryBlock({ cortex, memory, getConfig = () => ({}) }) {
     return true;
   }
 
-  return { profile, forTurn, afterTurn, onUserMessage };
+  // A saved memo keeps going to the model on every later turn of its chat. When one of its items was forgotten,
+  // deleted or wiped since, its line goes (this costs the prompt cache once). ids are in line order.
+  // → null when every item is still live, else { memo, ids } (memo '' when none is left)
+  function prune(memo, ids = []) {
+    const lines = String(memo ?? '').split('\n');
+    if (!ids.length || lines.length !== ids.length + 1) return null;
+    const live = ids.map(id => { try { return cortex.node.get(id)?.status === 'active'; } catch { return false; } });
+    if (live.every(Boolean)) return null;
+    const keep = ids.map((id, i) => [id, lines[i + 1]]).filter((_, i) => live[i]);
+    return { memo: keep.length ? [lines[0], ...keep.map(k => k[1])].join('\n') : '', ids: keep.map(k => k[0]) };
+  }
+
+  return { profile, forTurn, afterTurn, onUserMessage, prune };
 }
 
 module.exports = { createMemoryBlock, HEADER, MEMO_MAX };
