@@ -116,3 +116,44 @@ test('cortex timer store: an empty label is stored with the kind word as text an
   assert.equal(cortex.node.find({ kind: 'reminder', key: 'reminder:' + t.id }).text, 'timer');
   assert.equal(store().get(t.id).label, '');
 });
+
+test('cortex timer store: a failed archive write still drops the timer, so it fires once, not in a loop', () => {
+  const { cortex, clock } = setup();
+  const s = createCortexTimerStore({ cortex, now: clock.now, log: () => {} });
+  s.add(item({ due: T0 + 1000 }));
+  const failing = new Proxy(cortex, { get: (c, k) => (k === 'node' ? { ...c.node, update: () => { throw new Error('read only'); } } : c[k]) });
+  const store = createCortexTimerStore({ cortex: failing, now: clock.now, log: () => {} });
+  clock.skip(5000);
+  const bus = createBus();
+  const fired = [];
+  bus.on('timer', e => fired.push(e));
+  const timers = [];
+  const sch = createScheduler({ store, bus, now: clock.now, setTimer: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimer: () => {} });
+  sch.start();
+  for (let i = 0; i < 5 && timers.length; i++) timers.shift().fn();
+  assert.equal(fired.length, 1);
+  assert.deepEqual(store.list(), []);
+});
+
+test('cortex timer store: a reminder set in a tainted turn is not written with user trust', () => {
+  const { cortex, store } = setup();
+  const { runTainted } = require('../src/core/timers/taint');
+  const s = store();
+  const t = runTainted(true, () => s.add(item({ label: 'buy the book from that page' })));
+  const n = cortex.node.find({ kind: 'reminder', key: 'reminder:' + t.id });
+  assert.ok(n.sources.every(x => x.kind !== 'user' && x.kind !== 'tool'));
+  const clean = s.add(item({ label: 'water the plants' }));
+  assert.equal(cortex.node.find({ kind: 'reminder', key: 'reminder:' + clean.id }).sources[0].kind, 'user');
+});
+
+test('timers group: tools run inside the turn taint scope', async () => {
+  const { createGroup } = require('../src/core/skills/timers');
+  const { cortex, clock } = setup();
+  const s = createCortexTimerStore({ cortex, now: clock.now });
+  const sch = createScheduler({ store: s, bus: createBus(), now: clock.now, setTimer: () => 1, clearTimer: () => {} });
+  const g = createGroup({ scheduler: sch });
+  const remind = g.tools.find(t => t.name === 'set_reminder');
+  await remind.run({ text: 'read chapter two', in: '1 hour' }, { turn: { tainted: true } });
+  const n = cortex.node.list({ kind: 'reminder' })[0];
+  assert.notEqual(cortex.node.get(n.id).sources[0].kind, 'user');
+});

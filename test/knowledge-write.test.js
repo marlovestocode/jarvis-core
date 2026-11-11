@@ -133,7 +133,43 @@ test('knowledge keys: titles, sections and URLs (a wikipedia page maps to the ar
   const { k } = setup();
   assert.equal(k.keyFor({ host: 'wikipedia.org', title: 'Eiffel Tower' }), 'kn:wikipedia.org:eiffel-tower');
   assert.equal(k.keyFor({ host: 'wikipedia.org', title: 'Eiffel Tower', section: 'History' }), 'kn:wikipedia.org:eiffel-tower#history');
-  assert.deepEqual(k.keyForUrl('https://en.wikipedia.org/wiki/Eiffel_Tower'), { key: 'kn:wikipedia.org:eiffel-tower', host: 'en.wikipedia.org', title: 'Eiffel Tower' });
+  // a Wikipedia page read on the web is its own page, per language, not the wiki-API article
+  assert.equal(k.keyForUrl('https://en.wikipedia.org/wiki/Eiffel_Tower').key, 'kn:en.wikipedia.org:wiki-eiffel-tower');
+  assert.notEqual(k.keyForUrl('https://de.wikipedia.org/wiki/Berlin').key, k.keyForUrl('https://en.wikipedia.org/wiki/Berlin').key);
   assert.equal(k.keyForUrl('https://www.Example.com/News/Item?id=7').key, 'kn:example.com:news-item-id-7');
   assert.equal(k.keyForUrl('not a url'), null);
+});
+
+test('knowledge keys: never longer than 300 chars, so a long key is found again and refreshed in place', () => {
+  const { cortex, k } = setup();
+  const key = k.keyFor({ host: 'h'.repeat(120) + '.example.com', title: 'x'.repeat(200), section: 'y'.repeat(200) });
+  assert.ok(key.length <= 300, String(key.length));
+  assert.notEqual(key, k.keyFor({ host: 'h'.repeat(120) + '.example.com', title: 'x'.repeat(200), section: 'z'.repeat(200) }));
+  for (let i = 0; i < 3; i++) k.save(wiki({ key, text: PASSAGE + ' ' + i }));
+  assert.equal(cortex.node.list({ kind: 'knowledge', status: null, limit: 100 }).length, 1);
+  assert.ok(k.get(key));
+});
+
+test('knowledge volatile: relative dates and results are current things', () => {
+  const { k } = setup();
+  for (const q of ['who won the game last night', 'match results yesterday', 'what is on tomorrow', 'upcoming concerts this weekend', 'nba schedule', 'news about mars']) assert.equal(k.classify(q), 'volatile', q);
+});
+
+test('knowledge conflicts: a contradicting node past its TTL is no longer reported', () => {
+  const { k, clock } = setup();
+  k.save(wiki());
+  k.save(wiki({ sourceKind: 'web', ttlClass: 'news-ish', tool: 'web_open', text: 'The Eiffel Tower is 300 metres tall and painted gold.' }));
+  assert.equal(k.get('kn:wikipedia.org:eiffel-tower').conflicts.length, 1);
+  clock.skip(4 * 864e5);
+  assert.equal(k.get('kn:wikipedia.org:eiffel-tower').conflicts.length, 0);
+});
+
+test('knowledge conflicts: the instruction to tell the user is outside the quoted source text', () => {
+  const { k } = setup();
+  k.save(wiki());
+  k.save(wiki({ sourceKind: 'web', ttlClass: 'news-ish', tool: 'web_open', text: 'The Eiffel Tower is 300 metres tall.' }));
+  const hit = k.get('kn:wikipedia.org:eiffel-tower');
+  assert.doesNotMatch(k.conflictNote(hit), /Tell the user/);
+  assert.match(k.conflictAdvice(hit), /tell the user both/i);
+  assert.equal(k.conflictAdvice({ conflicts: [] }), '');
 });

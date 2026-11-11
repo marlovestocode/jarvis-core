@@ -19,15 +19,19 @@ function focusText(text, focus, max) {
   return out.trim();
 }
 
-// knowledge (optional, cortex wave 3): a search or page read in the last 3 days is answered from memory, with its age;
-// a volatile search (latest, price, score…) always goes online and is not kept. When the web is off or the network
-// fails, an older copy is given as "last known". A refused query (personal details, limits) is never answered around.
+// knowledge (optional, cortex wave 3): a page read in the last 3 days is answered from memory, with its age, when the
+// focus words are in it. Searches are kept but never served fresh from memory (a reused search leaves nothing web_open
+// may follow); a volatile search (latest, price, score…) is not kept. When the web is off or the network fails, an
+// older copy is given as "last known". A refused query (personal details, limits) is never answered around.
 const { MEMORY_NOTE } = require('../knowledge/store');
 const KEEP_MAX = 2000;
 const fallsBack = (web, err) => !web.enabled?.() || err?.code !== 'REFUSED';
 
 function createWebTools({ web, knowledge = null }) {
-  const remembered = (hit, tool, tail) => { knowledge.reused(hit, tool); return wrap(knowledge.label(hit), hit.text + knowledge.conflictNote(hit)) + MEMORY_NOTE + tail; };
+  const remembered = (hit, tool, tail) => {
+    knowledge.reused(hit, tool);
+    return wrap(knowledge.label(hit), hit.text + knowledge.conflictNote(hit)) + MEMORY_NOTE + knowledge.conflictAdvice(hit) + tail;
+  };
   const SEARCH_TAIL = '\nSnippets are often enough. Open a page with web_open only if they are not, name the sites you used in your answer, and say when sources disagree.';
   const search = {
     name: 'web_search',
@@ -38,8 +42,6 @@ function createWebTools({ web, knowledge = null }) {
       const q = String(query ?? '').trim();
       const live = knowledge && q && knowledge.classify(q) !== 'volatile';
       const key = live ? knowledge.keyFor({ host: 'search', title: q }) : null;
-      const fresh = live ? (knowledge.get(key) || await knowledge.find(q)) : null;
-      if (fresh) return remembered(fresh, 'web_search', SEARCH_TAIL);
       let results;
       try { results = await web.search(query); } catch (err) {
         const old = live && fallsBack(web, err) ? (knowledge.get(key, { allowStale: true }) || await knowledge.find(q, { allowStale: true })) : null;
@@ -65,7 +67,8 @@ function createWebTools({ web, knowledge = null }) {
       const at = knowledge ? knowledge.keyForUrl(url) : null;
       const live = !!at && knowledge.classify(focus) !== 'volatile';
       const fresh = live ? knowledge.get(at.key) : null;
-      if (fresh) return remembered(fresh, 'web_open', `\nName ${fresh.host} as the source.`);
+      const has = fresh ? new Set(words(fresh.text)) : null;
+      if (fresh && words(focus).every(w => has.has(w))) return remembered(fresh, 'web_open', `\nName ${fresh.host} as the source.`);
       let p;
       try { p = await web.open(url); } catch (err) {
         const old = live && fallsBack(web, err) ? knowledge.get(at.key, { allowStale: true }) : null;
@@ -73,14 +76,15 @@ function createWebTools({ web, knowledge = null }) {
         throw err;
       }
       const body = focusText(p.text, focus, PAGE_MAX - 200) || '(the page has no readable text)';
-      let note = '';
+      let saved = null;
       if (live && p.text) {
         // what is kept is the page's first readable text (≤ 2,000), not the focus pick, so a later question can use it too
         const r = knowledge.save({ key: at.key, host: p.host || at.host, title: at.title || p.title || p.host, url: String(url), text: `${p.title ? p.title + '\n' : ''}${p.text}`.slice(0, KEEP_MAX + 200),
           sourceKind: 'web', ttlClass: 'news-ish', tool: 'web_open', query: focus });
-        if (r.id) note = knowledge.conflictNote(knowledge.byId(r.id));
+        if (r.id) saved = knowledge.byId(r.id);
       }
-      return wrap(`${p.host}: ${p.title || 'page'}`, `${p.title ? p.title + '\n' : ''}${body}${p.truncated ? '\n[page cut short]' : ''}${note}`) + `\nName ${p.host} as the source.`;
+      const note = saved ? knowledge.conflictNote(saved) : '', advice = saved ? knowledge.conflictAdvice(saved) : '';
+      return wrap(`${p.host}: ${p.title || 'page'}`, `${p.title ? p.title + '\n' : ''}${body}${p.truncated ? '\n[page cut short]' : ''}${note}`) + advice + `\nName ${p.host} as the source.`;
     },
   };
   return [search, open];

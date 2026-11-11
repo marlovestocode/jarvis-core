@@ -55,7 +55,7 @@ test('knowledge reuse: the same question after a restart makes no network call a
   await w.boot().run('lookup_knowledge', { query: 'Peace of Westphalia' });
   w.clock.skip(2 * DAY);
   const { run, net } = w.boot();
-  const r = await run('lookup_knowledge', { query: 'When was the Peace of Westphalia signed?' });
+  const r = await run('lookup_knowledge', { query: 'What was the Peace of Westphalia?' });
   assert.equal(net.calls.length, 0);
   assert.match(r.text, /SOURCE DATA \(Wikipedia, from memory, fetched 2 days ago\)/);
   assert.ok(r.text.includes(w.cortex.node.find({ kind: 'knowledge', key: 'kn:wikipedia.org:peace-of-westphalia' }).text));
@@ -139,16 +139,32 @@ test('knowledge reuse: a volatile question is never served from memory', async (
   assert.ok(net.calls.length > 0);
 });
 
-test('knowledge reuse: a conflict is told in the reused answer', async () => {
+test('knowledge reuse: a conflict is told in the reused answer, with the instruction outside the quoted text', async () => {
   const w = world();
   await w.boot().run('lookup_knowledge', { query: 'Peace of Westphalia' });
-  w.knowledge.save({ key: 'kn:wikipedia.org:peace-of-westphalia', host: 'en.wikipedia.org', title: 'Peace of Westphalia', url: 'https://en.wikipedia.org/wiki/Peace_of_Westphalia', text: 'The Peace of Westphalia was signed in 1748.', sourceKind: 'web', ttlClass: 'news-ish', tool: 'web_open' });
+  w.knowledge.save({ key: 'kn:wikipedia.org:peace-of-westphalia', host: 'en.wikipedia.org', title: 'Peace of Westphalia', url: 'https://example.org/westphalia', text: 'The Peace of Westphalia was signed in 1748.', sourceKind: 'web', ttlClass: 'news-ish', tool: 'web_open' });
   const r = await w.boot().run('lookup_knowledge', { query: 'Peace of Westphalia' });
   assert.match(r.text, /from memory/);
-  assert.match(r.text, /Another source \(web, en\.wikipedia\.org\) says differently: "The Peace of Westphalia was signed in 1748\."/);
+  assert.match(r.text, /Another source \(web, example\.org\) says differently: "The Peace of Westphalia was signed in 1748\."/);
+  const after = r.text.slice(r.text.lastIndexOf('"""') + 3);
+  assert.match(after, /tell the user both/i);
 });
 
-// E5: labeled queries — a question that shares one word with a stored node is not answered from it
+test('knowledge reuse: a different question about a stored article is not answered from a passage that lacks its words', async () => {
+  const w = world();
+  w.knowledge.save({ key: 'kn:wikipedia.org:eiffel-tower', host: 'wikipedia.org', title: 'Eiffel Tower', url: 'https://en.wikipedia.org/wiki/Eiffel_Tower', text: '[Eiffel Tower › Design] The design of the Eiffel Tower is attributed to Maurice Koechlin and Emile Nouguier.', sourceKind: 'wiki', ttlClass: 'stable', tool: 'lookup_knowledge' });
+  assert.equal(await w.knowledge.find('how tall is the Eiffel Tower'), null);
+  assert.equal(await w.knowledge.find('when was the Eiffel Tower painted'), null);
+  assert.ok(await w.knowledge.find('eiffel tower design'));
+});
+
+test('knowledge reuse: a lookup from memory points the model to read_article when it is not enough', async () => {
+  const w = world();
+  await w.boot().run('lookup_knowledge', { query: 'Peace of Westphalia' });
+  assert.match((await w.boot().run('lookup_knowledge', { query: 'Peace of Westphalia' })).text, /read_article/);
+});
+
+// E5: labeled queries — every content word of the question must be in the stored title or text
 test('knowledge reuse: labeled queries are classified right (θ and word coverage)', async () => {
   const w = world();
   const docs = {
@@ -163,10 +179,11 @@ test('knowledge reuse: labeled queries are classified right (θ and word coverag
     const r = w.knowledge.save({ key: w.knowledge.keyFor({ host: 'wikipedia.org', title }), host: 'wikipedia.org', title, url: 'https://en.wikipedia.org/wiki/' + title.replace(/ /g, '_'), text, sourceKind: 'wiki', ttlClass: 'stable', tool: 'lookup_knowledge' });
     assert.ok(r.id, title);
   }
-  const hit = { 'how tall is the eiffel tower': 'Eiffel Tower', 'peace of westphalia year': 'Peace of Westphalia', 'mount everest height': 'Mount Everest',
+  const hit = { 'how tall is the eiffel tower': 'Eiffel Tower', 'when was the peace of westphalia signed': 'Peace of Westphalia', 'how high is mount everest': 'Mount Everest',
     'who was marie curie': 'Marie Curie', 'python programming language': 'Python (programming language)', 'great wall of china length': 'Great Wall of China' };
   for (const [q, title] of Object.entries(hit)) assert.equal((await w.knowledge.find(q))?.title, title, q);
-  for (const q of ['tower of london', 'london bridge', 'who was pierre curie', 'everest college tuition', 'china population', 'monty python films']) {
+  for (const q of ['tower of london', 'london bridge', 'who was pierre curie', 'everest college tuition', 'china population', 'monty python films',
+    'peace of westphalia year', 'eiffel tower architect']) {
     assert.equal(await w.knowledge.find(q), null, q);
   }
 });
@@ -214,7 +231,8 @@ function webWorld() {
   return { ...w, web, search, open };
 }
 
-test('web reuse: a search is stored and the same search again makes no web call', async () => {
+
+test('web reuse: a search is stored but the same search goes online again (a reused search could not be followed by web_open)', async () => {
   const w = webWorld();
   const a = await w.search.run({ query: 'eiffel tower height' });
   assert.match(a, /web search: eiffel tower height/);
@@ -223,9 +241,8 @@ test('web reuse: a search is stored and the same search again makes no web call'
   assert.equal(n.data.ttlClass, 'news-ish');
   assert.equal(n.sources[0].kind, 'web');
   const b = await w.search.run({ query: 'eiffel tower height' });
-  assert.equal(w.web.searches, 1);
-  assert.match(b, /from memory, fetched just now/);
-  assert.match(b, /Eiffel Tower - Wikipedia/);
+  assert.equal(w.web.searches, 2);
+  assert.doesNotMatch(b, /from memory/);
 });
 
 test('web reuse: a volatile search is not stored and goes online every time', async () => {
@@ -260,16 +277,26 @@ test('web reuse: a page longer than 2,000 chars is stored cut', async () => {
   assert.ok(n.text.length <= 2000 && n.text.length > 1500);
 });
 
-test('web reuse: a Wikipedia page opened on the web after a wiki lookup contradicts it, and says so', async () => {
+
+test('web reuse: a stored page is not reused when the focus words are not in it', async () => {
+  const w = webWorld();
+  await w.open.run({ url: 'https://example.com/eiffel' });
+  await w.open.run({ url: 'https://example.com/eiffel', focus: 'gold tall' });
+  assert.equal(w.web.opens, 1);
+  await w.open.run({ url: 'https://example.com/eiffel', focus: 'architect' });
+  assert.equal(w.web.opens, 2);
+});
+
+test('web reuse: a Wikipedia page opened on the web keeps its own key; the wiki article is untouched and not contradicted', async () => {
   const w = webWorld();
   w.knowledge.save({ key: 'kn:wikipedia.org:eiffel-tower', host: 'wikipedia.org', title: 'Eiffel Tower', url: 'https://en.wikipedia.org/wiki/Eiffel_Tower', text: 'The Eiffel Tower is 330 metres tall.', sourceKind: 'wiki', ttlClass: 'stable', tool: 'lookup_knowledge' });
-  w.clock.skip(100 * DAY);   // the wiki node is stale, so the page is read from the web
   const r = await w.open.run({ url: 'https://en.wikipedia.org/wiki/Eiffel_Tower' });
   assert.equal(w.web.opens, 1);
+  assert.doesNotMatch(r, /says differently/);
   const wiki = w.cortex.node.find({ kind: 'knowledge', key: 'kn:wikipedia.org:eiffel-tower' });
   assert.equal(wiki.text, 'The Eiffel Tower is 330 metres tall.');
-  assert.equal(w.cortex.neighbors(wiki.id, { types: ['contradicts'] }).length, 1);
-  assert.match(r, /Another source \(wikipedia, en\.wikipedia\.org\) says differently: "The Eiffel Tower is 330 metres tall\."/);
+  assert.equal(w.cortex.neighbors(wiki.id, { types: ['contradicts'] }).length, 0);
+  assert.ok(w.cortex.node.find({ kind: 'knowledge', key: 'kn:en.wikipedia.org:wiki-eiffel-tower' }));
 });
 
 test('web reuse: web switched off with a stale stored search → last known', async () => {
@@ -296,15 +323,15 @@ test('web reuse: the web skill group hands the store to its tools', async () => 
   const web = fakeWeb();
   const g = createGroup({ web, knowledge: w.knowledge });
   const runner = createToolRunner(g.tools);
-  await runner.run('web_search', { query: 'eiffel tower height' });
-  await runner.run('web_search', { query: 'eiffel tower height' });
-  assert.equal(web.searches, 1);
+  await runner.run('web_open', { url: 'https://example.com/eiffel' });
+  await runner.run('web_open', { url: 'https://example.com/eiffel' });
+  assert.equal(web.opens, 1);
 });
 
 test('knowledge reuse: an answer from memory tells the model to say so and how old it is', async () => {
   const w = webWorld();
-  await w.search.run({ query: 'eiffel tower height' });
-  assert.match(await w.search.run({ query: 'eiffel tower height' }), /From memory: tell the user it comes from what you looked up earlier, and how old it is\./);
+  await w.open.run({ url: 'https://example.com/eiffel' });
+  assert.match(await w.open.run({ url: 'https://example.com/eiffel' }), /From memory: tell the user it comes from what you looked up earlier, and how old it is\./);
   await w.boot().run('lookup_knowledge', { query: 'Peace of Westphalia' });
   assert.match((await w.boot().run('lookup_knowledge', { query: 'Peace of Westphalia' })).text, /From memory: tell the user/);
 });

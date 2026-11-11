@@ -4,6 +4,7 @@
 // event. add() returns only once a re-read finds the node committed: that is the "persisted before we say it is set" check.
 // A reminder whose label names a known person, pet, place or project (wave 1 entities) is linked about it. No model call.
 const { KINDS } = require('./store');
+const { isTainted } = require('./taint');
 
 const LATE_MS = 60e3;
 const PAGE = 1000;
@@ -26,6 +27,10 @@ function fromNode(n) {
 }
 function userSource(cortex) {
   return cortex.source.find({ kind: 'user', ref: 'timers' }) ?? cortex.source.add({ kind: 'user', ref: 'timers', title: 'timers and reminders' });
+}
+// a reminder set in a tainted turn (it read outside text) gets web trust, never the user's (cortex wave 3 review)
+function taintedSource(cortex) {
+  return cortex.source.find({ kind: 'web', ref: 'timers:read-text' }) ?? cortex.source.add({ kind: 'web', ref: 'timers:read-text', title: 'reminders set after reading outside text' });
 }
 function listAll(cortex, kind, status) {
   const out = [];
@@ -65,7 +70,8 @@ function createCortexTimerStore({ cortex, now = Date.now, log = () => {} }) {
     try {
       if (!cortex.health().ok) throw new Error('the memory store is not available (it is running in memory or read-only)');
       const n = toNode(rec);
-      cortex.node.upsert({ ...n, source: userSource(cortex) });
+      const tainted = isTainted();
+      cortex.node.upsert({ ...n, source: tainted ? taintedSource(cortex) : userSource(cortex), tainted });
       const back = cortex.node.find({ kind: 'reminder', key: n.key });
       if (!back || back.status !== 'active') throw new Error('not in the store after write');
       id = back.id;
@@ -82,16 +88,17 @@ function createCortexTimerStore({ cortex, now = Date.now, log = () => {} }) {
   function remove(id) {
     const t = timers.find(x => x.id === id);
     if (!t) return false;
-    const n = cortex.node.find({ kind: 'reminder', key: 'reminder:' + id });
-    if (n && n.status === 'active') {
-      const at = now(), fired = t.due <= at;
-      const data = { ...(n.data || {}), state: fired ? 'fired' : 'cancelled', ...(fired ? { firedAt: iso(at) } : {}) };
-      cortex.node.update(n.id, { data, status: 'archived' }, { source: userSource(cortex) });
-      if (fired) {
-        try { cortex.event.add({ kind: 'reminder_fired', nodeId: n.id, payload: { timerId: id, late: at - t.due > LATE_MS } }); } catch (err) { log(`reminder_fired event: ${err.message}`); }
-      }
-    }
+    // dropped from the list first: a write that fails (read-only cortex) must not make the scheduler fire it again and again
     timers = timers.filter(x => x.id !== id);
+    try {
+      const n = cortex.node.find({ kind: 'reminder', key: 'reminder:' + id });
+      if (n && n.status === 'active') {
+        const at = now(), fired = t.due <= at;
+        const data = { ...(n.data || {}), state: fired ? 'fired' : 'cancelled', ...(fired ? { firedAt: iso(at) } : {}) };
+        cortex.node.update(n.id, { data, status: 'archived' }, { source: userSource(cortex) });
+        if (fired) cortex.event.add({ kind: 'reminder_fired', nodeId: n.id, payload: { timerId: id, late: at - t.due > LATE_MS } });
+      }
+    } catch (err) { log(`timer ${id} left the list but its node could not be updated: ${err.message}`); }
     return true;
   }
 

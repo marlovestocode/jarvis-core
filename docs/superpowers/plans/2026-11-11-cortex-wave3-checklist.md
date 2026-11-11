@@ -23,9 +23,11 @@ Never run `eval/run.js` or anything that loads a model on the GPU while JARVIS i
 - [ ] With the offline library NOT installed (or for a topic it lacks): ask "who was Ada Lovelace?" → looked up online (the turn shows a Wikipedia lookup). Ask it again in a new chat → the answer says it is from memory and how long ago it was fetched, and no online lookup is shown for that turn ("from memory").
 - [ ] With the offline library installed: a topic it has is answered from the library and nothing new appears in the cortex for it.
 - [ ] Switch online lookups off in Settings, ask a question looked up earlier → answered from memory; for one older than 90 days (or edit the clock): "last known, from <date>".
-- [ ] "Search the web for the height of the Eiffel Tower", then the same search again within 3 days → the second answer is from memory; no new line in the web audit log.
+- [ ] "Search the web for the height of the Eiffel Tower", open one result, then ask about that page again within 3 days → the page answer is from memory (no new page read in the web audit log); the search itself goes online again and its results can be opened.
+- [ ] Ask a different question about an article looked up before (e.g. its height after its history) → goes online, not a wrong passage from memory.
+- [ ] Read a page or file, then "remind me about it tomorrow" → the reminder is set; in Settings → Memory its source is not "you said it".
 - [ ] "Search the web for the latest iPhone price" twice → both go online (current things are never kept).
-- [ ] Open a Wikipedia page through web search after asking the same topic through Wikipedia, with differing text → the answer names both sources and says they differ.
+- [ ] Two sites that disagree on a fact → the answer names both sources (the model’s rule; JARVIS links a conflict on his own only when a lower-trust source writes the same stored slot, which no tool does yet).
 - [ ] Weather, news headlines and sports scores still answer live (nothing about them in the cortex: the Memory tab's Connections show no weather or score nodes).
 - [ ] The web audit log and the network indicator show no request for a question answered from memory.
 

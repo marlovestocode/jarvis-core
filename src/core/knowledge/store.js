@@ -7,13 +7,16 @@ const { ftsTokens } = require('../cortex/guard');
 const { recency } = require('../cortex/recall');
 const { entityKey } = require('../memory/facts');
 const { describeAge } = require('./age');
+const { createHash } = require('node:crypto');
 
 const DAY = 864e5;
 const TTL = Object.freeze({ stable: 90 * DAY, 'news-ish': 3 * DAY });
 const MAX_TEXT = 2000, MAX_QUOTE = 240, MAX_SLUG = 120;
-const REUSE_THETA = 0.55, REUSE_MAX = 1.3, REUSE_COVERAGE = 2 / 3, RECALL_BUDGET = 6000;
-// current things: a price, a score, "the latest" — never stored, only logged (plan E4)
-const VOLATILE = /\b(?:latest|current(?:ly)?|today|tonight|right now|now|this (?:week|morning|afternoon|evening)|breaking|live|price|prices|cost|stock|shares?|exchange rate|score|scores|weather|forecast)\b/i;
+// every content word of the question must be in the stored title or text (review fix: 2/3 served passages ranked
+// for another question about the same article)
+const REUSE_THETA = 0.55, REUSE_MAX = 1.3, REUSE_COVERAGE = 1, RECALL_BUDGET = 6000, MAX_KEY = 300;
+// current things: a price, a score, "the latest", a relative date — never stored, only logged (plan E4)
+const VOLATILE = /\b(?:latest|current(?:ly)?|today|tonight|yesterday|tomorrow|last night|right now|now|this (?:week|weekend|morning|afternoon|evening)|breaking|live|price|prices|cost|stock|shares?|exchange rate|score|scores|results?|won|upcoming|schedule|news|weather|forecast)\b/i;
 const SOURCE_KINDS = new Set(['wiki', 'web']);
 // after a stored answer, outside the quoted source text: the model must say where it came from and its age (W3 §5)
 const MEMORY_NOTE = '\nFrom memory: tell the user it comes from what you looked up earlier, and how old it is.';
@@ -32,20 +35,16 @@ const words = s => new Set(String(s ?? '').toLowerCase().split(/[^\p{L}\p{N}]+/u
 function createKnowledgeStore({ cortex, now = Date.now, log = () => {}, bus = null }) {
   const classify = text => (VOLATILE.test(String(text ?? '')) ? 'volatile' : null);
 
-  const keyFor = ({ host, title, section } = {}) => `kn:${host}:${slug(title)}${section === undefined || section === null ? '' : '#' + (slug(section) || 'article')}`;
+  // the cortex keeps keys to 300 chars: a longer one is cut and ends in a hash of the whole, so it is found again
+  const capKey = k => (k.length <= MAX_KEY ? k : k.slice(0, MAX_KEY - 17) + '~' + createHash('sha1').update(k).digest('hex').slice(0, 16));
+  const keyFor = ({ host, title, section } = {}) => capKey(`kn:${host}:${slug(title)}${section === undefined || section === null ? '' : '#' + (slug(section) || 'article')}`);
 
-  // a page address → its key; a Wikipedia article page shares the key of the same article read through the wiki API
+  // a page address → its key. A Wikipedia page read on the web is its own page (per language), not the wiki-API article.
   function keyForUrl(url) {
     let u;
     try { u = new URL(String(url)); } catch { return null; }
     const host = u.hostname.toLowerCase().replace(/^www\./, '');
-    const m = /(^|\.)wikipedia\.org$/.test(host) && u.pathname.match(/^\/wiki\/([^/]+)$/);
-    if (m) {
-      let title;
-      try { title = decodeURIComponent(m[1]).replace(/_/g, ' '); } catch { title = m[1].replace(/_/g, ' '); }
-      return { key: keyFor({ host: 'wikipedia.org', title }), host, title };
-    }
-    return { key: `kn:${host}:${slug(u.pathname + u.search) || 'home'}`, host };
+    return { key: capKey(`kn:${host}:${slug(u.pathname + u.search) || 'home'}`), host };
   }
 
   const event = payload => { try { cortex.event.add({ kind: 'lookup', nodeId: payload.nodeId ?? null, payload: { ...payload, nodeId: undefined } }); } catch (err) { log('knowledge event: ' + err.message); } };
@@ -92,17 +91,19 @@ function createKnowledgeStore({ cortex, now = Date.now, log = () => {}, bus = nu
     }
   }
 
+  const fetchedOf = n => { const at = Date.parse(n.data?.fetchedAt); return Number.isFinite(at) ? at : n.updated; };
+  const staleNode = n => now() - fetchedOf(n) > (TTL[n.data?.ttlClass] ?? TTL['news-ish']);
+
   function toHit(n) {
     if (!n || n.kind !== 'knowledge') return null;
     const d = n.data || {};
-    const at = Date.parse(d.fetchedAt);
-    const fetchedAt = Number.isFinite(at) ? at : n.updated;
+    const fetchedAt = fetchedOf(n);
     const ageMs = Math.max(0, now() - fetchedAt);
     const conflicts = [];
     try {
       for (const e of cortex.neighbors(n.id, { types: ['contradicts'], limit: 5 })) {
         const o = cortex.node.get(e.id);
-        if (!o || o.status !== 'active' || o.kind !== 'knowledge') continue;
+        if (!o || o.status !== 'active' || o.kind !== 'knowledge' || staleNode(o)) continue;   // an expired claim is not reported
         conflicts.push({ sourceKind: topKind(o), host: hostOf(o.data?.url) || 'unknown site', quote: (o.sources?.[0]?.quote || o.text).slice(0, MAX_QUOTE) });
       }
     } catch (err) { log('knowledge conflicts: ' + err.message); }
@@ -126,7 +127,8 @@ function createKnowledgeStore({ cortex, now = Date.now, log = () => {}, bus = nu
   }
 
   // the best confident stored answer to a question (plan E5): relevance (recall score without its recency decay,
-  // since freshness is the TTL's job) ≥ θ of the max, and ≥ 2/3 of the question's words in the node's title and text
+  // since freshness is the TTL's job) ≥ θ of the max, and every content word of the question in the node's title or text.
+  // A stored web search is only ever "last known": a search from memory leaves nothing web_open may follow.
   async function find(query, { allowStale = false } = {}) {
     const toks = ftsTokens(query);
     if (!toks.length) return null;
@@ -136,6 +138,7 @@ function createKnowledgeStore({ cortex, now = Date.now, log = () => {}, bus = nu
       for (const it of r.items) {
         const n = cortex.node.get(it.id);
         if (!n || n.status !== 'active') continue;
+        if (!allowStale && String(n.key).startsWith('kn:search:')) continue;
         if (it.score / recency(n.last_used ?? n.updated, now()) < REUSE_THETA * REUSE_MAX) continue;
         const have = words(`${n.data?.title || ''} ${n.text}`);
         if (toks.filter(w => have.has(w)).length < need) continue;
@@ -152,7 +155,9 @@ function createKnowledgeStore({ cortex, now = Date.now, log = () => {}, bus = nu
     : `${name(hit)}, from memory, fetched ${describeAge(hit.ageMs)}`);
 
   const conflictNote = hit => (hit?.conflicts || []).map(c =>
-    `\nAnother source (${c.sourceKind === 'wiki' ? 'wikipedia' : 'web'}, ${c.host}) says differently: "${c.quote.replace(/"""/g, '"')}". Tell the user both and which is more reliable.`).join('');
+    `\nAnother source (${c.sourceKind === 'wiki' ? 'wikipedia' : 'web'}, ${c.host}) says differently: "${c.quote.replace(/"""/g, '"')}".`).join('');
+  // the instruction goes after the quoted source text, where the model reads instructions (not inside the data)
+  const conflictAdvice = hit => (hit?.conflicts?.length ? '\nThe sources disagree: tell the user both and which is more reliable.' : '');
 
   // a served hit counts as a reuse: uses +1, an event, and a 'net' event the turn shows as "from memory"
   function reused(hit, tool) {
@@ -161,7 +166,7 @@ function createKnowledgeStore({ cortex, now = Date.now, log = () => {}, bus = nu
     try { bus?.emit('net', { source: 'cortex', host: hit.host, ok: true, cached: true, ageMs: hit.ageMs, stale: hit.stale }); } catch { /* listeners */ }
   }
 
-  return { classify, keyFor, keyForUrl, save, get, byId, find, label, conflictNote, reused, TTL };
+  return { classify, keyFor, keyForUrl, save, get, byId, find, label, conflictNote, conflictAdvice, reused, TTL };
 }
 
 module.exports = { createKnowledgeStore, REUSE_THETA, REUSE_COVERAGE, TTL, MEMORY_NOTE };

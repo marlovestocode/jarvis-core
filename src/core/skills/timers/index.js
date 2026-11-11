@@ -1,5 +1,6 @@
 const { createTimerTools } = require('../../tools/timers');
 const { own } = require('../util');
+const { runTainted } = require('../../timers/taint');
 
 const ALIASES = {
   set_timer: ['timer', 'start_timer', 'create_timer'],
@@ -13,7 +14,7 @@ function createGroup({ scheduler } = {}) {
   const tools = scheduler ? createTimerTools({ scheduler }) : [];
   return { id: 'timers', label: 'Timers, alarms and reminders', triggers: [
     { words: ['timer', 'timers', 'alarm', 'alarms', 'remind', 'reminder', 'reminders', 'wake me'], w: 3 },
-  ], tools: tools.map(t => own(t, ALIASES[t.name] || [])) };
+  ], tools: tools.map(t => own({ ...t, run: (args, ctx) => runTainted(!!ctx?.turn?.tainted, () => t.run(args, ctx)) }, ALIASES[t.name] || [])) };
 }
 
 module.exports = { createGroup };

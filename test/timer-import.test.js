@@ -94,3 +94,16 @@ test('timer import: a cortex running in memory imports nothing and leaves the fi
   assert.equal(importTimersJson({ cortex, file }).unavailable, true);
   assert.ok(fs.existsSync(file));
 });
+
+test('timer import: a label the guard refuses still imports (neutral label) and a long label is cut, so no reminder is lost', () => {
+  const long = 'pick up ' + 'the groceries and '.repeat(15) + 'milk';
+  const { file, cortex } = setup(JSON.stringify({ timers: [
+    { id: 'tsec', kind: 'reminder', label: 'reset my bank password', due: T0 + 3600e3, created: T0 },
+    { id: 'tlong', kind: 'reminder', label: long, due: T0 + 3600e3, created: T0 },
+  ] }));
+  assert.deepEqual(importTimersJson({ cortex, file, now: () => T0, log: () => {} }), { imported: 2, skipped: 0 });
+  const store = createCortexTimerStore({ cortex, now: () => T0 });
+  assert.match(store.get('tsec').label, /label not kept/);
+  assert.ok(store.get('tlong').label.length <= 200);
+  assert.ok(long.startsWith(store.get('tlong').label));
+});

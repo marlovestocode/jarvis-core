@@ -9,6 +9,7 @@ const { searchWikiOnline, summaryOnline, articleHtmlOnline } = require('../knowl
 const { toPassages, rank, formatPassages, keyWords } = require('../knowledge/passages');
 const { describeAge } = require('../knowledge/age');
 const { MEMORY_NOTE } = require('../knowledge/store');
+const LOOKUP_MORE = '\nIf these passages do not answer the question, use read_article on the article for more of it.';
 
 const BODY_MAX = 2400;
 const OFF = /lookups are off/;
@@ -77,17 +78,24 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus, knowledge = null
   }
 
   const onlineOff = () => { const c = getConfig(); return c.online?.enabled === false || c.online?.wiki === false; };
-  const fromMemory = (hit, tool) => { knowledge.reused(hit, tool); return wrapSource(knowledge.label(hit), hit.text + knowledge.conflictNote(hit)) + MEMORY_NOTE; };
-  // one node per article among the ranked passages, its text exactly what the model was given for it
+  // a stored answer: the passages as quoted source data; after the quote, say it is from memory (and, for a lookup,
+  // where to read more when the stored passages do not answer the question), and any disagreement to tell the user
+  const fromMemory = (hit, tool) => {
+    knowledge.reused(hit, tool);
+    return wrapSource(knowledge.label(hit), hit.text + knowledge.conflictNote(hit)) + MEMORY_NOTE + knowledge.conflictAdvice(hit) + (tool === 'lookup_knowledge' ? LOOKUP_MORE : '');
+  };
+  // an online answer: the conflicts of a node just written, inside and after the quote
+  const withConflicts = (label, text, hit) => wrapSource(label, text + (hit ? knowledge.conflictNote(hit) : '')) + (hit ? knowledge.conflictAdvice(hit) : '');
+  // one node per article among the ranked passages, its text exactly what the model was given for it; → the first one's hit
   function keep(best, query) {
-    if (!knowledge) return '';
-    let note = '';
+    if (!knowledge) return null;
+    let first = null;
     for (const title of [...new Set(best.map(p => p.title))]) {
       const key = knowledge.keyFor({ host: 'wikipedia.org', title });
       const r = knowledge.save({ key, host: 'wikipedia.org', title, url: WIKI_URL(title), text: formatPassages(best.filter(p => p.title === title), BODY_MAX), sourceKind: 'wiki', ttlClass: 'stable', tool: 'lookup_knowledge', query });
-      if (r.id && !note) note = knowledge.conflictNote(knowledge.get(key));
+      if (r.id && !first) first = knowledge.get(key);
     }
-    return note;
+    return first;
   }
 
   async function lookup({ query }) {
@@ -111,7 +119,7 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus, knowledge = null
     }
     let on;
     try { on = await onlinePassages(q); } catch (err) { const h = await lastKnown(); if (h) return h; throw err; }
-    if (on) { const note = keep(on.best, q); return wrapSource(on.label, on.text + note); }
+    if (on) return withConflicts(on.label, on.text, keep(on.best, q));
     return `Wikipedia has nothing on "${q}". Say you could not find it; do not guess.`;
   }
 
@@ -141,12 +149,12 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus, knowledge = null
       if (hit.length) ps = hit;
     }
     if (/offline library/.test(label)) bus?.emit('net', { source: 'wiki', host: 'offline', offline: true, ok: true, cached: false, ms: 0, library: await libraryName() });
-    let note = '';
+    let saved = null;
     if (key) {
       const r = knowledge.save({ key, host: 'wikipedia.org', title: t, section: section ? String(section) : undefined, url: WIKI_URL(t), text: formatPassages(ps, BODY_MAX), sourceKind: 'wiki', ttlClass: 'stable', tool: 'read_article', query: t });
-      if (r.id) note = knowledge.conflictNote(knowledge.get(key));
+      if (r.id) saved = knowledge.get(key);
     }
-    return wrapSource(label, formatPassages(ps, BODY_MAX) + note);
+    return key ? withConflicts(label, formatPassages(ps, BODY_MAX), saved) : wrapSource(label, formatPassages(ps, BODY_MAX));
   }
 
   const tools = [

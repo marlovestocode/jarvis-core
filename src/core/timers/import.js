@@ -8,6 +8,14 @@ const { createTimerStore } = require('./store');
 const { toNode } = require('./cortex-store');
 
 const MARKER = 'import_timers';
+const MAX_LABEL = 200;   // the cortex cap for reminder text
+const NEUTRAL = '(label not kept)';
+const cutLabel = s => {
+  const t = String(s ?? '');
+  if (t.length <= MAX_LABEL) return t;
+  const c = t.slice(0, MAX_LABEL + 1).replace(/\s+\S*$/, '').trim();
+  return c || t.slice(0, MAX_LABEL);
+};
 const bakName = (file, now) => (fs.existsSync(file + '.imported.bak') ? `${file}.${now()}.imported.bak` : file + '.imported.bak');
 
 function importTimersJson({ cortex, file, log = () => {}, now = Date.now } = {}) {
@@ -26,10 +34,17 @@ function importTimersJson({ cortex, file, log = () => {}, now = Date.now } = {})
   let imported = 0;
   cortex.transaction(() => {
     const source = cortex.source.find({ kind: 'user', ref: 'timers' }) ?? cortex.source.add({ kind: 'user', ref: 'timers', title: 'timers and reminders' });
+    // the old file had no secret guard and no length cap: a long label is cut, and a label the guard refuses is replaced,
+    // so every pending reminder still fires (review fix: they were dropped without a word)
     for (const t of timers) {
       try {
         if (cortex.node.find({ kind: 'reminder', key: 'reminder:' + t.id })) continue;
-        cortex.node.upsert({ ...toNode(t), source, created: t.created });
+        const label = cutLabel(t.label);
+        try { cortex.node.upsert({ ...toNode({ ...t, label }), source, created: t.created }); } catch (err) {
+          if (err.code !== 'secret') throw err;
+          cortex.node.upsert({ ...toNode({ ...t, label: NEUTRAL }), source, created: t.created });
+          log(`timer ${t.id}: its label looked like a secret, kept as "${NEUTRAL}"`);
+        }
         imported++;
       } catch (err) { log(`timer ${t.id} not imported: ${err.code || err.message}`); }
     }
