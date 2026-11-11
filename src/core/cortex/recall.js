@@ -4,7 +4,7 @@ const { ftsTokens, ftsOr } = require('./guard');
 
 const DAY = 864e5;
 const COMMON_DF = 1000, DF_TTL = 10 * 60e3, DF_CACHE = 4096;
-const SEEDS = 20, RRF_K = 60, HOPS = 2, FLOOR = 0.02, MAX_TOUCHED = 200, QUOTA = 0.6;
+const SEEDS = 20, RRF_K = 60, HOPS = 2, FLOOR = 0.02, MAX_TOUCHED = 200, QUOTA = 0.6, MAX_EXPAND = 40;
 const LABEL = { user: 'you said', tool: 'tool', import: 'import', wiki: 'wikipedia', web: 'web', model: 'guess' };
 
 function age(ms) {
@@ -81,7 +81,7 @@ function createRecall({ db, edges, vectors, queryVector = async () => null, now 
     let frontier = [...a].sort((x, y) => y[1] - x[1]);
     for (let hop = 1; hop <= HOPS && frontier.length; hop++) {
       const gained = new Map(), damp = Math.pow(0.5, hop);
-      for (const [m, am] of frontier) {
+      for (const [m, am] of frontier.slice(0, MAX_EXPAND)) {   // strongest first; the rest carry little
         if (am * damp < FLOOR) break;   // weights are ≤ 1: nothing it passes on could reach the floor (sorted, so none after it can)
         for (const e of edges.around(m, tNow, null)) {
           const c = am * e.weight * damp;

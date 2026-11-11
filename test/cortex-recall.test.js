@@ -186,6 +186,24 @@ test('cortex-recall: spread never expands a node whose activation cannot pass th
   assert.deepEqual(calls, [seed]);                       // `weak` is not expanded: it could reach at most 0.05 × 0.25
 });
 
+test('cortex-recall: at most 40 nodes are expanded per hop, strongest first', async () => {
+  const { db, add, edges } = setup();
+  const seed = add('fact', 'Rex has a vet visit in March');
+  const mids = [];
+  for (let i = 0; i < 60; i++) {
+    const m = add('entity', `thing ${i}`, { key: 'entity:t' + i });
+    edges.link(seed, m, 'contains', { weight: 0.2 + i / 100 });   // 60 hop-1 nodes, all above the expansion floor
+    edges.link(m, add('fact', `leaf ${i}`), 'mentions', { weight: 1 });
+    mids.push(m);
+  }
+  const calls = [];
+  const spy = { ...edges, around: (id, t, ty) => { calls.push(id); return edges.around(id, t, ty); } };
+  const r = createRecall({ db, edges: spy, vectors: createVectors(db, { dim: 8 }), now: () => T0 });
+  await r.recall('vet visit');
+  assert.equal(calls.length, 1 + 40);
+  assert.deepEqual(new Set(calls.slice(1)), new Set(mids.slice(-40)));   // the 40 strongest links
+});
+
 test('cortex-recall: debug returns the stages', async () => {
   const { recall, add } = setup();
   add('fact', 'Rex has a vet visit in March');
