@@ -35,9 +35,9 @@ module.exports = {
         type TEXT NOT NULL, weight REAL NOT NULL,
         uses INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL, last_used INTEGER NOT NULL,
         PRIMARY KEY(src, dst, type)) WITHOUT ROWID;
-      -- strongest-first per node and type, so a hub's top links are read without reading all of them
-      CREATE INDEX edge_src_type_weight ON edge(src, type, weight DESC);
-      CREATE INDEX edge_dst_type_weight ON edge(dst, type, weight DESC);
+      -- strongest-first per node, so a hub's top links are read without reading all of them
+      CREATE INDEX edge_src_weight ON edge(src, weight DESC);
+      CREATE INDEX edge_dst_weight ON edge(dst, weight DESC);
 
       CREATE TABLE vec(
         node_id INTEGER PRIMARY KEY REFERENCES node(id) ON DELETE CASCADE,

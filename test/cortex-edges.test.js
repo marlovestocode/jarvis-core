@@ -106,8 +106,9 @@ test('cortex-edges: around a big hub returns the strongest per type, both direct
   assert.equal(mentions.length, 20);
   assert.deepEqual(mentions.map(e => e.id), rest.slice(-20).reverse());                  // the 20 strongest
   assert.ok(got.some(e => e.type === 'by' && e.id === rest[0]));
-  const plan = db.raw.prepare('EXPLAIN QUERY PLAN SELECT src, weight FROM edge WHERE dst = ? AND type = ? ORDER BY weight DESC LIMIT 40').all(hub).map(r => r.detail).join(' ');
-  assert.match(plan, /edge_dst_type_weight/);                                            // read by index, not all 401 rows
+  const plan = db.raw.prepare('EXPLAIN QUERY PLAN SELECT src, weight FROM edge WHERE dst = ? ORDER BY weight DESC LIMIT 100').all(hub).map(r => r.detail).join(' ');
+  assert.match(plan, /edge_dst_weight/);                                                 // read by index, not all 401 rows
+  assert.doesNotMatch(plan, /TEMP B-TREE/);                                              // no sort of every row
 });
 
 test('cortex-edges: depth 2 returns hop 2 with via and no repeats', () => {

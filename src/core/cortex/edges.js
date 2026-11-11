@@ -12,6 +12,7 @@ const TYPES = Object.freeze({
 });
 const STRUCTURAL = new Set(['supersedes', 'contradicts', 'same_as']);   // facts about records, not associations: never weakened
 const ETA_LINK = 0.3, ETA_USE = 0.15, MAX_W = 1 - 1e-6, FLOOR = 0.02;
+const AROUND = 100;   // strongest links read per direction; the largest fan-out cap is 50
 
 function effective(w, lastUsed, type, now) {
   const days = Math.max(0, now - lastUsed) / DAY;
@@ -39,27 +40,15 @@ function createEdges(db, { now = Date.now } = {}) {
 
   const unlink = (src, dst, type) => db.stmt('DELETE FROM edge WHERE src = ? AND dst = ? AND type = ?').run(src, dst, type).changes > 0;
 
-  // One statement per set of types: for each type and direction, the 2×fanOut strongest stored weights by index.
-  // Stored weight is as of last_used, so the effective order can differ a little; 2× headroom absorbs that.
-  const aroundSql = new Map();
-  function aroundStmt(types) {
-    const list = types ? [...types].filter(x => TYPES[x]).sort() : Object.keys(TYPES);
-    const key = list.join(',');
-    let sql = aroundSql.get(key);
-    if (!sql) {
-      sql = list.flatMap(ty => {
-        const k = TYPES[ty].fanOut * 2;
-        return [`SELECT * FROM (SELECT dst AS other, type, weight, last_used FROM edge WHERE src = ?1 AND type = '${ty}' ORDER BY weight DESC LIMIT ${k})`,
-          `SELECT * FROM (SELECT src AS other, type, weight, last_used FROM edge WHERE dst = ?1 AND type = '${ty}' ORDER BY weight DESC LIMIT ${k})`];
-      }).join(' UNION ALL ') || 'SELECT 0 AS other, NULL AS type, 0 AS weight, 0 AS last_used WHERE 0';
-      aroundSql.set(key, sql);
-    }
-    return db.stmt(sql);
-  }
+  // Each direction is one index seek that stops after the AROUND strongest stored weights, so a hub with thousands
+  // of links costs the same as a small node. Stored weight is as of last_used; the effective order can differ a little.
+  const AROUND_SQL = `SELECT * FROM (SELECT dst AS other, type, weight, last_used FROM edge WHERE src = ?1 ORDER BY weight DESC LIMIT ${AROUND})
+                      UNION ALL SELECT * FROM (SELECT src AS other, type, weight, last_used FROM edge WHERE dst = ?1 ORDER BY weight DESC LIMIT ${AROUND})`;
 
   // both directions of one node, effective weights, fan-out capped per type
   function around(id, t, types) {
-    const rows = aroundStmt(types).all(id);
+    let rows = db.stmt(AROUND_SQL).all(id);
+    if (types) rows = rows.filter(r => types.has(r.type));
     const out = [];
     for (const r of rows) out.push({ id: r.other, type: r.type, weight: effective(r.weight, r.last_used, r.type, t) });
     out.sort((a, b) => b.weight - a.weight);

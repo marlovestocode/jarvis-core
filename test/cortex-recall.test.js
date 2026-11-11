@@ -170,6 +170,22 @@ test('cortex-recall: a very common word is dropped when a rarer one is in the qu
   assert.equal(only.stages.seeds.length, 12);                           // all words common: the rarest is kept
 });
 
+test('cortex-recall: spread never expands a node whose activation cannot pass the floor', async () => {
+  const { db, add, edges } = setup();
+  const seed = add('fact', 'Rex has a vet visit in March');
+  const weak = add('entity', 'Luna', { key: 'entity:luna' });
+  const far = add('fact', 'Luna sleeps on the radiator');
+  edges.link(seed, weak, 'mentions', { weight: 0.1 });   // hop 1: 1 × 0.1 × 0.5 = 0.05 — kept (≥ 0.02)
+  edges.link(weak, far, 'mentions', { weight: 1 });      // hop 2 from it: 0.05 × 1 × 0.25 = 0.0125 < 0.02, never kept
+  const calls = [];
+  const spy = { ...edges, around: (id, t, ty) => { calls.push(id); return edges.around(id, t, ty); } };
+  const r = createRecall({ db, edges: spy, vectors: createVectors(db, { dim: 8 }), now: () => T0 });
+  const out = await r.recall('vet visit', { debug: true });
+  assert.ok(out.stages.spread.some(x => x.id === weak));
+  assert.ok(!out.stages.spread.some(x => x.id === far));
+  assert.deepEqual(calls, [seed]);                       // `weak` is not expanded: it could reach at most 0.05 × 0.25
+});
+
 test('cortex-recall: debug returns the stages', async () => {
   const { recall, add } = setup();
   add('fact', 'Rex has a vet visit in March');

@@ -82,7 +82,7 @@ function createRecall({ db, edges, vectors, queryVector = async () => null, now 
     for (let hop = 1; hop <= HOPS && frontier.length; hop++) {
       const gained = new Map(), damp = Math.pow(0.5, hop);
       for (const [m, am] of frontier) {
-        if (am < FLOOR) break;
+        if (am * damp < FLOOR) break;   // weights are ≤ 1: nothing it passes on could reach the floor (sorted, so none after it can)
         for (const e of edges.around(m, tNow, null)) {
           const c = am * e.weight * damp;
           if (c < FLOOR) continue;
