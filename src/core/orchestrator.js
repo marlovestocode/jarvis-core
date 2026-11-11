@@ -70,9 +70,12 @@ const NUDGE_AFTER_TOOL = 'Answer the user now, in one or two sentences, using th
 const NUDGE_CLAIM = 'Your last reply said something was done, or stated what is playing, without calling a tool. Call the tool that does it or checks it now, then answer only from its result. If no tool fits, say you cannot do that.';
 const NUDGE_PLAIN ="Reply to the user's last message in one or two sentences.";
 
-function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, onQuestionLost = () => {} }) {
+function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, onQuestionLost = () => {}, memoryBlock = null }) {
   let current = null; // AbortController of the running turn
   const lastGroups = new Map();   // session id → skill groups the last turn used (follow-up bonus)
+  // memoryBlock (W1 §4): { forTurn, afterTurn, onUserMessage }. lastRecall = what the last turn recalled, so a
+  // correction in the next message ("no, that's wrong") can weaken it (E10).
+  let lastRecall = null;
 
   function pickProvider() {
     const id = getConfig().provider;
@@ -157,6 +160,10 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       s.messages.push({ role: 'user', content: String(text), at: Date.now() });
       const turnStart = s.messages.length - 1;   // tool results before this message are old
       sessions.save(s);
+      if (memoryBlock) {
+        try { memoryBlock.onUserMessage({ text: String(text), lastIds: lastRecall?.sessionId === s.id ? lastRecall.ids : [] }); } catch { /* memory must not break a turn */ }
+        lastRecall = null;
+      }
       bus.emit('state', { state: 'thinking' });
 
       if (fastPath) {
@@ -212,6 +219,15 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
         try { info = (await promptInfo({ source, hints })) || {}; } catch { info = {}; }
         sys = buildSys();
       }
+      // the memory block is computed once and saved on the user message, so later turns send the same text (E6)
+      let recalled = [];
+      if (memoryBlock) {
+        const prev = s.messages.slice(0, turnStart).reverse().find(m => m.role === 'user');
+        try {
+          const r = await memoryBlock.forTurn({ text: String(text), previousUserText: prev ? String(prev.content) : '', brief: hints?.tools === false, profileIds: info.memoryIds || [] });
+          if (r?.memo) { s.messages[turnStart].memo = String(r.memo); recalled = r.ids || []; sessions.save(s); }
+        } catch (err) { bus.emit('log', { level: 'warn', text: `Memory recall failed: ${err?.message || err}` }); }
+      }
       const t0 = Date.now();
       let firstTokenAt = 0;
 
@@ -243,7 +259,10 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
         // the tool definitions are part of the prompt too; JSON costs more tokens per char than prose.
         // When they were left out, a full window made Ollama cut the start of the prompt (system prompt and tools), and the model answered nothing.
         const toolChars = useTools ? Math.ceil(JSON.stringify(useTools).length * TOOL_CHAR_WEIGHT) : 0;
-        let window = fitWindow(s.messages.map((m, i) => (m.role === 'tool' ? { ...m, content: capText(m.content, i < turnStart ? TOOL_CHARS_OLD : TOOL_CHARS_NOW) } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min(REPLY_CHARS, Math.floor((st.contextMax || 0) * CHARS_PER_TOKEN * REPLY_SHARE)), stamp ? stamp(turnNow).length + 2 : 0).map(m => {
+        let window = fitWindow(s.messages.map((m, i) => (m.role === 'tool' ? { ...m, content: capText(m.content, i < turnStart ? TOOL_CHARS_OLD : TOOL_CHARS_NOW) }
+          : m.role === 'user' && m.memo ? { ...m, content: `${m.content}
+
+${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min(REPLY_CHARS, Math.floor((st.contextMax || 0) * CHARS_PER_TOKEN * REPLY_SHARE)), stamp ? stamp(turnNow).length + 2 : 0).map(m => {
           const o = forProvider(m);
           if (stamp && m.role === 'user' && m.at) o.content = `${o.content}\n\n${stamp(new Date(m.at))}`;   // its own send time, the same text every turn
           return o;
@@ -337,6 +356,10 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
         }
       }
 
+      if (memoryBlock && recalled.length && !error && !stopped) {
+        try { memoryBlock.afterTurn({ ids: recalled, tainted: turn.tainted }); } catch { /* best effort */ }
+        lastRecall = { sessionId: s.id, ids: recalled, tainted: turn.tainted };
+      }
       if (scope && !error && !stopped) {
         lastGroups.delete(s.id);   // newest last
         lastGroups.set(s.id, scope.loaded().filter(id => id !== 'core'));

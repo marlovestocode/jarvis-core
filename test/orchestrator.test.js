@@ -368,3 +368,81 @@ test('stamp: each user message carries its own send time to the provider, the sa
   await orc.send(old.id, 'new', { source: 'text' });
   assert.equal(users(fp.calls.at(-1))[0], 'old');
 });
+
+// --- W1: the memory block in the turn ---
+function fakeBlock({ memo = 'Relevant from memory: Rex is a dog', ids = [7, 8], fail = false } = {}) {
+  const calls = { forTurn: [], afterTurn: [], onUserMessage: [] };
+  return {
+    calls,
+    async forTurn(a) { calls.forTurn.push(a); if (fail) throw new Error('recall broke'); return { memo, ids }; },
+    afterTurn(a) { calls.afterTurn.push(a); },
+    onUserMessage(a) { calls.onUserMessage.push(a); return false; },
+  };
+}
+
+test('memory: the memo is on the current user message and identical on the next turn render', async () => {
+  const fp = createFakeProvider([{ type: 'token', text: 'ok' }, { type: 'done' }]);
+  const block = fakeBlock();
+  const { sessions, orc, s } = setup(fp, { orc: { memoryBlock: block, stamp: d => `Now: ${d.getTime()}.`, systemPrompt: () => 'SYS' } });
+  await orc.send(s.id, 'how is Rex', { source: 'text' });
+  const saved = sessions.load(s.id).messages.filter(m => m.role === 'user');
+  assert.equal(saved[0].memo, 'Relevant from memory: Rex is a dog');
+  assert.equal(saved[0].content, 'how is Rex', 'history text stays clean');
+  const users = c => c.messages.filter(m => m.role === 'user').map(m => m.content);
+  assert.deepEqual(users(fp.calls[0]), [`how is Rex\n\nRelevant from memory: Rex is a dog\n\nNow: ${saved[0].at}.`]);
+  block.forTurn = async () => ({ memo: 'Relevant from memory: something else', ids: [9] });
+  await orc.send(s.id, 'and his vet?', { source: 'text' });
+  assert.equal(users(fp.calls[1])[0], users(fp.calls[0])[0], 'the older message is byte-identical');
+  assert.match(users(fp.calls[1])[1], /something else/);
+});
+
+test('memory: system prompt identical across two turns with the same profile', async () => {
+  const fp = createFakeProvider([{ type: 'token', text: 'ok' }, { type: 'done' }]);
+  const { orc, s } = setup(fp, { orc: { memoryBlock: fakeBlock(), promptInfo: () => ({ memory: 'likes jazz', memoryIds: [1] }), systemPrompt: ({ memory }) => `SYS ${memory}` } });
+  await orc.send(s.id, 'one', { source: 'text' });
+  await orc.send(s.id, 'two', { source: 'text' });
+  assert.equal(fp.calls[0].messages[0].content, 'SYS likes jazz');
+  assert.equal(fp.calls[1].messages[0].content, fp.calls[0].messages[0].content);
+});
+
+test('memory: forTurn gets the previous user message, brief and the profile ids', async () => {
+  const fp = createFakeProvider([{ type: 'token', text: 'ok' }, { type: 'done' }]);
+  const block = fakeBlock();
+  const { orc, s } = setup(fp, { orc: { memoryBlock: block, promptInfo: () => ({ memoryIds: [1, 2] }), systemPrompt: () => 'SYS', route: () => ({ tier: 'fast', tools: false }) } });
+  await orc.send(s.id, 'tell me about the vet', { source: 'text' });
+  await orc.send(s.id, 'when?', { source: 'text' });
+  assert.deepEqual(block.calls.forTurn[1], { text: 'when?', previousUserText: 'tell me about the vet', brief: true, profileIds: [1, 2] });
+});
+
+test('memory: forTurn throwing → the turn still answers, no memo', async () => {
+  const fp = createFakeProvider([{ type: 'token', text: 'fine' }, { type: 'done' }]);
+  const { sessions, orc, s } = setup(fp, { orc: { memoryBlock: fakeBlock({ fail: true }) } });
+  const r = await orc.send(s.id, 'hello', { source: 'text' });
+  assert.equal(r.reply, 'fine');
+  assert.equal(sessions.load(s.id).messages[0].memo, undefined);
+});
+
+test('memory: a tainted turn → afterTurn gets tainted: true', async () => {
+  const fp = createFakeProvider([
+    [{ type: 'tool_call', id: 'c1', name: 'lookup_knowledge', args: {} }, { type: 'done' }],
+    [{ type: 'token', text: 'done' }, { type: 'done' }],
+  ]);
+  const block = fakeBlock();
+  const tools = createToolRunner([{ name: 'lookup_knowledge', description: 'w', params: {}, async run() { return 'page text'; } }]);
+  const { orc, s } = setup(fp, { tools, orc: { memoryBlock: block } });
+  await orc.send(s.id, 'read that page', { source: 'text' });
+  assert.deepEqual(block.calls.afterTurn, [{ ids: [7, 8], tainted: true }]);
+});
+
+test('memory: "no, that\'s wrong" after a recall → onUserMessage gets the last ids', async () => {
+  const fp = createFakeProvider([{ type: 'token', text: 'ok' }, { type: 'done' }]);
+  const block = fakeBlock();
+  const { orc, s, sessions } = setup(fp, { orc: { memoryBlock: block } });
+  await orc.send(s.id, 'how is Rex', { source: 'text' });
+  await orc.send(s.id, "no, that's wrong", { source: 'text' });
+  assert.deepEqual(block.calls.onUserMessage[0], { text: 'how is Rex', lastIds: [] });
+  assert.deepEqual(block.calls.onUserMessage[1], { text: "no, that's wrong", lastIds: [7, 8] });
+  const other = sessions.create(); sessions.save(other);
+  await orc.send(other.id, 'no', { source: 'text' });
+  assert.deepEqual(block.calls.onUserMessage[2].lastIds, [], 'another chat has no last recall');
+});
