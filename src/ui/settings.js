@@ -44,6 +44,7 @@
     if (document.activeElement !== $('userAbout')) $('userAbout').value = c.user.about;
     $('sttGpu').checked = !!c.sttGpu;
     $('logPlays').checked = !!c.music.logPlays;
+    $('browserOn').checked = !!c.browser.enabled;
     $('proactiveOn').checked = !!c.proactive.enabled;
     $('dnd').checked = !!c.proactive.dnd;
     $('quietStart').value = c.proactive.quietStart;
@@ -176,6 +177,7 @@
   $('userAbout').addEventListener('change', e => save({ user: { about: e.target.value } }));
   $('speakerGate').addEventListener('change', e => save({ speakerGate: e.target.checked }));
   $('logPlays').addEventListener('change', e => save({ music: { logPlays: e.target.checked } }));
+  $('browserOn').addEventListener('change', e => save({ browser: { enabled: e.target.checked } }));
   $('sttGpu').addEventListener('change', e => save({ sttGpu: e.target.checked }));
   $('proactiveOn').addEventListener('change', e => save({ proactive: { enabled: e.target.checked } }));
   $('dnd').addEventListener('change', e => save({ proactive: { dnd: e.target.checked } }));

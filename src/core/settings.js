@@ -5,7 +5,7 @@ const { HHMM } = require('./config');
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 function applyPatch(current, patch = {}, { providers, engines }) {
-  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama }, online: { ...current.online }, location: { ...current.location }, news: { feeds: [...current.news.feeds] }, sports: { follow: current.sports.follow.map(x => ({ ...x })) }, music: { ...current.music, aliases: (current.music?.aliases || []).map(x => ({ ...x })) }, proactive: { ...current.proactive } };
+  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama }, online: { ...current.online }, location: { ...current.location }, news: { feeds: [...current.news.feeds] }, sports: { follow: current.sports.follow.map(x => ({ ...x })) }, music: { ...current.music, aliases: (current.music?.aliases || []).map(x => ({ ...x })) }, proactive: { ...current.proactive }, browser: { ...current.browser } };
   const errors = [];
   if (!isObj(patch)) return { config, errors: ['bad patch'] };
 
@@ -81,6 +81,7 @@ function applyPatch(current, patch = {}, { providers, engines }) {
       else errors.push(`Bad music setting: ${key}`);
     }
   }
+  if (isObj(patch.browser) && 'enabled' in patch.browser) config.browser.enabled = !!patch.browser.enabled;
   if (isObj(patch.proactive)) {
     const p = patch.proactive;
     for (const k of ['enabled', 'dnd', 'chime']) if (k in p) config.proactive[k] = !!p[k];

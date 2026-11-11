@@ -52,11 +52,13 @@ const DEFAULTS = Object.freeze({
   // JARVIS speaking unasked (timers): quiet hours and Do-not-disturb give a notification only
   // PC control: extra apps JARVIS may open, { "spoken name": "C:\path\app.exe" or a Start menu AppID }
   pc: Object.freeze({ apps: Object.freeze({}) }),
+  // browser skills (tabs, page text, history...) through the Chrome extension: off until the user turns it on in settings
+  browser: Object.freeze({ enabled: false }),
   proactive: Object.freeze({ enabled: true, dnd: false, quietStart: '22:00', quietEnd: '07:00', minGapSec: 10, chime: true }),
 });
 
 const VADS = ['silero', 'energy'];
-const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive', 'pc'];
+const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive', 'pc', 'browser'];
 const HHMM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;   // "22:00"
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 

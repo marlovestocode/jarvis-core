@@ -16,7 +16,8 @@ function toolDeps() {
   const scheduler = createScheduler({ store: createTimerStore({ file: path.join(dir, 't.json') }), bus: createBus(), setTimer: () => 1, clearTimer: () => {} });
   const roots = ['C:\t\Desktop', 'C:\t\Documents', 'C:\t\Downloads', 'C:\t\Projects'];
   const pc = { host: createFakePcHost(), getAllowlist: async () => [], roots, confirm: createConfirm({}), actionLog: createActionLog({ file: path.join(dir, 'a.log') }) };
-  return { getStatus: async () => ({}), fetch: async () => ({}), fetcher: any, kiwix: any, getConfig: () => DEFAULTS, bus: createBus(), media: any, ytm: any, ytPlaylists: any, memory: any, playLog: any, scheduler, pc };
+  const browserLink = { connected: false, request: async () => { throw new Error('no extension in tests'); } };
+  return { browserLink, getStatus: async () => ({}), fetch: async () => ({}), fetcher: any, kiwix: any, getConfig: () => DEFAULTS, bus: createBus(), media: any, ytm: any, ytPlaylists: any, memory: any, playLog: any, scheduler, pc };
 }
 
 module.exports = { toolDeps };
