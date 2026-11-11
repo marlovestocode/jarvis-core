@@ -70,12 +70,14 @@ const NUDGE_AFTER_TOOL = 'Answer the user now, in one or two sentences, using th
 const NUDGE_CLAIM = 'Your last reply said something was done, or stated what is playing, without calling a tool. Call the tool that does it or checks it now, then answer only from its result. If no tool fits, say you cannot do that.';
 const NUDGE_PLAIN ="Reply to the user's last message in one or two sentences.";
 
-function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, onQuestionLost = () => {}, memoryBlock = null }) {
+function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, onQuestionLost = () => {}, memoryBlock = null, onToolCall = null }) {
   let current = null; // AbortController of the running turn
   const lastGroups = new Map();   // session id → skill groups the last turn used (follow-up bonus)
   // memoryBlock (W1 §4): { forTurn, afterTurn, onUserMessage }. lastRecall = what the last turn recalled, so a
   // correction in the next message ("no, that's wrong") can weaken it (E10).
   let lastRecall = null;
+  // onToolCall (W2 E14): one record per tool call, for the cortex tool history; it must never break a turn
+  const toolDone = e => { if (!onToolCall) return; try { onToolCall(e); } catch { /* history is best effort */ } };
 
   function pickProvider() {
     const id = getConfig().provider;
@@ -157,7 +159,9 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
     try {
       let s = sessionId ? sessions.load(sessionId) : null;
       if (!s) s = sessions.create();
-      s.messages.push({ role: 'user', content: String(text), at: Date.now() });
+      const turnAt = Date.now();
+      const turnId = turnAt.toString(36);   // base 36: a decimal ms would look like a card number to the cortex guard
+      s.messages.push({ role: 'user', content: String(text), at: turnAt });
       const turnStart = s.messages.length - 1;   // tool results before this message are old
       sessions.save(s);
       if (memoryBlock) {
@@ -175,6 +179,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           if (fp.tool) {
             bus.emit('tool', { id, name: fp.tool, phase: 'start' });
             bus.emit('tool', { id, name: fp.tool, phase: 'end', ok: !!fp.ok });
+            toolDone({ name: String(fp.tool), ok: !!fp.ok, ms: Date.now() - turnAt, args: {}, turn: turnId });
           }
           const reply = String(fp.reply || '');
           if (reply) bus.emit('token', { text: reply });
@@ -336,6 +341,7 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
           const label = toolLabel(call.name, call.args);
           bus.emit('tool', { id: call.id, name: call.name, label, phase: 'start' });
           inTool = true;
+          const callAt = Date.now();
           let res;
           // the model re-sent a call it already made this turn: do not run it again, tell it to answer
           const sig = `${call.name}:${JSON.stringify(call.args ?? {})}`;
@@ -348,6 +354,7 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
           }
           inTool = false;
           bus.emit('tool', { id: call.id, name: call.name, phase: 'end', ok: res.ok });
+          toolDone({ name: call.name, ok: !!res.ok, ms: Date.now() - callAt, args: call.args, turn: turnId });
           if (res.untrusted || UNTRUSTED_TOOLS.has(call.name)) turn.tainted = true;
           if (res.ok && String(res.text).startsWith(NEEDS_OK)) question = String(res.text).slice(NEEDS_OK.length);
           else if (res.ok && !/^error/i.test(String(res.text)) && !res.untrusted && !UNTRUSTED_TOOLS.has(call.name) && call.name !== 'more_skills') okTools++;   // loading a skill is not an action
