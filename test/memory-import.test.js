@@ -81,3 +81,28 @@ test('memory-import: missing file → imported 0', () => {
   const cortex = open({});
   assert.deepEqual(importMemoryJson({ cortex, file: path.join(dir, 'memory.json') }), { imported: 0, skipped: 0 });
 });
+
+test('memory-import: marker missing but an .imported.bak exists (cortex recovered empty) → re-imported from the .bak', () => {
+  const { dir, file, cortex, log } = setup(V1);
+  fs.renameSync(file, file + '.imported.bak');
+  fs.writeFileSync(file + '.1700000000000.imported.bak', JSON.stringify({ facts: [{ text: 'an older copy' }] }));
+  fs.utimesSync(file + '.1700000000000.imported.bak', new Date(Date.now() - 864e5), new Date(Date.now() - 864e5));
+  const r = importMemoryJson({ cortex, file, log });
+  assert.equal(r.imported, 2);
+  assert.equal(r.from, 'memory.json.imported.bak');
+  assert.ok(fs.existsSync(file + '.imported.bak'), 'the .bak stays where it is');
+  assert.equal(fs.readdirSync(dir).filter(f => f.endsWith('.imported.bak')).length, 2);
+  assert.equal(importMemoryJson({ cortex, file, log }).imported, 0, 'marker set now');
+});
+
+test('memory-import: a cortex running in memory imports nothing and leaves memory.json alone', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jmemi-'));
+  const file = path.join(dir, 'memory.json');
+  fs.writeFileSync(file, JSON.stringify({ facts: V1 }));
+  const cortex = open({ file: dir });   // a folder: cannot hold a database → in memory, health().ok false
+  assert.equal(cortex.health().ok, false);
+  const r = importMemoryJson({ cortex, file });
+  assert.deepEqual(r, { imported: 0, skipped: 0, unavailable: true });
+  assert.ok(fs.existsSync(file));
+  assert.equal(cortex.node.list({ kind: 'fact' }).length, 0);
+});

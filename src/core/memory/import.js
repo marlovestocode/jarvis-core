@@ -14,18 +14,33 @@ function bakName(file, now) {
   return fs.existsSync(bak) ? `${file}.${now()}.imported.bak` : bak;
 }
 
+// the newest memory.json*.imported.bak next to the file (D15: a cortex that recovered empty re-reads it)
+function newestBak(file) {
+  const dir = path.dirname(file), base = path.basename(file);
+  let names = [];
+  try { names = fs.readdirSync(dir).filter(n => n.startsWith(base + '.') && n.endsWith('.imported.bak')); } catch { return null; }
+  const withTime = names.map(n => { try { return [n, fs.statSync(path.join(dir, n)).mtimeMs]; } catch { return null; } }).filter(Boolean);
+  withTime.sort((a, b) => b[1] - a[1]);
+  return withTime.length ? path.join(dir, withTime[0][0]) : null;
+}
+
 function importMemoryJson({ cortex, file, log = () => {}, now = Date.now } = {}) {
-  if (!fs.existsSync(file)) return { imported: 0, skipped: 0 };
+  // a cortex running in memory (or read-only) would lose what it imports: leave the file for a later boot
+  if (!cortex.health().ok) return { imported: 0, skipped: 0, unavailable: true };
+  const live = fs.existsSync(file);
   if (cortex.meta.get(MARKER)) {
-    fs.renameSync(file, bakName(file, now));
-    return { imported: 0, skipped: 0, already: true };
+    if (live) fs.renameSync(file, bakName(file, now));
+    return live ? { imported: 0, skipped: 0, already: true } : { imported: 0, skipped: 0 };
   }
+  const src = live ? file : newestBak(file);
+  if (!src) return { imported: 0, skipped: 0 };
   let facts;
   try {
-    const j = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const j = JSON.parse(fs.readFileSync(src, 'utf8'));
     if (!j || !Array.isArray(j.facts)) throw new Error('no facts list');
     facts = j.facts;
   } catch (err) {
+    if (!live) { log(`memory: ${path.basename(src)} is unreadable (${err.message}); nothing imported`); return { imported: 0, skipped: 0, broken: true }; }
     const broken = path.join(path.dirname(file), 'broken');
     fs.mkdirSync(broken, { recursive: true });
     fs.renameSync(file, path.join(broken, `${now()}-${path.basename(file)}`));
@@ -46,9 +61,9 @@ function importMemoryJson({ cortex, file, log = () => {}, now = Date.now } = {})
     }
     cortex.meta.set(MARKER, now());
   });
-  fs.renameSync(file, bakName(file, now));
-  log(`memory: imported ${imported} fact(s) from memory.json (${skipped} skipped)`);
-  return { imported, skipped };
+  if (live) fs.renameSync(file, bakName(file, now));
+  log(`memory: imported ${imported} fact(s) from ${path.basename(src)} (${skipped} skipped)`);
+  return live ? { imported, skipped } : { imported, skipped, from: path.basename(src) };
 }
 
 module.exports = { importMemoryJson };
