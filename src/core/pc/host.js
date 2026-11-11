@@ -97,6 +97,34 @@ function createPcHost({ request }) {
       const r = await call('focusAssist', on === undefined ? {} : { on });
       return typeof r === 'boolean' ? r : null;
     }),
+    clipboardRead: wrap(async () => { const r = await call('clipboardRead'); return typeof r === 'string' ? r : null; }),
+    clipboardWrite: wrap(async text => {
+      if (typeof text !== 'string' || !text || text.length > 100000) throw new Error('Bad clipboard text');
+      return (await call('clipboardWrite', { text })) === true;
+    }),
+    // { path, w, h } for a file under a path the caller built, or { clipboard: true, w, h }
+    screenshot: wrap(async ({ mode, hwnd, rect, to, path: file } = {}) => {
+      if (!['screen', 'window', 'region'].includes(mode)) throw new Error('Bad screenshot mode');
+      if (!['file', 'clipboard'].includes(to)) throw new Error('Bad screenshot target');
+      const args = { mode, to };
+      if (to === 'file') {
+        const bad = typeof file !== 'string' || file.length > 260 || !path.win32.isAbsolute(file)
+          || /^[\\/]{2}/.test(file)                 // UNC / device paths
+          || file.slice(2).includes(':')             // alternate data streams
+          || /(^|[\\/])\.\.([\\/]|$)/.test(file)     // ..
+          || !/\.png$/i.test(file);
+        if (bad) throw new Error('Bad screenshot path');
+        args.path = file;
+      }
+      if (mode === 'window') args.hwnd = needId(hwnd, 'hwnd');
+      if (mode === 'region') {
+        if (!rect || !['x', 'y', 'w', 'h'].every(k => Number.isInteger(rect[k])) || rect.w < 1 || rect.h < 1 || rect.w > 16000 || rect.h > 16000) throw new Error('Bad screenshot region');
+        args.rect = { x: rect.x, y: rect.y, w: rect.w, h: rect.h };
+      }
+      const r = await call('screenshot', args);
+      if (!r || !Number.isFinite(r.w) || !Number.isFinite(r.h)) throw new Error('The screenshot failed');
+      return r.clipboard === true ? { clipboard: true, w: r.w, h: r.h } : { path: String(r.path || ''), w: r.w, h: r.h };
+    }),
     lock: wrap(async () => (await call('lock')) === true),
     power: wrap(async mode => {
       if (!POWER.includes(mode)) throw new Error('Bad power mode');

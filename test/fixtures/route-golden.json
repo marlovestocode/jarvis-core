@@ -34,7 +34,7 @@
   {"text": "launch notepad", "expect": ["core", "pc"]},
   {"text": "close chrome", "expect": ["core", "pc"]},
   {"text": "switch to discord", "expect": ["core", "pc"]},
-  {"text": "delete the old screenshots", "expect": ["core", "pc"]},
+  {"text": "delete the old screenshots", "expect": ["core", "pc", "clipboard-capture"]},
   {"text": "lock my pc", "expect": ["core", "pc"]},
   {"text": "restart the computer", "expect": ["core", "pc"]},
   {"text": "undo that", "expect": ["core", "pc"]},
@@ -97,5 +97,15 @@
   {"text": "what wi-fi am I connected to", "expect": ["core", "connectivity"]},
   {"text": "turn the battery saver on", "expect": ["core", "connectivity"]},
   {"text": "set the power plan to high performance", "expect": ["core", "connectivity"]},
-  {"text": "wifi status", "expect": ["core", "connectivity"]}
+  {"text": "wifi status", "expect": ["core", "connectivity"]},
+  {"text": "take a screenshot", "expect": ["core", "clipboard-capture"]},
+  {"text": "what is on my clipboard", "expect": ["core", "clipboard-capture"]},
+  {"text": "copy that to the clipboard", "expect": ["core", "clipboard-capture"]},
+  {"text": "paste what I copied", "expect": ["core", "clipboard-capture"]},
+  {"text": "screenshot of the chrome window", "expect": ["core", "clipboard-capture", "pc"]},
+  {"text": "snip this region", "expect": ["core", "clipboard-capture"]},
+  {"text": "capture the screen and copy it", "expect": ["core", "clipboard-capture"]},
+  {"text": "show my clipboard history", "expect": ["core", "clipboard-capture"]},
+  {"text": "copy this to my clipboard", "expect": ["core", "clipboard-capture"]},
+  {"text": "save a screen shot to my desktop", "expect": ["core", "clipboard-capture"]}
 ]

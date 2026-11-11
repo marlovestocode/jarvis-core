@@ -1,6 +1,6 @@
 // Skill groups: tools regrouped by area. Each group file exports createGroup(deps) → Group | null.
 // Group = { id, label, triggers, hint?, tools }
-const ORDER = ['core', 'media', 'ytmusic', 'timers', 'knowledge', 'system', 'pc', 'math', 'memory', 'windows', 'audio-display', 'connectivity'];
+const ORDER = ['core', 'media', 'ytmusic', 'timers', 'knowledge', 'system', 'pc', 'math', 'memory', 'windows', 'audio-display', 'connectivity', 'clipboard-capture'];
 
 function loadGroups(deps = {}) {
   return ORDER

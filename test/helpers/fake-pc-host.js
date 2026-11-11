@@ -8,7 +8,9 @@ const path = require('node:path');
 // placeWrong: place() claims success but leaves the window where it was (to test read-back checks).
 function createFakePcHost({ windows = [], opens = {}, binDir = null, stubborn = [], focusOk = true, lockOk = true, monitors = [{ n: 1, primary: true, x: 0, y: 0, w: 1920, h: 1080 }], desktops = true, foreground = null, placeWrong = false,
   audioDevices = [], audioStuck = false, brightness = null, brightnessStuck = false, displays = [], nightLight = null, nightStuck = false,
-  wifi = null, wifiStuck = false, bluetooth = null, bluetoothStuck = false, battery = null, powerPlans = [], planStuck = false, focusAssist = null, focusStuck = false } = {}) {
+  wifi = null, wifiStuck = false, bluetooth = null, bluetoothStuck = false, battery = null, powerPlans = [], planStuck = false, focusAssist = null, focusStuck = false,
+  clipboard = null, clipboardStuck = false, screenshotEmpty = false } = {}) {
+  let clip = clipboard;
   let wifiNow = wifi && { ...wifi }, btNow = bluetooth && { ...bluetooth }, focusNow = focusAssist;
   const plans = powerPlans.map(p => ({ ...p }));
   const devs = audioDevices.map(d => ({ ...d }));
@@ -78,6 +80,15 @@ function createFakePcHost({ windows = [], opens = {}, binDir = null, stubborn = 
     async powerPlans() { log('powerPlans'); return plans.map(p => ({ ...p })); },
     async setPowerPlan(id) { log('setPowerPlan', id); if (!planStuck) for (const p of plans) p.active = p.id === id; return true; },
     async focusAssist(on) { log('focusAssist', on); if (focusNow === null) return null; if (on !== undefined && !focusStuck) focusNow = on; return focusNow; },
+    async clipboardRead() { log('clipboardRead'); return clip; },
+    async clipboardWrite(text) { log('clipboardWrite', text); if (!clipboardStuck) clip = text; return true; },
+    async screenshot(opts) {
+      log('screenshot', opts);
+      if (opts.to === 'clipboard') return { clipboard: true, w: 1920, h: 1080 };
+      fs.mkdirSync(path.dirname(opts.path), { recursive: true });
+      fs.writeFileSync(opts.path, screenshotEmpty ? '' : 'PNGDATA');
+      return { path: opts.path, w: 1920, h: 1080 };
+    },
     async desktopSwitch(target) { log('desktopSwitch', target); if (!desktops) throw new Error('Virtual desktops are not available on this Windows build'); return true; },
     async desktopMove(hwnd, n) { log('desktopMove', { hwnd, n }); if (!desktops) throw new Error('Virtual desktops are not available on this Windows build'); return true; },
     async focus(hwnd) { log('focus', hwnd); return focusOk; },

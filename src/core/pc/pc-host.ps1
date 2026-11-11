@@ -26,6 +26,9 @@
 #   setWifi / setBluetooth {on}  true when the radio reports the requested state afterwards
 #   battery                   { percent, charging, minutes } or null on a desktop
 #   powerPlans / setPowerPlan {id}  powercfg list / switch (only an id powercfg listed)
+#   clipboardRead             text on the clipboard or null
+#   clipboardWrite {text}     true when reading it back gives the same text
+#   screenshot {mode,hwnd?,rect?,to,path?}  screen|window|region to a .png (folder created) or the clipboard
 #   focusAssist               always null: not available without the registry
 #   nightLight                always throws: the setting lives in the registry, which this host never touches
 #   alive     {pids}          which of these process ids still run
@@ -495,6 +498,62 @@ function Do-SetPowerPlan($m) {
 # Windows keeps focus assist in the registry / WNF state, which this host never touches: not available
 function Do-FocusAssist($m) { $null }
 
+# ---- clipboard and screenshots (compiled on first use; STA is the default for powershell.exe) ----
+function Ensure-Capture {
+  if ('JvCap.Native' -as [type]) { return }
+  Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+  Add-Type -TypeDefinition @'
+using System.Runtime.InteropServices;
+namespace JvCap { public static class Native { [DllImport("user32.dll")] public static extern bool SetProcessDPIAware(); } }
+'@
+  [void][JvCap.Native]::SetProcessDPIAware()   # real pixels, not scaled ones
+}
+
+function Do-ClipboardRead {
+  Ensure-Capture
+  if ([Windows.Forms.Clipboard]::ContainsText()) { [Windows.Forms.Clipboard]::GetText() } else { $null }
+}
+
+function Do-ClipboardWrite($m) {
+  Ensure-Capture
+  $t = [string]$m.text
+  [Windows.Forms.Clipboard]::SetText($t)
+  [Windows.Forms.Clipboard]::GetText() -ceq $t
+}
+
+# the caller built the path (a .png in the capture folder); the folder is created on demand
+function Do-Screenshot($m) {
+  Ensure-Capture
+  switch ([string]$m.mode) {
+    'screen' { $b = [Windows.Forms.Screen]::PrimaryScreen.Bounds; $x = $b.X; $y = $b.Y; $w = $b.Width; $h = $b.Height }
+    'window' {
+      $r = [JvPc.Native]::RectOf([long]$m.hwnd)
+      if (-not $r) { throw 'That window is gone' }
+      $x = $r.x; $y = $r.y; $w = $r.w; $h = $r.h
+    }
+    'region' { $x = [int]$m.rect.x; $y = [int]$m.rect.y; $w = [int]$m.rect.w; $h = [int]$m.rect.h }
+    default { throw 'Bad mode' }
+  }
+  if ($w -lt 1 -or $h -lt 1 -or $w -gt 16000 -or $h -gt 16000) { throw 'Bad capture size' }
+  $bmp = New-Object Drawing.Bitmap $w, $h
+  try {
+    $g = [Drawing.Graphics]::FromImage($bmp)
+    $g.CopyFromScreen($x, $y, 0, 0, $bmp.Size)
+    $g.Dispose()
+    if ([string]$m.to -eq 'clipboard') {
+      [Windows.Forms.Clipboard]::SetImage($bmp)
+      if (-not [Windows.Forms.Clipboard]::ContainsImage()) { throw 'The clipboard did not take the image' }
+      @{ clipboard = $true; w = $w; h = $h }
+    } else {
+      $p = [string]$m.path
+      $dir = Split-Path -LiteralPath $p -Parent
+      if (-not (Test-Path -LiteralPath $dir)) { [void](New-Item -ItemType Directory -Path $dir) }
+      $bmp.Save($p, [Drawing.Imaging.ImageFormat]::Png)
+      @{ path = $p; w = $w; h = $h }
+    }
+  } finally { $bmp.Dispose() }
+}
+
 function Handle($line) {
   $m = $null
   try { $m = $line | ConvertFrom-Json } catch { return }
@@ -525,6 +584,9 @@ function Handle($line) {
       'powerPlans' { Do-PowerPlans }
       'setPowerPlan' { Do-SetPowerPlan $m }
       'focusAssist' { Do-FocusAssist $m }
+      'clipboardRead' { Do-ClipboardRead }
+      'clipboardWrite' { Do-ClipboardWrite $m }
+      'screenshot' { Do-Screenshot $m }
       'alive' { @($m.pids | ForEach-Object { $q = Get-Process -Id ([int]$_) -ErrorAction SilentlyContinue; if ($q) { $q.Id } }) }
       'closeMain' { $q = Get-Process -Id ([int]$m.pid) -ErrorAction SilentlyContinue; if ($q) { $q.CloseMainWindow() } else { $false } }
       'kill' { Stop-Process -Id ([int]$m.pid) -Force; $true }
