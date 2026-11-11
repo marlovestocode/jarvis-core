@@ -9,9 +9,9 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const arg = (name, dflt) => { const i = process.argv.indexOf('--' + name); return i > 0 ? process.argv[i + 1] : dflt; };
-const N = { nodes: +arg('nodes', 50000), edges: +arg('edges', 200000), vectors: +arg('vectors', 20000), queries: +arg('queries', 1000) };
+const N = { nodes: +arg('nodes', 50000), edges: +arg('edges', 200000), vectors: +arg('vectors', 20000), queries: +arg('queries', 1000), plays: +arg('plays', 100000) };
 const DIM = 768;   // the real embedder's default (quality gate, see embedder.js)
-const GATES = { recallP95: 15, upsertMean: 1, bootMs: 300, memMB: 64, dbMB: 100 };
+const GATES = { recallP95: 15, upsertMean: 1, bootMs: 300, memMB: 64, dbMB: 100, musicImportMs: 10000 };   // musicImportMs: W2 §5
 
 function rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 2 ** 32; }; }
 // Vocabulary drawn by Zipf (exponent 1, like natural language). As in real English, the most frequent ranks are
@@ -152,11 +152,26 @@ async function phase(name, dir) {
     c.close();
     return { worst, ticks };
   }
+  if (name === 'music') {
+    // wave 2 (W2 §5): the one-time import of a 100,000-play music-plays.jsonl, in the 50 ms slices the app uses
+    const { makePlays } = require('../test/fixtures/music-plays');
+    const { createMusicImport } = require('../src/core/music/import');
+    const mdir = path.join(dir, 'music'); fs.mkdirSync(mdir, { recursive: true });
+    const plays = makePlays({ n: N.plays, tracks: 5000, seed: 11, start: Date.UTC(1995, 0, 1) });   // 100k plays with real gaps span ~27 years
+    fs.writeFileSync(path.join(mdir, 'music-plays.jsonl'), plays.map(p => JSON.stringify(p)).join('\n') + '\n');
+    const c = require('../src/core/cortex').open({ file: path.join(mdir, 'cortex.db') });
+    const im = createMusicImport({ cortex: c, file: path.join(mdir, 'music-plays.jsonl') });
+    let work = 0, worst = 0, slices = 0, r;
+    do { const t = performance.now(); r = im.step({ deadlineMs: 50 }); const d = performance.now() - t; work += d; worst = Math.max(worst, d); slices++; } while (!r.done);
+    const st = c.stats();
+    c.close();
+    return { plays: plays.length, imported: r.imported, workMs: work, worstSliceMs: worst, slices, events: st.events, dbMB: fs.statSync(path.join(mdir, 'cortex.db')).size / 1048576 };
+  }
   throw new Error('unknown phase ' + name);
 }
 
 function runChild(name, dir) {
-  const out = execFileSync(process.execPath, ['--expose-gc', '--no-warnings', __filename, '--phase', name, '--dir', dir, '--queries', String(N.queries)], { encoding: 'utf8', maxBuffer: 1 << 24 });
+  const out = execFileSync(process.execPath, ['--expose-gc', '--no-warnings', __filename, '--phase', name, '--dir', dir, '--queries', String(N.queries), '--plays', String(N.plays)], { encoding: 'utf8', maxBuffer: 1 << 24 });
   return JSON.parse(out.trim().split('\n').pop());
 }
 
@@ -175,6 +190,7 @@ async function main() {
   const upsert = runChild('upsert', dir);
   const mem = runChild('mem', dir);
   const cons = runChild('consolidate', dir);
+  const music = runChild('music', dir);
 
   const f = x => x.toFixed(2);
   const rows = [
@@ -183,6 +199,7 @@ async function main() {
     ['open + first recall', `${f(boot.bootMs)} ms (require ${f(boot.requireMs)} ms, quick_check ${boot.quickCheck})`, boot.bootMs <= GATES.bootMs, `≤ ${GATES.bootMs} ms`],
     ['cortex resident memory (rss delta, matrix loaded)', `${f(mem.rssDeltaMB)} MB (heap ${f(mem.heapDeltaMB)}, external ${f(mem.externalDeltaMB)}, matrix ${f(mem.matrixMB)})`, mem.rssDeltaMB <= GATES.memMB, `≤ ${GATES.memMB} MB`],
     ['database file', `${f(dbMB)} MB`, dbMB <= GATES.dbMB, `≤ ${GATES.dbMB} MB`],
+    [`music import of ${music.plays} plays (work time)`, `${f(music.workMs)} ms in ${music.slices} slices (worst ${f(music.worstSliceMs)} ms, ${music.imported} imported, db ${f(music.dbMB)} MB)`, music.workMs <= GATES.musicImportMs && music.imported === music.plays, `≤ ${GATES.musicImportMs} ms, all imported`],
   ];
   console.log('');
   for (const [name, val, ok, gate] of rows) console.log(`${ok ? 'GATE PASS' : 'GATE FAIL'}  ${name}: ${val}  [gate ${gate}]`);

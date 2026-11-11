@@ -5,10 +5,10 @@ const { normalize } = require('../../src/core/music/log');
 function rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 2 ** 32; }; }
 
 // raw events (what the extension sends), in arrival order
-function makeEvents({ n = 600, seed = 7, start = Date.UTC(2026, 6, 1, 18) } = {}) {
+function makeEvents({ n = 600, seed = 7, start = Date.UTC(2026, 6, 1, 18), tracks: nTracks = 150 } = {}) {
   const r = rng(seed);
   const artists = Array.from({ length: 40 }, (_, i) => (i % 9 === 3 ? `Artist ${i}, Guest ${i % 4}` : i === 5 ? 'U2' : `Artist ${i}`));
-  const tracks = Array.from({ length: 150 }, (_, i) => ({
+  const tracks = Array.from({ length: nTracks }, (_, i) => ({
     videoId: ('vid' + i.toString(36)).padEnd(11, 'x'), title: i === 7 ? 'Secret' : `Song ${i}`,
     artist: artists[Math.floor(Math.pow(r(), 1.6) * artists.length)], album: i % 3 ? `Album ${i % 20}` : '', duration: 120 + Math.floor(r() * 240),
   }));
