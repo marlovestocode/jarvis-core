@@ -165,3 +165,11 @@ test('memory-ipc: the tab wipe sets the capture floor and deletes the old memory
   assert.equal(r.ok, false);
   assert.equal(typeof r.error, 'string');
 });
+
+test('memory-ipc: the download confirm names the size only for the default model', async () => {
+  const h = setup({ confirm: false });
+  h.ctx.embedder.status = async () => ({ model: 'mxbai-embed-large', installed: false });
+  await h.h['memory:installEmbedder']();
+  assert.match(h.calls[0][1], /^Download mxbai-embed-large \(size unknown\) from Ollama\?$/);
+  assert.deepEqual(h.calls.map(c => c[0]), ['confirm']);
+});

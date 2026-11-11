@@ -121,7 +121,9 @@ function createMemoryHandlers(ctx) {
     // never pull a model without the user's click AND a native confirm naming it and its size
     'memory:installEmbedder': guard({}, async () => {
       const st = await ctx.embedder.status();
-      const yes = await ctx.dialog.confirm(`Download ${st.model || 'nomic-embed-text'} (about 270 MB) from Ollama?`);
+      const name = st.model || 'nomic-embed-text';
+      const size = /^nomic-embed-text(?::latest)?$/.test(name) ? 'about 270 MB' : 'size unknown';   // the only size we know
+      const yes = await ctx.dialog.confirm(`Download ${name} (${size}) from Ollama?`);
       if (!yes) return { ok: false, declined: true };
       return { ok: true, ...(await ctx.embedder.install()) };
     }),
