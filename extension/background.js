@@ -1,8 +1,10 @@
 // JARVIS for YouTube Music: background worker.
 // Connects to JARVIS on this PC (ws://127.0.0.1:47830-47832/ytmusic), receives commands
 // { id, cmd, args } and runs them in your YouTube Music tab (one tab, reused; opened only if none exists).
-// Only the fixed command set in page.js can run; JARVIS cannot send code.
+// Only the fixed command sets in page.js (YouTube Music) and browser.js (tabs, page text, history...) can run;
+// JARVIS cannot send code.
 import { ytm } from './page.js';
+import { browserCommand } from './browser.js';
 
 const PORTS = [47830, 47831, 47832];
 const HOME = 'https://music.youtube.com/';
@@ -127,6 +129,7 @@ async function tabFor(cmd) {
 
 async function run(cmd, args) {
   if (cmd === 'hello') return { version: VERSION };
+  if (typeof cmd === 'string' && cmd.startsWith('browser_')) return browserCommand(cmd, args, chrome);   // fixed switch in browser.js; optional permissions
   if (cmd === 'tab') {   // bring the YouTube Music tab to the front
     const tab = await tabFor('play');
     await chrome.tabs.update(tab.id, { active: true });

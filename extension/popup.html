@@ -10,6 +10,9 @@
   .muted { color: #7f99a8; font-size: 12px; margin-top: 10px; }
   button { margin-top: 10px; width: 100%; padding: 6px; background: #13212d; color: #cfe9f5; border: 1px solid #2a4556; border-radius: 4px; cursor: pointer; }
   button:hover { border-color: #3fd7ff; }
+  h2 { font-size: 12px; letter-spacing: .12em; margin: 16px 0 4px; color: #3fd7ff; }
+  .perm { display: flex; justify-content: space-between; align-items: center; margin: 4px 0; }
+  .perm button { width: auto; margin: 0; padding: 3px 8px; }
 </style>
 </head>
 <body>
@@ -19,6 +22,9 @@
   <div class="row"><span>Last command</span><span id="cmd">–</span></div>
   <div class="muted" id="err"></div>
   <button id="retry">Reconnect</button>
+  <h2>Browser control</h2>
+  <div class="muted" style="margin-top:0">Off until you allow it, one permission at a time. Also needs the switch in JARVIS settings.</div>
+  <div id="perms"></div>
   <script src="popup.js"></script>
 </body>
 </html>

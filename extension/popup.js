@@ -19,3 +19,37 @@ $('retry').addEventListener('click', () => {
   chrome.runtime.sendMessage({ type: 'reconnect' }, s => { show(s); refresh(); });
 });
 refresh();
+
+// ---- Browser control: optional permissions, requested from a click (Chrome requires a user gesture) ----
+const PERMS = [
+  { id: 'tabs-note', label: 'Tabs (always on)', fixed: true },
+  { id: 'history', label: 'Browsing history', req: { permissions: ['history'] } },
+  { id: 'bookmarks', label: 'Bookmarks', req: { permissions: ['bookmarks'] } },
+  { id: 'downloads', label: 'Downloads list', req: { permissions: ['downloads'] } },
+  { id: 'search', label: 'Run searches', req: { permissions: ['search'] } },
+  { id: 'page', label: 'Read page text (all sites)', req: { origins: ['<all_urls>'] } },
+];
+
+async function drawPerms() {
+  const box = $('perms');
+  box.textContent = '';
+  for (const p of PERMS) {
+    const row = document.createElement('div');
+    row.className = 'perm';
+    const name = document.createElement('span');
+    name.textContent = p.label;
+    row.append(name);
+    if (!p.fixed) {
+      const on = await chrome.permissions.contains(p.req);
+      const b = document.createElement('button');
+      b.textContent = on ? 'Remove' : 'Allow';
+      b.addEventListener('click', async () => {
+        try { if (on) await chrome.permissions.remove(p.req); else await chrome.permissions.request(p.req); } catch { /* declined */ }
+        drawPerms();
+      });
+      row.append(b);
+    }
+    box.append(row);
+  }
+}
+drawPerms();

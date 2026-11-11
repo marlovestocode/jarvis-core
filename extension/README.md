@@ -56,3 +56,18 @@ Nothing leaves your computer. Turn it off in JARVIS settings ("Log what I listen
 
 After updating: open `chrome://extensions`, click the reload icon on the JARVIS card, then refresh the YouTube Music tab.
 Ask JARVIS: "what are my top artists this month?", "how often do I skip $uicideboy$?", "when do I listen most?", "how has my taste changed?", "what did I replay this week?".
+
+## Browser control (version 1.4.0, off by default)
+
+JARVIS can also list, switch, open, close and pin your tabs, run a search, read the text of a page, and look
+through your downloads, history and bookmarks. This is **off** until you turn it on in two places:
+
+1. JARVIS settings: the **Browser control** switch.
+2. This extension's popup: **Allow** each permission you want. Chrome asks every time; **Remove** takes one back.
+   History, bookmarks, downloads, searching and "read page text (all sites)" are optional permissions, so nothing
+   beyond YouTube Music is requested at install.
+
+JARVIS only sends a command name and plain arguments (`browser_tabs`, `browser_tab_open { url }`, ...). It never
+sends code: the commands are a fixed list in `browser.js`, every argument is checked, only `http`/`https` addresses
+open, and page text is returned as quoted text that JARVIS treats as untrusted. Reload the extension in
+`chrome://extensions` after updating.
