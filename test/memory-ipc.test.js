@@ -153,3 +153,15 @@ test('memory-ipc: summaries list and delete', async () => {
   assert.equal((await h['summaries:delete']({ all: true })).ok, true);
   assert.equal((await h['summaries:list']()).items.length, 0);
 });
+
+test('memory-ipc: the tab wipe sets the capture floor and deletes the old memory.json backups', async () => {
+  const { h, chats, dir, ctx, s } = setup();
+  ctx.dataDir = dir;
+  fs.writeFileSync(path.join(dir, 'memory.json.imported.bak'), '{"facts":[]}');
+  await h['memory:wipe']({ confirm: 'FORGET' });
+  assert.equal(fs.existsSync(path.join(dir, 'memory.json.imported.bak')), false);
+  assert.ok(chats.floor(s.id) > 0);
+  const r = await h['summaries:delete']({ sessionId: 'nope' });
+  assert.equal(r.ok, false);
+  assert.equal(typeof r.error, 'string');
+});

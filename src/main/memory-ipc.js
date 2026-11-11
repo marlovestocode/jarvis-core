@@ -2,6 +2,7 @@
 // checked against a small schema (strings ≤ 2,000, ids positive integers, arrays ≤ 200, no unknown fields) and a
 // refused payload writes nothing. Handlers are plain functions so they can be tested without Electron.
 const fs = require('node:fs');
+const path = require('node:path');
 
 const MAX_STR = 2000, MAX_IDS = 200, MAX_IMPORT = 5 * 1024 * 1024;
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -98,7 +99,15 @@ function createMemoryHandlers(ctx) {
     }),
     'memory:reject': guard({ ids: 'ids' }, ({ ids }) => many(ids, id => memory.reject(id))),
     // the tab's "Forget everything" (E3): facts, entities and chat summaries, tombstones included
-    'memory:wipe': guard({ confirm: 'forget' }, () => ({ ok: true, removed: cortex.wipe({ kinds: ['fact', 'entity', 'chat'] }) })),
+    // ...and nothing comes back: old chats are not re-read (capture floor), the old memory.json backups are deleted
+    'memory:wipe': guard({ confirm: 'forget' }, () => {
+      const removed = cortex.wipe({ kinds: ['fact', 'entity', 'chat'] });
+      chats.setFloor();
+      if (ctx.dataDir) {
+        for (const f of fs.readdirSync(ctx.dataDir)) if (/^memory\.json.*\.imported\.bak$/.test(f)) { try { fs.rmSync(path.join(ctx.dataDir, f), { force: true }); } catch { /* best effort */ } }
+      }
+      return { ok: true, removed };
+    }),
     'memory:neighbors': guard({ id: 'id' }, ({ id }) => {
       const node = cortex.node.get(id);
       if (!node || !MEMORY_KINDS.has(node.kind)) return { ok: false, error: 'not_found' };
@@ -146,8 +155,8 @@ function createMemoryHandlers(ctx) {
       }) };
     }),
     'summaries:delete': guard({ sessionId: 'session?', all: 'yes?' }, ({ sessionId, all }) => {
-      if (all && sessionId === undefined) return { ok: true, removed: cortex.wipe({ kinds: ['chat'] }) };
-      if (sessionId !== undefined && !all) return { ok: chats.remove(sessionId) };
+      if (all && sessionId === undefined) { const removed = cortex.wipe({ kinds: ['chat'] }); chats.setFloor(); return { ok: true, removed }; }
+      if (sessionId !== undefined && !all) return chats.forgetSummary(sessionId) ? { ok: true } : { ok: false, error: 'no summary for that chat' };
       return { ok: false, error: 'give sessionId or all: true' };
     }),
   };

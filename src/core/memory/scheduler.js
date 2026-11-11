@@ -18,6 +18,7 @@ function createCaptureScheduler({ sessions, extractor, chats, isIdle = () => tru
   function ready(s) {
     if (!s || !Array.isArray(s.messages) || s.messages.length < MIN_MESSAGES) return false;
     if (s.messages.filter(m => m.role === 'user').length < MIN_USER) return false;
+    if ((s.updated || 0) <= chats.floor(s.id)) return false;   // the user deleted its summary, or wiped memory, since
     const node = chats.find(s.id);
     return !node || node.updated < (s.updated || 0);
   }

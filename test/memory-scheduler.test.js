@@ -150,3 +150,21 @@ test('memory-scheduler: an extractor error is logged and the queue moves on', as
   assert.deepEqual(ran, [s1.id, s2.id]);
   assert.equal(sched.stats().failed, 2);
 });
+
+test('memory-scheduler: a deleted summary or a wipe is not undone by capture (floor)', async () => {
+  const { sched, chat, chats, ran, state } = setup();
+  const s = chat(READY);
+  await new Promise(r => setTimeout(r, 5));
+  chats.upsertSummary({ sessionId: s.id, title: 't', n: 4, summary: 'We talked about it', topics: [] });
+  chats.forgetSummary(s.id);
+  assert.equal(sched.ready(s), false, 'the user deleted this summary');
+  s.messages.push(u('three'), a('c')); s.updated = Date.now() + 5;
+  assert.equal(sched.ready(s), true, 'new messages after the delete make it ready again');
+  const t = chat(READY);
+  await new Promise(r => setTimeout(r, 5));   // save() can stamp a chat 1 ms ahead of the clock
+  chats.setFloor();
+  assert.equal(sched.ready(sessionsLoad(t)), false, 'after a wipe old chats are not re-read');
+  sched.sweep(); state.t = Date.now() + 20 * 60000; await sched.tick();
+  assert.deepEqual(ran, []);
+  function sessionsLoad(x) { return x; }
+});

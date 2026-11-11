@@ -49,6 +49,16 @@ function createChats({ cortex, sessions, now = Date.now }) {
     }
   }
 
+  // capture floor: a chat last changed before it is never summarized again, so a summary the user deleted, or a
+  // "Forget everything" in the tab, is not quietly redone by the scheduler. setFloor() = all chats, setFloor(id) = one.
+  const FLOOR = 'capture_floor';
+  function setFloor(sessionId) { cortex.meta.set(sessionId ? `${FLOOR}:${sessionId}` : FLOOR, now()); }
+  function floor(sessionId) {
+    return Math.max(Number(cortex.meta.get(FLOOR)) || 0, sessionId ? Number(cortex.meta.get(`${FLOOR}:${sessionId}`)) || 0 : 0);
+  }
+  // the user deleted this summary (Settings): remove it and do not re-summarize the chat as it is now
+  function forgetSummary(sessionId) { const r = remove(sessionId); setFloor(sessionId); return r; }
+
   function remove(sessionId) {
     const have = find(sessionId);
     return have ? cortex.node.remove(have.id) : false;
@@ -99,7 +109,7 @@ function createChats({ cortex, sessions, now = Date.now }) {
     return { text: parts.length ? parts.join('\n') : NOTHING, untrusted: true };
   }
 
-  return { upsertSummary, markTried, mentions, remove, recall, find };
+  return { upsertSummary, markTried, mentions, remove, recall, find, floor, setFloor, forgetSummary };
 }
 
 module.exports = { createChats, sessionOf };
