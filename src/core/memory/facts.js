@@ -46,8 +46,10 @@ function createMemory({ cortex, now = Date.now, caps = {}, addTier = 'profile' }
   const activeFacts = () => oldestFirst(listAll('active'));
   const tierOf = n => (TIERS.has(n.data?.tier) ? n.data.tier : 'note');
   const isRejected = n => n.status === 'archived' && n.data?.rejected === true;
-  const item = n => ({ id: n.id, text: n.text, tier: tierOf(n), status: n.status, created: n.created, updated: n.updated, uses: n.uses,
-    sessionId: n.data?.sessionId ?? null });
+  // the chat a proposal came from is its user source's ref (never in `data`: a uuid can look like a card number to the secret check)
+  const OWN_REFS = new Set(['remember', 'review', 'chat']);
+  const sessionOf = id => cortex.node.get(id)?.sources.find(x => x.kind === 'user' && x.ref && !OWN_REFS.has(x.ref))?.ref ?? null;
+  const item = n => ({ id: n.id, text: n.text, tier: tierOf(n), status: n.status, created: n.created, updated: n.updated, uses: n.uses, sessionId: sessionOf(n.id) });
 
   // the fact node with the same normalized text, active first, then pending, then archived
   function findSame(t) {
@@ -122,7 +124,7 @@ function createMemory({ cortex, now = Date.now, caps = {}, addTier = 'profile' }
     const ref = sessionId ? String(sessionId) : 'chat';
     let id;
     try {
-      id = cortex.node.upsert({ kind: 'fact', text: t, status: 'pending', data: { tier: TIERS.has(tier) ? tier : 'note', ...(sessionId && { sessionId: String(sessionId) }) },
+      id = cortex.node.upsert({ kind: 'fact', text: t, status: 'pending', data: { tier: TIERS.has(tier) ? tier : 'note' },
         source: userSource(ref), quote }).id;
     } catch (err) { return { skipped: err.code === 'secret' ? 'secret' : 'invalid' }; }
     for (const e of (Array.isArray(entities) ? entities : []).slice(0, MAX_ENTITIES)) {
