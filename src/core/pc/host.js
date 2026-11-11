@@ -82,6 +82,21 @@ function createPcHost({ request }) {
       const r = await call('nightLight', on === undefined ? {} : { on });
       return typeof r === 'boolean' ? r : null;
     }),
+    // { enabled, ssid|null, signal|null }
+    wifi: wrap(async () => { const r = await call('wifi'); return { enabled: r?.enabled === true, ssid: typeof r?.ssid === 'string' && r.ssid ? r.ssid : null, signal: Number.isFinite(r?.signal) ? r.signal : null }; }),
+    setWifi: wrap(async on => { if (typeof on !== 'boolean') throw new Error('Bad Wi-Fi value'); return (await call('setWifi', { on })) === true; }),
+    bluetooth: wrap(async () => { const r = await call('bluetooth'); return { enabled: r?.enabled === true, devices: list(r?.devices).filter(d => d && typeof d.name === 'string' && d.name).map(d => ({ name: d.name, connected: d.connected === true })) }; }),
+    setBluetooth: wrap(async on => { if (typeof on !== 'boolean') throw new Error('Bad Bluetooth value'); return (await call('setBluetooth', { on })) === true; }),
+    // null = no battery (a desktop)
+    battery: wrap(async () => { const r = await call('battery'); return r && Number.isFinite(r.percent) ? { percent: r.percent, charging: r.charging === true, minutes: Number.isFinite(r.minutes) ? r.minutes : null } : null; }),
+    powerPlans: wrap(async () => list(await call('powerPlans')).filter(p => p && typeof p.id === 'string' && p.id && typeof p.name === 'string').map(p => ({ id: p.id, name: p.name, active: p.active === true }))),
+    setPowerPlan: wrap(async id => { if (typeof id !== 'string' || !/^[A-Za-z0-9-]{1,64}$/.test(id)) throw new Error('Bad power plan id'); return (await call('setPowerPlan', { id })) === true; }),
+    // focus assist / do not disturb: the state after the call, or null when this PC cannot report it
+    focusAssist: wrap(async on => {
+      if (on !== undefined && typeof on !== 'boolean') throw new Error('Bad focus assist value');
+      const r = await call('focusAssist', on === undefined ? {} : { on });
+      return typeof r === 'boolean' ? r : null;
+    }),
     lock: wrap(async () => (await call('lock')) === true),
     power: wrap(async mode => {
       if (!POWER.includes(mode)) throw new Error('Bad power mode');

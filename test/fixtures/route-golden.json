@@ -85,5 +85,17 @@
   {"text": "enable the blue light filter", "expect": ["core", "audio-display"]},
   {"text": "what is my display refresh rate", "expect": ["core", "audio-display"]},
   {"text": "make it brighter", "expect": ["core", "audio-display"]},
-  {"text": "turn the volume down", "expect": ["core", "media"]}
+  {"text": "turn the volume down", "expect": ["core", "media"]},
+  {"text": "turn off wifi", "expect": ["core", "connectivity"]},
+  {"text": "is my bluetooth on", "expect": ["core", "connectivity"]},
+  {"text": "how much battery do I have left", "expect": ["core", "connectivity"]},
+  {"text": "switch to the power saver plan", "expect": ["core", "pc", "connectivity"]},
+  {"text": "turn on do not disturb", "expect": ["core", "connectivity"]},
+  {"text": "enable focus assist", "expect": ["core", "connectivity"]},
+  {"text": "is the internet working", "expect": ["core", "connectivity"]},
+  {"text": "connect my bluetooth headphones", "expect": ["core", "audio-display", "connectivity"]},
+  {"text": "what wi-fi am I connected to", "expect": ["core", "connectivity"]},
+  {"text": "turn the battery saver on", "expect": ["core", "connectivity"]},
+  {"text": "set the power plan to high performance", "expect": ["core", "connectivity"]},
+  {"text": "wifi status", "expect": ["core", "connectivity"]}
 ]

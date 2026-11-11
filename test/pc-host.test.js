@@ -59,7 +59,7 @@ test('pc host script: no string-built commands, no registry, no permanent delete
     assert.doesNotMatch(ps, bad, String(bad));
   }
   assert.match(ps, /SendToRecycleBin/);
-  for (const cmd of ['startApps', 'launch', 'windows', 'alive', 'closeMain', 'kill', 'focus', 'recycle', 'lock', 'power', 'foreground', 'monitors', 'place', 'moveToMonitor', 'desktopSwitch', 'desktopMove', 'audioDevices', 'audioSetDefault', 'brightness', 'setBrightness', 'displays', 'nightLight']) assert.match(ps, new RegExp(`'${cmd}'`), cmd);
+  for (const cmd of ['startApps', 'launch', 'windows', 'alive', 'closeMain', 'kill', 'focus', 'recycle', 'lock', 'power', 'foreground', 'monitors', 'place', 'moveToMonitor', 'desktopSwitch', 'desktopMove', 'audioDevices', 'audioSetDefault', 'brightness', 'setBrightness', 'displays', 'nightLight', 'wifi', 'setWifi', 'bluetooth', 'setBluetooth', 'battery', 'powerPlans', 'setPowerPlan', 'focusAssist']) assert.match(ps, new RegExp(`'${cmd}'`), cmd);
 });
 
 test('pc host: PowerShell unwraps one-item lists; the client turns them back into lists', async () => {

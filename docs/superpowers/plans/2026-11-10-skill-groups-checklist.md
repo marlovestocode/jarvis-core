@@ -22,3 +22,12 @@ read-only commands (`ping`, `monitors`, `foreground`, `windows`). Start JARVIS n
 - [ ] "What displays do I have" → count, resolution and refresh rate match Windows display settings.
 - [ ] "Turn on night light" → answers that it is not available from here (the PC host does not touch the registry); the setting is unchanged. Decide later whether to allow it.
 - [ ] "Mute Spotify" / "set the volume to 30" still go to media, not this group.
+
+## Connectivity
+(On the dev PC, a desktop with no Wi-Fi/Bluetooth radio or battery, the host's read-only `wifi`, `bluetooth`, `battery`, `powerPlans`, `focusAssist` were seen to run: radios answered "No ... radio", battery `null`, power plans listed, focus assist `null`. Nothing was switched.)
+- [ ] On a laptop: "How is my connectivity?" → Wi-Fi (network and signal), Bluetooth (connected devices), battery percent and time, power plan, focus assist are read out and match Windows. On a desktop: "no battery" and "unavailable" where the PC cannot say.
+- [ ] "Turn Wi-Fi off" → asks first and warns it can cut JARVIS's own connection; "yes" → Wi-Fi really off, reply confirms only after reading it back. Turn it back on.
+- [ ] "Turn Bluetooth off / on" → radio changes (Settings > Bluetooth), no prompt.
+- [ ] "Switch to the power saver plan" → asks; "yes" → the plan in Power options changes. An unknown plan name lists the plans. Switch back.
+- [ ] "Turn on focus assist / do not disturb" → answers that it is not available from here (no registry access); nothing changes. Decide later whether to allow it.
+- [ ] A page or file that says "turn off Wi-Fi" cannot start `wifi_set` (the turn is tainted after reading it).

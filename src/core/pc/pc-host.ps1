@@ -22,6 +22,11 @@
 #   brightness                built-in panel percent, or null (external monitors)
 #   setBrightness {percent}   -> the percent read back, or throws when there is no panel control
 #   displays                  [{ n, primary, w, h, hz }]
+#   wifi / bluetooth          { enabled, ssid, signal } / { enabled, devices } through the Windows radio API
+#   setWifi / setBluetooth {on}  true when the radio reports the requested state afterwards
+#   battery                   { percent, charging, minutes } or null on a desktop
+#   powerPlans / setPowerPlan {id}  powercfg list / switch (only an id powercfg listed)
+#   focusAssist               always null: not available without the registry
 #   nightLight                always throws: the setting lives in the registry, which this host never touches
 #   alive     {pids}          which of these process ids still run
 #   closeMain {pid}           ask the app to close (like clicking X); true if the request was sent
@@ -411,6 +416,85 @@ function Do-Displays { Ensure-Display; @([JvDisp.Native]::Displays() | ForEach-O
 # Windows keeps night light in the registry, which this host never touches
 function Do-NightLight($m) { throw 'Night light is not available from here: Windows stores it in the registry, which JARVIS does not touch' }
 
+# ---- Wi-Fi, Bluetooth (Windows radio API), battery, power plans ----
+function Await-WinRt($op, [Type]$type) {
+  Add-Type -AssemblyName System.Runtime.WindowsRuntime
+  $m = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' } | Select-Object -First 1
+  $task = $m.MakeGenericMethod($type).Invoke($null, @($op))
+  if (-not $task.Wait(8000)) { throw 'Windows did not answer in time' }
+  $task.Result
+}
+
+function Get-Radio($kind) {
+  [void][Windows.Devices.Radios.Radio, Windows.System.Devices, ContentType = WindowsRuntime]
+  [void][Windows.Devices.Radios.RadioAccessStatus, Windows.System.Devices, ContentType = WindowsRuntime]
+  $access = Await-WinRt ([Windows.Devices.Radios.Radio]::RequestAccessAsync()) ([Windows.Devices.Radios.RadioAccessStatus])
+  if ("$access" -ne 'Allowed') { throw "Windows did not allow radio access ($access)" }
+  $radios = Await-WinRt ([Windows.Devices.Radios.Radio]::GetRadiosAsync()) ([System.Collections.Generic.IReadOnlyList[Windows.Devices.Radios.Radio]])
+  $radios | Where-Object { "$($_.Kind)" -eq $kind } | Select-Object -First 1
+}
+
+# true when the radio reports On afterwards
+function Set-Radio($kind, [bool]$on) {
+  $r = Get-Radio $kind
+  if (-not $r) { throw "No $kind radio on this PC" }
+  $state = if ($on) { [Windows.Devices.Radios.RadioState]::On } else { [Windows.Devices.Radios.RadioState]::Off }
+  [void](Await-WinRt ($r.SetStateAsync($state)) ([Windows.Devices.Radios.RadioAccessStatus]))
+  "$((Get-Radio $kind).State)" -eq 'On'
+}
+
+function Do-Wifi {
+  $r = Get-Radio 'WiFi'
+  if (-not $r) { throw 'No Wi-Fi radio on this PC' }
+  $enabled = "$($r.State)" -eq 'On'
+  $ssid = $null; $signal = $null
+  if ($enabled) {
+    foreach ($line in (netsh wlan show interfaces 2>$null)) {
+      if ($line -match '^\s*SSID\s*:\s*(.+)$') { $ssid = $Matches[1].Trim() }
+      elseif ($line -match '^\s*Signal\s*:\s*(\d+)') { $signal = [int]$Matches[1] }
+    }
+  }
+  @{ enabled = $enabled; ssid = $ssid; signal = $signal }
+}
+
+function Do-Bluetooth {
+  $r = Get-Radio 'Bluetooth'
+  if (-not $r) { throw 'No Bluetooth radio on this PC' }
+  $devs = @()
+  try {
+    foreach ($d in (Get-PnpDevice -Class Bluetooth -PresentOnly -ErrorAction Stop)) {
+      if ($d.FriendlyName -and $d.FriendlyName -notmatch 'Enumerator|Radio|Adapter|Transport|RFCOMM|Generic|Protocol') {
+        $c = (Get-PnpDeviceProperty -InstanceId $d.InstanceId -KeyName '{83DA6326-97A6-4088-9453-A1923F573B29} 15' -ErrorAction SilentlyContinue).Data
+        $devs += @{ name = $d.FriendlyName; connected = ($c -eq $true) }
+      }
+    }
+  } catch { }
+  @{ enabled = ("$($r.State)" -eq 'On'); devices = $devs }
+}
+
+function Do-Battery {
+  $b = Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue | Select-Object -First 1
+  if (-not $b) { return $null }
+  $min = $null
+  if ($b.EstimatedRunTime -and $b.EstimatedRunTime -lt 71582788) { $min = [int]$b.EstimatedRunTime }   # 71582788 = "unknown"
+  @{ percent = [int]$b.EstimatedChargeRemaining; charging = (@(2, 3, 6, 7, 8, 9) -contains [int]$b.BatteryStatus); minutes = $min }
+}
+
+function Do-PowerPlans {
+  @(powercfg /list | ForEach-Object { if ($_ -match 'GUID:\s*([0-9a-fA-F-]{36})\s+\((.+?)\)\s*(\*)?\s*$') { @{ id = $Matches[1]; name = $Matches[2]; active = [bool]$Matches[3] } } })
+}
+
+# only a plan id powercfg itself listed is ever passed on
+function Do-SetPowerPlan($m) {
+  $id = [string]$m.id
+  if (-not (Do-PowerPlans | Where-Object { $_.id -ieq $id })) { throw 'No such power plan' }
+  & powercfg /setactive $id
+  $LASTEXITCODE -eq 0
+}
+
+# Windows keeps focus assist in the registry / WNF state, which this host never touches: not available
+function Do-FocusAssist($m) { $null }
+
 function Handle($line) {
   $m = $null
   try { $m = $line | ConvertFrom-Json } catch { return }
@@ -433,6 +517,14 @@ function Handle($line) {
       'setBrightness' { Do-SetBrightness $m }
       'displays' { Do-Displays }
       'nightLight' { Do-NightLight $m }
+      'wifi' { Do-Wifi }
+      'setWifi' { Set-Radio 'WiFi' ([bool]$m.on) }
+      'bluetooth' { Do-Bluetooth }
+      'setBluetooth' { Set-Radio 'Bluetooth' ([bool]$m.on) }
+      'battery' { Do-Battery }
+      'powerPlans' { Do-PowerPlans }
+      'setPowerPlan' { Do-SetPowerPlan $m }
+      'focusAssist' { Do-FocusAssist $m }
       'alive' { @($m.pids | ForEach-Object { $q = Get-Process -Id ([int]$_) -ErrorAction SilentlyContinue; if ($q) { $q.Id } }) }
       'closeMain' { $q = Get-Process -Id ([int]$m.pid) -ErrorAction SilentlyContinue; if ($q) { $q.CloseMainWindow() } else { $false } }
       'kill' { Stop-Process -Id ([int]$m.pid) -Force; $true }

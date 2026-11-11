@@ -7,7 +7,10 @@ const path = require('node:path');
 // monitors: work areas. desktops: false = this Windows build has no virtual-desktop support.
 // placeWrong: place() claims success but leaves the window where it was (to test read-back checks).
 function createFakePcHost({ windows = [], opens = {}, binDir = null, stubborn = [], focusOk = true, lockOk = true, monitors = [{ n: 1, primary: true, x: 0, y: 0, w: 1920, h: 1080 }], desktops = true, foreground = null, placeWrong = false,
-  audioDevices = [], audioStuck = false, brightness = null, brightnessStuck = false, displays = [], nightLight = null, nightStuck = false } = {}) {
+  audioDevices = [], audioStuck = false, brightness = null, brightnessStuck = false, displays = [], nightLight = null, nightStuck = false,
+  wifi = null, wifiStuck = false, bluetooth = null, bluetoothStuck = false, battery = null, powerPlans = [], planStuck = false, focusAssist = null, focusStuck = false } = {}) {
+  let wifiNow = wifi && { ...wifi }, btNow = bluetooth && { ...bluetooth }, focusNow = focusAssist;
+  const plans = powerPlans.map(p => ({ ...p }));
   const devs = audioDevices.map(d => ({ ...d }));
   let bright = brightness, night = nightLight;
   const calls = [];
@@ -67,6 +70,14 @@ function createFakePcHost({ windows = [], opens = {}, binDir = null, stubborn = 
     async setBrightness(p) { log('setBrightness', p); if (!brightnessStuck) bright = p; return bright; },
     async displays() { log('displays'); return displays.map(d => ({ ...d })); },
     async nightLight(on) { log('nightLight', on); if (night === null) return null; if (on !== undefined && !nightStuck) night = on; return night; },
+    async wifi() { log('wifi'); return wifiNow && { ...wifiNow }; },
+    async setWifi(on) { log('setWifi', on); if (!wifiStuck) wifiNow = { ...wifiNow, enabled: on, ssid: on ? wifiNow.ssid : null }; return true; },
+    async bluetooth() { log('bluetooth'); return btNow && { enabled: btNow.enabled, devices: btNow.devices.map(d => ({ ...d })) }; },
+    async setBluetooth(on) { log('setBluetooth', on); if (!bluetoothStuck) btNow = { ...btNow, enabled: on }; return true; },
+    async battery() { log('battery'); return battery && { ...battery }; },
+    async powerPlans() { log('powerPlans'); return plans.map(p => ({ ...p })); },
+    async setPowerPlan(id) { log('setPowerPlan', id); if (!planStuck) for (const p of plans) p.active = p.id === id; return true; },
+    async focusAssist(on) { log('focusAssist', on); if (focusNow === null) return null; if (on !== undefined && !focusStuck) focusNow = on; return focusNow; },
     async desktopSwitch(target) { log('desktopSwitch', target); if (!desktops) throw new Error('Virtual desktops are not available on this Windows build'); return true; },
     async desktopMove(hwnd, n) { log('desktopMove', { hwnd, n }); if (!desktops) throw new Error('Virtual desktops are not available on this Windows build'); return true; },
     async focus(hwnd) { log('focus', hwnd); return focusOk; },
