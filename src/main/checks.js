@@ -57,6 +57,12 @@ function selfChecks(ctx, { fetch = globalThis.fetch } = {}) {
       const c = ctx.memorySystem.check();
       return c.level === 'ok' ? c.detail : c.level === 'off' ? off(c.detail) : bad(c.detail);
     } },
+    // wave 2: plays, actions, playlist edits and tool calls on the cortex, and the one-time import's progress
+    { id: 'history', run: () => {
+      if (!ctx.history) return off('history is not started');
+      const h = ctx.history.check();
+      return h.level === 'ok' ? h.detail : bad(h.detail);
+    } },
     { id: 'model', timeoutMs: 6000, run: async () => {
       const p = ctx.providers.get(cfg().provider);
       if (!p) return bad(`unknown provider "${cfg().provider}"`);

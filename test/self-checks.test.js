@@ -33,6 +33,7 @@ function fakeCtx(over = {}) {
     hotkeys: { failed: [], registered: ['Control+Space'] },
     memwatch: { check: () => ({ level: 'ok', rssMB: 60, peakMB: 60, warnMB: 400, components: {} }) },
     memorySystem: { check: () => ({ level: 'ok', detail: 'ollama:nomic-embed-text@768; 12 nodes' }) },
+    history: { check: () => ({ level: 'ok', detail: '3 plays, 1 action, 2 tool calls logged' }) },
     ...over,
   };
 }
@@ -105,4 +106,11 @@ test('selfChecks: cortex check ok / off / problem', async () => {
   const bad = (await run(fakeCtx({ memorySystem: { check: () => ({ level: 'bad', detail: 'the cortex is read-only' }) } }))).cortex;
   assert.deepEqual([bad.state, bad.detail], ['fail', 'the cortex is read-only']);
   assert.equal((await run(fakeCtx({ memorySystem: null }))).cortex.state, 'off');
+});
+
+test('selfChecks: history check ok / problem / off (wave 2)', async () => {
+  assert.equal((await run(fakeCtx({ history: { check: () => ({ level: 'ok', detail: 'importing music 41%; 3 plays logged' }) } }))).history.detail, 'importing music 41%; 3 plays logged');
+  const bad = (await run(fakeCtx({ history: { check: () => ({ level: 'bad', detail: 'history unavailable: no db' }) } }))).history;
+  assert.deepEqual([bad.state, bad.detail], ['fail', 'history unavailable: no db']);
+  assert.equal((await run(fakeCtx({ history: null }))).history.state, 'off');
 });
