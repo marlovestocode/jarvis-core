@@ -198,13 +198,18 @@ function createYtPlaylists({ link, ytm = null, getConfig = () => ({}), now = Dat
   }
 
   // ---- journal: every change JARVIS makes, so it can be taken back ----
-  let journal = [];
-  try { journal = journalStore.load().slice(-JOURNAL_MAX); } catch (err) { log('ytplaylists: could not read the undo journal:', err.message); }
-  let entrySeq = journal.reduce((n, e) => Math.max(n, e.id || 0), 0);
+  // read on first use: in the app the store is the cortex, which opens after this service is built
+  let journal = null, entrySeq = 0;
+  function entries() {
+    if (journal) return journal;
+    try { journal = journalStore.load().slice(-JOURNAL_MAX); } catch (err) { log('ytplaylists: could not read the undo journal:', err.message); return []; }
+    entrySeq = journal.reduce((n, e) => Math.max(n, e.id || 0), 0);
+    return journal;
+  }
   function record(entry) {
+    entries();
     const e = { id: ++entrySeq, at: now(), undone: false, ...entry };
-    journal.push(e);
-    journal = journal.slice(-JOURNAL_MAX);
+    journal = [...(journal || []), e].slice(-JOURNAL_MAX);
     try { journalStore.append(e); } catch (err) { log('ytplaylists: could not save the undo journal:', err.message); }
     return e;
   }
@@ -297,7 +302,7 @@ function createYtPlaylists({ link, ytm = null, getConfig = () => ({}), now = Dat
 
   // take back the last change JARVIS made (only songs it added, and only if they are still there)
   async function undo() {
-    const e = [...journal].reverse().find(x => !x.undone);
+    const e = [...entries()].reverse().find(x => !x.undone);
     if (!e) return { status: 'nothing' };
     const meta = library.list.find(p => p.id === e.playlistId) || { id: e.playlistId, title: e.playlistTitle, editable: true };
     const data = await getPlaylist(meta, { refresh: true });

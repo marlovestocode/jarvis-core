@@ -53,3 +53,14 @@ test('ytjournal: import of ytm-undo.json is one transaction, idempotent, renamed
   fs.writeFileSync(bad, '{not json');
   assert.deepEqual(importYtmUndo({ cortex: cortexOn(path.dirname(bad)), file: bad }), { imported: 0, broken: true });
 });
+
+test('ytjournal: ytplaylists reads the journal on first use, not when built (the cortex opens later in main.js)', async () => {
+  const { createYtPlaylists } = require('../src/core/media/ytplaylists');
+  let reads = 0;
+  const journal = { load: () => { reads++; return [entry(7)]; }, append() {}, markUndone() {} };
+  const link = { connected: true, info: { version: '1.2.0' }, async request(cmd) { if (cmd === 'playlist') return { id: 'PLgym', editable: true, tracks: [] }; return { playlists: [] }; } };
+  const svc = createYtPlaylists({ link, journal, sleep: async () => {} });
+  assert.equal(reads, 0);
+  assert.equal((await svc.undo()).status, 'gone');
+  assert.equal(reads, 1);
+});
