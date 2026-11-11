@@ -1,0 +1,1206 @@
+{
+ "docs": [
+  {
+   "id": "d1",
+   "text": "Rex has a vet visit in March"
+  },
+  {
+   "id": "d2",
+   "text": "the dog needs his rabies shot renewed"
+  },
+  {
+   "id": "d3",
+   "text": "Rex limped after the walk on Sunday"
+  },
+  {
+   "id": "d4",
+   "text": "the vet said Rex should lose two kilos"
+  },
+  {
+   "id": "d5",
+   "text": "my dog takes a pill for his joints every morning"
+  },
+  {
+   "id": "d6",
+   "text": "Luna sleeps on the radiator all afternoon"
+  },
+  {
+   "id": "d7",
+   "text": "the cat only eats the salmon food"
+  },
+  {
+   "id": "d8",
+   "text": "Luna knocks cups off the desk at night"
+  },
+  {
+   "id": "d9",
+   "text": "my cat hides when the vacuum runs"
+  },
+  {
+   "id": "d10",
+   "text": "the litter box is in the upstairs bathroom"
+  },
+  {
+   "id": "d11",
+   "text": "I walk Rex in the park before work"
+  },
+  {
+   "id": "d12",
+   "text": "the dog walker comes on Tuesdays and Thursdays"
+  },
+  {
+   "id": "d13",
+   "text": "Rex pulls on the leash near other dogs"
+  },
+  {
+   "id": "d14",
+   "text": "our evening walk is about forty minutes"
+  },
+  {
+   "id": "d15",
+   "text": "the river trail is Rex favourite route"
+  },
+  {
+   "id": "d16",
+   "text": "we buy dog food in 12 kilo bags"
+  },
+  {
+   "id": "d17",
+   "text": "the pet shop on Main Street has the cat litter"
+  },
+  {
+   "id": "d18",
+   "text": "Rex needs a new harness, size large"
+  },
+  {
+   "id": "d19",
+   "text": "cat treats are in the top kitchen drawer"
+  },
+  {
+   "id": "d20",
+   "text": "the flea medicine is due every three months"
+  },
+  {
+   "id": "d21",
+   "text": "I listen to Radiohead when I work late"
+  },
+  {
+   "id": "d22",
+   "text": "Daft Punk is my go to for running"
+  },
+  {
+   "id": "d23",
+   "text": "I have seen Arctic Monkeys live twice"
+  },
+  {
+   "id": "d24",
+   "text": "Billie Eilish was on repeat all summer"
+  },
+  {
+   "id": "d25",
+   "text": "my top artist this year is Fred again"
+  },
+  {
+   "id": "d26",
+   "text": "the Focus playlist has instrumental tracks only"
+  },
+  {
+   "id": "d27",
+   "text": "Gym Bangers is my workout playlist"
+  },
+  {
+   "id": "d28",
+   "text": "I keep a Sunday Morning list of acoustic songs"
+  },
+  {
+   "id": "d29",
+   "text": "the Road Trip playlist is four hours long"
+  },
+  {
+   "id": "d30",
+   "text": "Late Night has lo-fi beats for coding"
+  },
+  {
+   "id": "d31",
+   "text": "I bought tickets for the festival in July"
+  },
+  {
+   "id": "d32",
+   "text": "the concert at the arena starts at eight"
+  },
+  {
+   "id": "d33",
+   "text": "we stood near the stage at the last show"
+  },
+  {
+   "id": "d34",
+   "text": "my friend got backstage passes once"
+  },
+  {
+   "id": "d35",
+   "text": "the gig was cancelled because of the storm"
+  },
+  {
+   "id": "d36",
+   "text": "I am learning guitar chords on weekends"
+  },
+  {
+   "id": "d37",
+   "text": "my old keyboard is in the garage"
+  },
+  {
+   "id": "d38",
+   "text": "I took piano lessons as a kid"
+  },
+  {
+   "id": "d39",
+   "text": "the guitar needs new strings"
+  },
+  {
+   "id": "d40",
+   "text": "I want to try the drums next year"
+  },
+  {
+   "id": "d41",
+   "text": "the dashboard release is due on Friday"
+  },
+  {
+   "id": "d42",
+   "text": "the client wants the report by end of month"
+  },
+  {
+   "id": "d43",
+   "text": "sprint planning is every second Monday"
+  },
+  {
+   "id": "d44",
+   "text": "the API migration slipped by a week"
+  },
+  {
+   "id": "d45",
+   "text": "the launch date moved to December"
+  },
+  {
+   "id": "d46",
+   "text": "Maria leads the backend team"
+  },
+  {
+   "id": "d47",
+   "text": "Tom reviews my pull requests"
+  },
+  {
+   "id": "d48",
+   "text": "my manager is called Priya"
+  },
+  {
+   "id": "d49",
+   "text": "Ken from design made the new logo"
+  },
+  {
+   "id": "d50",
+   "text": "the intern Sam starts in January"
+  },
+  {
+   "id": "d51",
+   "text": "standup is at nine thirty every day"
+  },
+  {
+   "id": "d52",
+   "text": "the all hands meeting is on Thursday"
+  },
+  {
+   "id": "d53",
+   "text": "I have a one on one with Priya weekly"
+  },
+  {
+   "id": "d54",
+   "text": "the retro runs long every time"
+  },
+  {
+   "id": "d55",
+   "text": "client calls happen on Wednesday afternoons"
+  },
+  {
+   "id": "d56",
+   "text": "we use Jira for tickets"
+  },
+  {
+   "id": "d57",
+   "text": "the code lives on GitHub"
+  },
+  {
+   "id": "d58",
+   "text": "our team chats in Slack"
+  },
+  {
+   "id": "d59",
+   "text": "deploys run through Jenkins"
+  },
+  {
+   "id": "d60",
+   "text": "the docs are in Confluence"
+  },
+  {
+   "id": "d61",
+   "text": "I run five kilometres three times a week"
+  },
+  {
+   "id": "d62",
+   "text": "I lift weights on Monday and Friday"
+  },
+  {
+   "id": "d63",
+   "text": "yoga class is on Wednesday evening"
+  },
+  {
+   "id": "d64",
+   "text": "my resting heart rate is 58"
+  },
+  {
+   "id": "d65",
+   "text": "I swim at the public pool on Saturdays"
+  },
+  {
+   "id": "d66",
+   "text": "I go to bed around midnight"
+  },
+  {
+   "id": "d67",
+   "text": "I wake up at seven without an alarm"
+  },
+  {
+   "id": "d68",
+   "text": "coffee after four keeps me awake"
+  },
+  {
+   "id": "d69",
+   "text": "I sleep better with the window open"
+  },
+  {
+   "id": "d70",
+   "text": "naps longer than twenty minutes make me groggy"
+  },
+  {
+   "id": "d71",
+   "text": "I am trying to eat less sugar"
+  },
+  {
+   "id": "d72",
+   "text": "I do not eat pork"
+  },
+  {
+   "id": "d73",
+   "text": "breakfast is usually oats with berries"
+  },
+  {
+   "id": "d74",
+   "text": "I drink two litres of water a day"
+  },
+  {
+   "id": "d75",
+   "text": "I am allergic to peanuts"
+  },
+  {
+   "id": "d76",
+   "text": "my dentist appointment is in April"
+  },
+  {
+   "id": "d77",
+   "text": "the GP checked my blood pressure last month"
+  },
+  {
+   "id": "d78",
+   "text": "I need new glasses, the eye test is booked"
+  },
+  {
+   "id": "d79",
+   "text": "the physio is helping with my back"
+  },
+  {
+   "id": "d80",
+   "text": "my yearly checkup is in September"
+  },
+  {
+   "id": "d81",
+   "text": "the kitchen tap is dripping again"
+  },
+  {
+   "id": "d82",
+   "text": "the boiler was serviced in October"
+  },
+  {
+   "id": "d83",
+   "text": "a roof tile came loose in the storm"
+  },
+  {
+   "id": "d84",
+   "text": "the bathroom door does not close properly"
+  },
+  {
+   "id": "d85",
+   "text": "the plumber comes on Tuesday morning"
+  },
+  {
+   "id": "d86",
+   "text": "the tomatoes are growing in the greenhouse"
+  },
+  {
+   "id": "d87",
+   "text": "I mow the lawn every other weekend"
+  },
+  {
+   "id": "d88",
+   "text": "the apple tree needs pruning in winter"
+  },
+  {
+   "id": "d89",
+   "text": "we planted tulips along the fence"
+  },
+  {
+   "id": "d90",
+   "text": "the hose has a leak near the tap"
+  },
+  {
+   "id": "d91",
+   "text": "the electricity bill is paid on the first"
+  },
+  {
+   "id": "d92",
+   "text": "internet costs forty a month"
+  },
+  {
+   "id": "d93",
+   "text": "the water bill arrives every quarter"
+  },
+  {
+   "id": "d94",
+   "text": "council tax goes out by direct debit"
+  },
+  {
+   "id": "d95",
+   "text": "the phone contract ends in June"
+  },
+  {
+   "id": "d96",
+   "text": "we ordered a new sofa in grey"
+  },
+  {
+   "id": "d97",
+   "text": "the desk chair hurts my back"
+  },
+  {
+   "id": "d98",
+   "text": "the bookshelf is from my grandmother"
+  },
+  {
+   "id": "d99",
+   "text": "the bed frame squeaks on one side"
+  },
+  {
+   "id": "d100",
+   "text": "we want a bigger dining table"
+  },
+  {
+   "id": "d101",
+   "text": "we fly to Lisbon in May"
+  },
+  {
+   "id": "d102",
+   "text": "the Japan trip is planned for autumn"
+  },
+  {
+   "id": "d103",
+   "text": "a weekend in the mountains in February"
+  },
+  {
+   "id": "d104",
+   "text": "my sister and I are going to Rome"
+  },
+  {
+   "id": "d105",
+   "text": "the road trip to Scotland is in August"
+  },
+  {
+   "id": "d106",
+   "text": "last summer we stayed in Croatia"
+  },
+  {
+   "id": "d107",
+   "text": "I visited New York in 2023"
+  },
+  {
+   "id": "d108",
+   "text": "the Iceland trip had amazing northern lights"
+  },
+  {
+   "id": "d109",
+   "text": "we got lost hiking in Wales"
+  },
+  {
+   "id": "d110",
+   "text": "Paris was rainy the whole week"
+  },
+  {
+   "id": "d111",
+   "text": "I always pick the window seat"
+  },
+  {
+   "id": "d112",
+   "text": "I prefer trains to short flights"
+  },
+  {
+   "id": "d113",
+   "text": "I pack only carry on luggage"
+  },
+  {
+   "id": "d114",
+   "text": "I like small hotels over big chains"
+  },
+  {
+   "id": "d115",
+   "text": "I get seasick on boats"
+  },
+  {
+   "id": "d116",
+   "text": "my passport expires in 2028"
+  },
+  {
+   "id": "d117",
+   "text": "the travel insurance renews in March"
+  },
+  {
+   "id": "d118",
+   "text": "I keep a copy of my visa in the cloud"
+  },
+  {
+   "id": "d119",
+   "text": "the driving licence needs a new photo"
+  },
+  {
+   "id": "d120",
+   "text": "the European health card is in my wallet"
+  },
+  {
+   "id": "d121",
+   "text": "my mum birthday is on the fifth of June"
+  },
+  {
+   "id": "d122",
+   "text": "Dad turns sixty next year"
+  },
+  {
+   "id": "d123",
+   "text": "my sister was born in October"
+  },
+  {
+   "id": "d124",
+   "text": "grandma birthday is on Christmas Eve"
+  },
+  {
+   "id": "d125",
+   "text": "my nephew turns four in March"
+  },
+  {
+   "id": "d126",
+   "text": "my sister Anna lives in Berlin"
+  },
+  {
+   "id": "d127",
+   "text": "my brother works as a nurse"
+  },
+  {
+   "id": "d128",
+   "text": "my parents live by the sea"
+  },
+  {
+   "id": "d129",
+   "text": "my cousin Leo is a chef"
+  },
+  {
+   "id": "d130",
+   "text": "my grandmother is ninety one"
+  },
+  {
+   "id": "d131",
+   "text": "parents evening is next Thursday"
+  },
+  {
+   "id": "d132",
+   "text": "the school run starts at eight fifteen"
+  },
+  {
+   "id": "d133",
+   "text": "the class trip is to the science museum"
+  },
+  {
+   "id": "d134",
+   "text": "swimming lessons are on Saturday"
+  },
+  {
+   "id": "d135",
+   "text": "the school play is in December"
+  },
+  {
+   "id": "d136",
+   "text": "the family reunion is in July"
+  },
+  {
+   "id": "d137",
+   "text": "we have Sunday lunch at my parents"
+  },
+  {
+   "id": "d138",
+   "text": "my cousin wedding is in Italy"
+  },
+  {
+   "id": "d139",
+   "text": "Christmas is at our house this year"
+  },
+  {
+   "id": "d140",
+   "text": "we celebrate Easter with a big brunch"
+  },
+  {
+   "id": "d141",
+   "text": "I make lasagne on Sunday evenings"
+  },
+  {
+   "id": "d142",
+   "text": "my curry recipe uses coconut milk"
+  },
+  {
+   "id": "d143",
+   "text": "I bake sourdough every week"
+  },
+  {
+   "id": "d144",
+   "text": "the slow cooker is great for stews"
+  },
+  {
+   "id": "d145",
+   "text": "I am learning to make fresh pasta"
+  },
+  {
+   "id": "d146",
+   "text": "our favourite Thai place is on King Street"
+  },
+  {
+   "id": "d147",
+   "text": "the pizza place delivers until midnight"
+  },
+  {
+   "id": "d148",
+   "text": "we booked the steakhouse for the anniversary"
+  },
+  {
+   "id": "d149",
+   "text": "the sushi bar has a lunch deal"
+  },
+  {
+   "id": "d150",
+   "text": "the new vegan cafe opened last month"
+  },
+  {
+   "id": "d151",
+   "text": "we shop at the market on Saturday"
+  },
+  {
+   "id": "d152",
+   "text": "we are out of olive oil"
+  },
+  {
+   "id": "d153",
+   "text": "buy oat milk not cow milk"
+  },
+  {
+   "id": "d154",
+   "text": "the online order arrives on Thursday"
+  },
+  {
+   "id": "d155",
+   "text": "I need eggs, bread and spinach"
+  },
+  {
+   "id": "d156",
+   "text": "I drink black coffee in the morning"
+  },
+  {
+   "id": "d157",
+   "text": "green tea in the afternoon"
+  },
+  {
+   "id": "d158",
+   "text": "I like red wine from Spain"
+  },
+  {
+   "id": "d159",
+   "text": "I quit energy drinks last year"
+  },
+  {
+   "id": "d160",
+   "text": "sparkling water with lemon at dinner"
+  },
+  {
+   "id": "d161",
+   "text": "my PC has a Ryzen 5 and 32 gigabytes of memory"
+  },
+  {
+   "id": "d162",
+   "text": "the graphics card has 8 gigabytes of VRAM"
+  },
+  {
+   "id": "d163",
+   "text": "I use two monitors at home"
+  },
+  {
+   "id": "d164",
+   "text": "the keyboard is mechanical with brown switches"
+  },
+  {
+   "id": "d165",
+   "text": "the backup drive is two terabytes"
+  },
+  {
+   "id": "d166",
+   "text": "my phone battery drains fast"
+  },
+  {
+   "id": "d167",
+   "text": "I switched to a new phone in spring"
+  },
+  {
+   "id": "d168",
+   "text": "the phone screen has a crack in the corner"
+  },
+  {
+   "id": "d169",
+   "text": "I use dark mode everywhere"
+  },
+  {
+   "id": "d170",
+   "text": "my phone storage is almost full"
+  },
+  {
+   "id": "d171",
+   "text": "I code in JavaScript and Python"
+  },
+  {
+   "id": "d172",
+   "text": "my editor is VS Code"
+  },
+  {
+   "id": "d173",
+   "text": "I run Windows 11 on the desktop"
+  },
+  {
+   "id": "d174",
+   "text": "Ollama runs the local models"
+  },
+  {
+   "id": "d175",
+   "text": "I use a password manager for logins"
+  },
+  {
+   "id": "d176",
+   "text": "the living room lights are on a smart plug"
+  },
+  {
+   "id": "d177",
+   "text": "the thermostat is set to twenty degrees"
+  },
+  {
+   "id": "d178",
+   "text": "the doorbell camera saves clips for a week"
+  },
+  {
+   "id": "d179",
+   "text": "the robot vacuum runs at ten"
+  },
+  {
+   "id": "d180",
+   "text": "the speakers are in the kitchen and bedroom"
+  },
+  {
+   "id": "d181",
+   "text": "I am reading a fantasy series right now"
+  },
+  {
+   "id": "d182",
+   "text": "I read before bed every night"
+  },
+  {
+   "id": "d183",
+   "text": "my favourite author is Terry Pratchett"
+  },
+  {
+   "id": "d184",
+   "text": "the book club meets monthly"
+  },
+  {
+   "id": "d185",
+   "text": "I prefer paper books to an e-reader"
+  },
+  {
+   "id": "d186",
+   "text": "I play strategy games on weekends"
+  },
+  {
+   "id": "d187",
+   "text": "my friends and I play online on Fridays"
+  },
+  {
+   "id": "d188",
+   "text": "I finished the last Zelda game"
+  },
+  {
+   "id": "d189",
+   "text": "I build levels in Roblox"
+  },
+  {
+   "id": "d190",
+   "text": "I stream sometimes on Twitch"
+  },
+  {
+   "id": "d191",
+   "text": "I support Arsenal"
+  },
+  {
+   "id": "d192",
+   "text": "I watch Formula 1 races on Sunday"
+  },
+  {
+   "id": "d193",
+   "text": "the basketball playoffs start in April"
+  },
+  {
+   "id": "d194",
+   "text": "I follow the Tour de France"
+  },
+  {
+   "id": "d195",
+   "text": "we watch rugby at the pub"
+  },
+  {
+   "id": "d196",
+   "text": "I shoot with a mirrorless camera"
+  },
+  {
+   "id": "d197",
+   "text": "I edit photos in Lightroom"
+  },
+  {
+   "id": "d198",
+   "text": "I like street photography in the city"
+  },
+  {
+   "id": "d199",
+   "text": "my 50mm lens is the one I use most"
+  },
+  {
+   "id": "d200",
+   "text": "I print my best photos once a year"
+  }
+ ],
+ "queries": [
+  {
+   "q": "when is my dog going to the vet",
+   "relevant": [
+    "d1",
+    "d2",
+    "d3",
+    "d4",
+    "d5"
+   ]
+  },
+  {
+   "q": "what does my kitty do all day",
+   "relevant": [
+    "d6",
+    "d7",
+    "d8",
+    "d9",
+    "d10"
+   ]
+  },
+  {
+   "q": "who takes the dog out",
+   "relevant": [
+    "d11",
+    "d12",
+    "d13",
+    "d14",
+    "d15"
+   ]
+  },
+  {
+   "q": "what pet things do we need to buy",
+   "relevant": [
+    "d16",
+    "d17",
+    "d18",
+    "d19",
+    "d20"
+   ]
+  },
+  {
+   "q": "which bands do I like",
+   "relevant": [
+    "d21",
+    "d22",
+    "d23",
+    "d24",
+    "d25"
+   ]
+  },
+  {
+   "q": "what music lists have I made",
+   "relevant": [
+    "d26",
+    "d27",
+    "d28",
+    "d29",
+    "d30"
+   ]
+  },
+  {
+   "q": "live shows I am going to",
+   "relevant": [
+    "d31",
+    "d32",
+    "d33",
+    "d34",
+    "d35"
+   ]
+  },
+  {
+   "q": "what can I play musically",
+   "relevant": [
+    "d36",
+    "d37",
+    "d38",
+    "d39",
+    "d40"
+   ]
+  },
+  {
+   "q": "when are things due at the office",
+   "relevant": [
+    "d41",
+    "d42",
+    "d43",
+    "d44",
+    "d45"
+   ]
+  },
+  {
+   "q": "who do I work with",
+   "relevant": [
+    "d46",
+    "d47",
+    "d48",
+    "d49",
+    "d50"
+   ]
+  },
+  {
+   "q": "what is on my work calendar",
+   "relevant": [
+    "d51",
+    "d52",
+    "d53",
+    "d54",
+    "d55"
+   ]
+  },
+  {
+   "q": "what software does the team use",
+   "relevant": [
+    "d56",
+    "d57",
+    "d58",
+    "d59",
+    "d60"
+   ]
+  },
+  {
+   "q": "how often do I work out",
+   "relevant": [
+    "d61",
+    "d62",
+    "d63",
+    "d64",
+    "d65"
+   ]
+  },
+  {
+   "q": "what time do I go to sleep",
+   "relevant": [
+    "d66",
+    "d67",
+    "d68",
+    "d69",
+    "d70"
+   ]
+  },
+  {
+   "q": "what do I eat or avoid",
+   "relevant": [
+    "d71",
+    "d72",
+    "d73",
+    "d74",
+    "d75"
+   ]
+  },
+  {
+   "q": "upcoming medical appointments",
+   "relevant": [
+    "d76",
+    "d77",
+    "d78",
+    "d79",
+    "d80"
+   ]
+  },
+  {
+   "q": "what is broken in the house",
+   "relevant": [
+    "d81",
+    "d82",
+    "d83",
+    "d84",
+    "d85"
+   ]
+  },
+  {
+   "q": "what is happening in the yard",
+   "relevant": [
+    "d86",
+    "d87",
+    "d88",
+    "d89",
+    "d90"
+   ]
+  },
+  {
+   "q": "what do I pay each month",
+   "relevant": [
+    "d91",
+    "d92",
+    "d93",
+    "d94",
+    "d95"
+   ]
+  },
+  {
+   "q": "what about the chairs and tables at home",
+   "relevant": [
+    "d96",
+    "d97",
+    "d98",
+    "d99",
+    "d100"
+   ]
+  },
+  {
+   "q": "where am I going on holiday",
+   "relevant": [
+    "d101",
+    "d102",
+    "d103",
+    "d104",
+    "d105"
+   ]
+  },
+  {
+   "q": "where did I travel before",
+   "relevant": [
+    "d106",
+    "d107",
+    "d108",
+    "d109",
+    "d110"
+   ]
+  },
+  {
+   "q": "how do I like to travel",
+   "relevant": [
+    "d111",
+    "d112",
+    "d113",
+    "d114",
+    "d115"
+   ]
+  },
+  {
+   "q": "when does my passport run out",
+   "relevant": [
+    "d116",
+    "d117",
+    "d118",
+    "d119",
+    "d120"
+   ]
+  },
+  {
+   "q": "family birthdays coming up",
+   "relevant": [
+    "d121",
+    "d122",
+    "d123",
+    "d124",
+    "d125"
+   ]
+  },
+  {
+   "q": "tell me about my relatives",
+   "relevant": [
+    "d126",
+    "d127",
+    "d128",
+    "d129",
+    "d130"
+   ]
+  },
+  {
+   "q": "what is happening at school",
+   "relevant": [
+    "d131",
+    "d132",
+    "d133",
+    "d134",
+    "d135"
+   ]
+  },
+  {
+   "q": "family gatherings planned",
+   "relevant": [
+    "d136",
+    "d137",
+    "d138",
+    "d139",
+    "d140"
+   ]
+  },
+  {
+   "q": "what dishes do I make",
+   "relevant": [
+    "d141",
+    "d142",
+    "d143",
+    "d144",
+    "d145"
+   ]
+  },
+  {
+   "q": "where do we eat out",
+   "relevant": [
+    "d146",
+    "d147",
+    "d148",
+    "d149",
+    "d150"
+   ]
+  },
+  {
+   "q": "what is on the shopping list",
+   "relevant": [
+    "d151",
+    "d152",
+    "d153",
+    "d154",
+    "d155"
+   ]
+  },
+  {
+   "q": "what do I like to drink",
+   "relevant": [
+    "d156",
+    "d157",
+    "d158",
+    "d159",
+    "d160"
+   ]
+  },
+  {
+   "q": "what hardware is in my computer",
+   "relevant": [
+    "d161",
+    "d162",
+    "d163",
+    "d164",
+    "d165"
+   ]
+  },
+  {
+   "q": "problems with my mobile",
+   "relevant": [
+    "d166",
+    "d167",
+    "d168",
+    "d169",
+    "d170"
+   ]
+  },
+  {
+   "q": "what programs do I use",
+   "relevant": [
+    "d171",
+    "d172",
+    "d173",
+    "d174",
+    "d175"
+   ]
+  },
+  {
+   "q": "what devices are connected at home",
+   "relevant": [
+    "d176",
+    "d177",
+    "d178",
+    "d179",
+    "d180"
+   ]
+  },
+  {
+   "q": "what books am I into",
+   "relevant": [
+    "d181",
+    "d182",
+    "d183",
+    "d184",
+    "d185"
+   ]
+  },
+  {
+   "q": "what video games do I play",
+   "relevant": [
+    "d186",
+    "d187",
+    "d188",
+    "d189",
+    "d190"
+   ]
+  },
+  {
+   "q": "which teams do I follow",
+   "relevant": [
+    "d191",
+    "d192",
+    "d193",
+    "d194",
+    "d195"
+   ]
+  },
+  {
+   "q": "what camera gear do I have",
+   "relevant": [
+    "d196",
+    "d197",
+    "d198",
+    "d199",
+    "d200"
+   ]
+  }
+ ]
+}
