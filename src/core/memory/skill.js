@@ -1,7 +1,9 @@
 // Memory fast path: "remember that...", "forget...", "what do you remember about me?" are handled here,
 // before any model call (quick chat has no tools, so the model could not do this itself).
 // handle(text) → null | { reply, record, tool: 'memory', ok }
-const STRIP = /^\s*(?:(?:hey |ok(?:ay)? )?jarvis[,.!]?\s*)?(?:please\s+)?/i;
+const STRIP = /^\s*(?:(?:hey |ok(?:ay)? )?jarvis[,.!]?\s*)?(?:please\s+)?(?:(?:can|could|would|will) you\s+(?:please\s+)?)?/i;
+// "… from your memory please?": the place and the politeness are not part of what to forget
+const TAIL = /\s+(?:from|out of)\s+(?:your\s+|my\s+|the\s+)?memor(?:y|ies)\b|\s*,?\s*please$|\s*\?+$/gi;
 
 const REMEMBER = /^(?:remember|memorize|make a note|note|keep in mind|don'?t forget)\s+(?:that\s+)?(.{3,})$/i;
 const FORGET_ALL = /^(?:forget|erase|clear|wipe|delete)\s+(?:everything|all)(?:\s+(?:you\s+)?(?:know|remember)(?:\s+about me)?)?$|^(?:clear|wipe|erase)\s+(?:your\s+|my\s+)?memory$/i;
@@ -42,7 +44,7 @@ function createMemorySkill({ memory, setName = null, about = null }) {
       if (r.ok) return say(r.duplicate ? 'I already had that.' : `Got it. I'll remember that ${r.text.replace(/^i\b/i, 'you').replace(/\bmy\b/gi, 'your')}.`);
       return say({ secret: "I won't store passwords, keys or card numbers.", long: 'That is too long to remember. Make it shorter.', empty: 'Remember what?' }[r.reason] || 'I could not save that.', false);
     }
-    m = FORGET.exec(t);
+    m = FORGET.exec(t.replace(TAIL, '').replace(TAIL, '').trim());
     if (m && !/^(?:it|this|that|him|her|them)$/i.test(m[1].trim())) {
       const r = memory.forget(m[1]);
       if (r.removed.length) return say(`Forgot ${r.removed.length === 1 ? 'that' : `those ${r.removed.length}`}: ${r.removed.join('; ')}.`);

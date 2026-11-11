@@ -17,7 +17,7 @@ const LIVE = /\b(weather|forecast|rain|snow|wind|humidity|alerts?|warnings?|advi
 const FACT = /^(?:who|what|when|where|why|which|how (?:does|do|did|many|much|big|old|tall|long|far|fast|heavy|large)|tell me (?:about|more about|who|what|where|when|why)|whose|(?:please |can you |could you )?(?:search|look|google|find out|check)\b|explain|define|describe|is there|are there|did|does)\b|\b(read|article|section)\b/i;
 // Asking JARVIS to do something on the PC or to the media: needs tools even when short. Without them the
 // quick-chat model "did" things it could not do ("Chrome volume is now at 90%" with no tool call).
-const ACTION = /\b(resume|unpause|skip|replay|rewind|mute|unmute|louder|quieter|lower|raise|turn (?:it |the \w+ )?(?:up|down|off|on)|put on|shuffle|repeat|queue|add|save|undo|playlists?|tracks?|albums?|songs?|liked songs|media|chrome|youtube|spotify|open|launch|close|stop)\b|^(?:please|try)\b|^(?:can|could|would|will) you (?!tell me a joke)/i;
+const ACTION = /\b(?:forget|remove|delete|erase|wipe|clean|clear)\b[^.?!]{0,60}\bmemor(?:y|ies)\b|\b(resume|unpause|skip|replay|rewind|mute|unmute|louder|quieter|lower|raise|turn (?:it |the \w+ )?(?:up|down|off|on)|put on|shuffle|repeat|queue|add|save|undo|playlists?|tracks?|albums?|songs?|liked songs|media|chrome|youtube|spotify|open|launch|close|stop)\b|^(?:please|try)\b|^(?:can|could|would|will) you (?!tell me a joke)/i;
 
 function route(text, { source = 'text' } = {}) {
   const t = String(text || '').trim();

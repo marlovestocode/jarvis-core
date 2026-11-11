@@ -54,7 +54,7 @@ function createMemoryTools({ memory, chats = null, cortex = null, getConfig = ()
       const r = memory.forget(about);
       if (r.removed.length) return `Forgot: ${r.removed.join('; ')}`;
       if (r.ambiguous) return `Several facts match, nothing deleted: ${r.ambiguous.join('; ')}. Ask which one.`;
-      return 'Nothing saved matches that.';
+      return 'Nothing saved matches that. Something only said in this chat (not saved with remember) is not in memory: tell the user it was never saved, and stop doing it from now on.';
     },
   };
   const recallChats = {
