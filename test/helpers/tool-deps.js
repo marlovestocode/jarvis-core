@@ -18,7 +18,7 @@ function toolDeps() {
   const pc = { host: createFakePcHost(), getAllowlist: async () => [], roots, confirm: createConfirm({}), actionLog: createActionLog({ file: path.join(dir, 'a.log') }) };
   const browserLink = { connected: false, request: async () => { throw new Error('no extension in tests'); } };
   const self = { getChecks: () => [], about: () => ({ version: '0.0.0', startedAt: 0 }), logFile: path.join(dir, 'jarvis.log'), dataDir: dir };
-  return { self, browserLink, getStatus: async () => ({}), fetch: async () => ({}), fetcher: any, web: any, kiwix: any, getConfig: () => DEFAULTS, bus: createBus(), media: any, ytm: any, ytPlaylists: any, memory: any, playLog: any, scheduler, pc };
+  return { self, browserLink, getStatus: async () => ({}), fetch: async () => ({}), fetcher: any, web: any, kiwix: any, getConfig: () => DEFAULTS, bus: createBus(), media: any, ytm: any, ytPlaylists: any, memory: any, chats: any, cortex: any, playLog: any, scheduler, pc };
 }
 
 module.exports = { toolDeps };

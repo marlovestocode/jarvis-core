@@ -8,11 +8,14 @@ const FORGET_ALL = /^(?:forget|erase|clear|wipe|delete)\s+(?:everything|all)(?:\
 const FORGET = /^(?:forget|delete|remove)\s+(?:that\s+|about\s+)?(.{2,})$/i;
 const RECALL = /^(?:what|who)\s+(?:do|did)\s+you\s+(?:remember|know)(?:\s+about\s+(?:me|us))?\s*\??$|^what(?:'s| is| have you got| do you have)\s+(?:in\s+)?(?:your\s+)?memory\??$|^(?:list|show)\s+(?:your\s+|my\s+)?(?:memory|memories|notes)\??$|^what have you (?:remembered|learned)(?:\s+about me)?\??$/i;
 
+// "what do you remember about Rex" (not "about me"): the memory_about text, no model call
+const ABOUT = /^(?:what|who)\s+(?:do|did)\s+you\s+(?:remember|know)\s+about\s+(?!(?:me|us|myself)\s*\??$)(.{2,60}?)\s*\??$/i;
+
 const NAME = /^(?:(?:please\s+)?call me|my name(?:'s| is)|i am called|i'm called|you can call me)\s+([A-Za-z][A-Za-z'.-]*(?:\s+[A-Za-z][A-Za-z'.-]*){0,2})$/i;
 const say = (reply, ok = true) => ({ reply, record: reply, tool: 'memory', ok });
 
 // "my name is Daniel" → kept as said; "I" statements become third person only in the prompt, not here
-function createMemorySkill({ memory, setName = null }) {
+function createMemorySkill({ memory, setName = null, about = null }) {
   async function handle(text) {
     const t = String(text || '').replace(STRIP, '').replace(/[.!]+\s*$/, '').trim();
     if (!t) return null;
@@ -25,6 +28,8 @@ function createMemorySkill({ memory, setName = null }) {
       if (!l.length) return say("I don't have anything saved about you yet.");
       return say(`I remember ${l.length} thing${l.length === 1 ? '' : 's'}: ${l.slice(-12).join('; ')}.`);
     }
+    const ab = about && ABOUT.exec(t);
+    if (ab) return say(String(await about(ab[1])));
     const nm = setName && NAME.exec(t);
     if (nm) {
       const name = nm[1].replace(/\b\w/g, c => c.toUpperCase());

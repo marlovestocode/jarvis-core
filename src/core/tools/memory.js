@@ -1,6 +1,37 @@
 // remember / forget_memory: the model's way to save and delete the user's lasting facts (deep tier;
-// quick voice/chat commands go through src/core/memory/skill.js).
-function createMemoryTools({ memory }) {
+// quick voice/chat commands go through src/core/memory/skill.js). recall_chats and memory_about (W1 §4) read
+// past chats and everything linked to one person, pet, place or project.
+const { entityKey } = require('../memory/facts');
+
+const ABOUT_MAX = 1200;
+const date = ms => new Date(ms).toISOString().slice(0, 10);
+
+// memory_about text: the topic's entity (by key, else the best keyword match), its active facts, chats and reminders
+async function aboutText(cortex, topic) {
+  const t = String(topic ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (!t) return 'Name a person, pet, place or project.';
+  let ent = cortex.node.find({ kind: 'entity', key: entityKey(t) });
+  if (!ent || ent.status !== 'active') {
+    const r = await cortex.recall(t, { kinds: ['entity'], budget: 400 });
+    ent = r.items.length ? cortex.node.get(r.items[0].id) : null;
+  }
+  if (!ent || ent.status !== 'active') return `Nothing saved about ${t}.`;
+  const groups = { fact: [], chat: [], reminder: [] };
+  for (const n of cortex.neighbors(ent.id, { depth: 2, limit: 20 })) {
+    const node = cortex.node.get(n.id);
+    if (!node || node.status !== 'active' || !groups[node.kind]) continue;
+    groups[node.kind].push(node.kind === 'chat' ? `${node.data?.title || 'chat'} (${date(node.updated)}): ${node.text}` : node.text);
+  }
+  const lines = [`About ${ent.text}:`];
+  if (groups.fact.length) lines.push('Facts: ' + groups.fact.join('; '));
+  if (groups.chat.length) lines.push('Chats: ' + groups.chat.join(' | '));
+  if (groups.reminder.length) lines.push('Reminders: ' + groups.reminder.join('; '));
+  if (lines.length === 1) lines.push('Nothing else is linked to it yet.');
+  const out = lines.join('\n');
+  return out.length <= ABOUT_MAX ? out : out.slice(0, ABOUT_MAX - 1).replace(/\s+\S*$/, '') + '…';
+}
+
+function createMemoryTools({ memory, chats = null, cortex = null, getConfig = () => ({}) }) {
   // needsClean: a turn that read a page, file or other outside text cannot change what JARVIS keeps for every later turn
   const remember = {
     needsClean: true,
@@ -25,7 +56,26 @@ function createMemoryTools({ memory }) {
       return 'Nothing saved matches that.';
     },
   };
-  return [remember, forget];
+  const recallChats = {
+    untrusted: true,   // raw snippets are old chat text: quoted data, and the turn can no longer write memory
+    name: 'recall_chats',
+    description: 'Find what was said in earlier chats with the user: chat summaries first, then short raw snippets. Use it whenever the user asks what you talked about before.',
+    params: { type: 'object', properties: {
+      query: { type: 'string', description: 'A few words about the topic, e.g. "vet visit Rex"' },
+      days: { type: 'number', description: 'Only chats from the last N days (optional)' },
+    }, required: ['query'], additionalProperties: false },
+    async run({ query, days } = {}) {
+      if (getConfig()?.memory?.usePastChats === false) return 'Past-chat memory is off (Settings, Memory). Tell the user you cannot look at earlier chats.';
+      return (await chats.recall({ query, days })).text;
+    },
+  };
+  const about = {
+    name: 'memory_about',
+    description: 'Everything saved about one person, pet, place or project the user named: its facts, the chats it came up in, its reminders.',
+    params: { type: 'object', properties: { topic: { type: 'string', description: 'The name, e.g. "Rex"' } }, required: ['topic'], additionalProperties: false },
+    async run({ topic } = {}) { return aboutText(cortex, topic); },
+  };
+  return [remember, forget, ...(chats ? [recallChats] : []), ...(cortex ? [about] : [])];
 }
 
-module.exports = { createMemoryTools };
+module.exports = { createMemoryTools, aboutText };
