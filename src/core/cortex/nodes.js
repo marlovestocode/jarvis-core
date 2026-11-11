@@ -1,5 +1,5 @@
 // Cortex nodes: write with provenance, the slot conflict policy and confidence (core spec §4.2, §4.3, §5).
-const { CortexError, checkText, checkData, MAX_QUOTE } = require('./guard');
+const { CortexError, checkText, checkData, MAX_QUOTE, RAW_NODE_KINDS } = require('./guard');
 
 const STATUSES = new Set(['active', 'pending', 'archived']);
 const ORDERS = { updated: 'updated DESC, id DESC', last_used: 'last_used DESC NULLS LAST, id DESC', uses: 'uses DESC, updated DESC, id DESC', created: 'created DESC, id DESC' };
@@ -42,7 +42,7 @@ function createNodes(db, { now = Date.now, sources, onWrite = () => {} } = {}) {
     const src = sources.get(source);
     if (!src) throw new CortexError('no_source', 'every node needs a source');
     if (tainted && (src.kind === 'user' || src.kind === 'tool')) throw new CortexError('tainted', 'a turn that read outside text cannot write ' + src.kind + ' trust');
-    const json = checkData(data);
+    const json = checkData(data, { secrets: !RAW_NODE_KINDS.has(kind) });
     const imp = Math.max(0, Math.min(1, Number(importance) || 0));
     const q = quote === null || quote === undefined ? null : String(quote).slice(0, MAX_QUOTE);
     const k = key === null || key === undefined ? null : String(key).slice(0, 300);
@@ -112,7 +112,7 @@ function createNodes(db, { now = Date.now, sources, onWrite = () => {} } = {}) {
     if (tainted && (src.kind === 'user' || src.kind === 'tool')) throw new CortexError('tainted', 'a turn that read outside text cannot write ' + src.kind + ' trust');
     const set = {};
     if (text !== undefined) { const t = checkText(cur.kind, text); if (t !== cur.text) set.text = t; }
-    if (data !== undefined) { const j = checkData(data); if (j !== cur.data) set.data = j; }
+    if (data !== undefined) { const j = checkData(data, { secrets: !RAW_NODE_KINDS.has(cur.kind) }); if (j !== cur.data) set.data = j; }
     if (status !== undefined) { if (!STATUSES.has(status)) throw new CortexError('status'); if (status !== cur.status) set.status = status; }
     if (importance !== undefined) { const i = Math.max(0, Math.min(1, Number(importance) || 0)); if (i !== cur.importance) set.importance = i; }
     const cols = Object.keys(set);

@@ -64,7 +64,7 @@ function open({ file = ':memory:', log = () => {}, bus = null, embedder = null, 
       archive: safe(nodes.archive),
       remove: safe(id => { const r = nodes.remove(id); vectors.forget(id); return r; }),
     },
-    link: safe(edges.link), unlink: safe(edges.unlink), neighbors: safe(edges.neighbors),
+    link: safe(edges.link), unlink: safe(edges.unlink), unlinkAll: safe(edges.unlinkAll), scaleEdge: safe(edges.scale), neighbors: safe(edges.neighbors),
     event: { add: safe(events.add), query: safe(events.query), count: safe(events.count), deleteWhere: safe(events.deleteWhere) },
     recall: (query, opts) => recaller.recall(query, opts),   // never throws
 

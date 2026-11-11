@@ -11,6 +11,10 @@ const SECRET = /\b(?:password|passcode|passphrase|pin\s*(?:code|number)?|api[\s_
 const CAPS = { fact: 300, entity: 120, chat: 1200, knowledge: 2000, reminder: 200, track: 300, artist: 300, playlist: 300, file: 600, folder: 600 };
 const NODE_KINDS = new Set(Object.keys(CAPS));
 const EVENT_KINDS = new Set(['play', 'action', 'playlist_edit', 'tool', 'reminder_fired', 'lookup']);
+// Machine records (W2 E1): catalog titles and file paths, already kept unguarded in the files they replace. The secret
+// pattern would refuse every epoch-ms number (card rule) and songs called "Secret"; they get shape and size checks only.
+const RAW_NODE_KINDS = new Set(['track', 'artist', 'playlist', 'file', 'folder']);
+const RAW_EVENT_KINDS = new Set(['play', 'playlist_edit', 'action']);
 const SOURCE_KINDS = new Set(['user', 'tool', 'import', 'wiki', 'web', 'model']);
 const MIN_TEXT = 3;
 const MAX_DATA = 4096;
@@ -21,17 +25,17 @@ function checkText(kind, text) {
   const t = String(text ?? '').replace(/\s+/g, ' ').trim();
   if (t.length < MIN_TEXT) throw new CortexError('too_short');
   if (t.length > CAPS[kind]) throw new CortexError('too_long');
-  if (SECRET.test(t)) throw new CortexError('secret');
+  if (!RAW_NODE_KINDS.has(kind) && SECRET.test(t)) throw new CortexError('secret');
   return t;
 }
 
 // data → JSON string (or null); objects only, ≤ 4 KB, no secrets
-function checkData(data) {
+function checkData(data, { secrets = true } = {}) {
   if (data === undefined || data === null) return null;
   if (typeof data !== 'object' || Array.isArray(data)) throw new CortexError('data');
   const s = JSON.stringify(data);
   if (Buffer.byteLength(s) > MAX_DATA) throw new CortexError('data_too_big');
-  if (SECRET.test(s)) throw new CortexError('secret');
+  if (secrets && SECRET.test(s)) throw new CortexError('secret');
   return s;
 }
 
@@ -59,4 +63,4 @@ const ftsQuery = text => ftsOr(ftsTokens(text));
 const CORRECTION = /^\s*(?:no\b|wrong\b|that[’']?s not\b|stop saying\b)/i;
 const isCorrection = text => CORRECTION.test(String(text ?? ''));
 
-module.exports = { CortexError, SECRET, CAPS, NODE_KINDS, EVENT_KINDS, SOURCE_KINDS, MIN_TEXT, MAX_DATA, MAX_QUOTE, checkText, checkData, ftsQuery, ftsTokens, ftsOr, STOPWORDS, isCorrection };
+module.exports = { CortexError, SECRET, CAPS, NODE_KINDS, EVENT_KINDS, RAW_NODE_KINDS, RAW_EVENT_KINDS, SOURCE_KINDS, MIN_TEXT, MAX_DATA, MAX_QUOTE, checkText, checkData, ftsQuery, ftsTokens, ftsOr, STOPWORDS, isCorrection };

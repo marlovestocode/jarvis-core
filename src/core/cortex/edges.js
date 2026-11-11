@@ -24,19 +24,36 @@ const grow = (eff, eta) => Math.min(MAX_W, eff + eta * (1 - eff));
 function createEdges(db, { now = Date.now } = {}) {
   const checkType = type => { if (!TYPES[type]) throw new CortexError('edge_type', 'unknown edge type: ' + type); };
 
-  function link(src, dst, type, { weight } = {}) {
+  // eta (W2 E2): a new edge starts at eta, an existing one grows by eta instead of ETA_LINK
+  function link(src, dst, type, { weight, eta } = {}) {
     checkType(type);
     if (src === dst) throw new CortexError('self_link');
     const t = now();
     const cur = db.stmt('SELECT weight, last_used FROM edge WHERE src = ? AND dst = ? AND type = ?').get(src, dst, type);
     if (!cur) {
-      db.stmt('INSERT INTO edge(src, dst, type, weight, created, last_used) VALUES (?, ?, ?, ?, ?, ?)').run(src, dst, type, clamp(weight ?? ETA_LINK), t, t);
+      db.stmt('INSERT INTO edge(src, dst, type, weight, created, last_used) VALUES (?, ?, ?, ?, ?, ?)').run(src, dst, type, clamp(weight ?? eta ?? ETA_LINK), t, t);
       return;
     }
     const eff = effective(cur.weight, cur.last_used, type, t);
-    const w = weight === undefined ? grow(eff, ETA_LINK) : Math.max(eff, clamp(weight));
+    const w = weight === undefined ? grow(eff, eta ?? ETA_LINK) : Math.max(eff, clamp(weight));
     db.stmt('UPDATE edge SET weight = ?, last_used = ?, uses = uses + 1 WHERE src = ? AND dst = ? AND type = ?').run(w, t, src, dst, type);
   }
+
+  // one edge's effective weight × factor (W2 E2: a quick skip); structural edges and missing ones → false
+  function scale(src, dst, type, factor) {
+    checkType(type);
+    const f = Number(factor);
+    if (STRUCTURAL.has(type) || !Number.isFinite(f)) return false;
+    const t = now();
+    const cur = db.stmt('SELECT weight, last_used FROM edge WHERE src = ? AND dst = ? AND type = ?').get(src, dst, type);
+    if (!cur) return false;
+    db.stmt('UPDATE edge SET weight = ?, last_used = ? WHERE src = ? AND dst = ? AND type = ?')
+      .run(clamp(effective(cur.weight, cur.last_used, type, t) * Math.max(0, Math.min(1, f))), t, src, dst, type);
+    return true;
+  }
+
+  // every edge of one type leaving src (W2 E3: a playlist's membership is replaced wholesale)
+  const unlinkAll = (src, type) => { checkType(type); return db.stmt('DELETE FROM edge WHERE src = ? AND type = ?').run(src, type).changes; };
 
   const unlink = (src, dst, type) => db.stmt('DELETE FROM edge WHERE src = ? AND dst = ? AND type = ?').run(src, dst, type).changes > 0;
 
@@ -114,7 +131,7 @@ function createEdges(db, { now = Date.now } = {}) {
     return { removed, nextSrc: srcs.length > limit ? srcs[limit] : null };
   }
 
-  return { link, unlink, neighbors, strengthen, weaken, prune, around };
+  return { link, unlink, unlinkAll, scale, neighbors, strengthen, weaken, prune, around };
 }
 
 module.exports = { createEdges, effective, TYPES, STRUCTURAL, ETA_LINK, ETA_USE, FLOOR };
