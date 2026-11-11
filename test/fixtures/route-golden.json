@@ -107,5 +107,16 @@
   {"text": "capture the screen and copy it", "expect": ["core", "clipboard-capture"]},
   {"text": "show my clipboard history", "expect": ["core", "clipboard-capture"]},
   {"text": "copy this to my clipboard", "expect": ["core", "clipboard-capture"]},
-  {"text": "save a screen shot to my desktop", "expect": ["core", "clipboard-capture"]}
+  {"text": "save a screen shot to my desktop", "expect": ["core", "clipboard-capture"]},
+  {"text": "show my recent files", "expect": ["core", "files", "pc"]},
+  {"text": "what are my biggest files", "expect": ["core", "files", "pc"]},
+  {"text": "how big is my downloads folder", "expect": ["core", "files", "pc"]},
+  {"text": "read the pdf on my desktop", "expect": ["core", "files"]},
+  {"text": "summarize this document", "expect": ["core", "files"]},
+  {"text": "search my files for invoice", "expect": ["core", "files", "pc"]},
+  {"text": "how much disk space is left", "expect": ["core", "files"]},
+  {"text": "find the pdf I downloaded yesterday", "expect": ["core", "files"]},
+  {"text": "what is in my downloads folder", "expect": ["core", "pc"]},
+  {"text": "what did I download this week", "expect": ["core", "knowledge"]},
+  {"text": "what files changed recently", "expect": ["core", "files", "pc"]}
 ]
