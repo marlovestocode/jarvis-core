@@ -22,4 +22,14 @@ function buildCatalog(groups) {
   return { groups, tools, ids: groups.map(g => g.id), byName, groupOf: name => byName.get(name)?.groupId ?? null };
 }
 
-module.exports = { loadGroups, buildCatalog };
+// One line for the prompt's Capabilities: every group, so the model knows what exists when a group is not loaded.
+// state.browser: 'off' | 'not connected' | 'connected' (shown on the browser group).
+function capsLine(catalog, state = {}) {
+  const parts = catalog.groups.filter(g => g.id !== 'core').map(g => {
+    const note = g.id === 'browser' && state.browser ? ` [${state.browser}]` : '';
+    return `${g.id} = ${g.label}${note}`;
+  });
+  return `skill groups (the tools of the ones this request needs are loaded; call more_skills with a group id to load another): ${parts.join('; ')}`;
+}
+
+module.exports = { loadGroups, buildCatalog, capsLine, ...require('./select') };

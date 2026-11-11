@@ -43,3 +43,9 @@ test('aliases: plausible wrong names reach the PC tools', async () => {
     assert.doesNotMatch((await runner.run(a, {}, { turn: { tainted: false } })).text, /unknown tool/, a);
   }
 });
+
+test('prompt: group hints and the more_skills hint are rendered', () => {
+  const p = systemPrompt({ tools: ['get_time', 'more_skills'], groupHints: ['HINT-FROM-GROUP'] });
+  assert.match(p, /HINT-FROM-GROUP/);
+  assert.match(p, /more_skills: load another skill group/);
+});

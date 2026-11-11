@@ -25,6 +25,7 @@ const { NullProvider } = require('../core/providers/null-provider');
 const { createOllamaProvider } = require('../core/providers/ollama');
 const { createToolRunner } = require('../core/tools/registry');
 const brain = require('../core/brain');
+const skills = require('../core/skills');
 const { createHardwareProbe } = require('../core/brain/hardware');
 const { runBoot } = require('../core/boot');
 const { createTimerStore } = require('../core/timers/store');
@@ -143,10 +144,7 @@ function capsLine() {
     `recognises the owner's voice: ${ctx.speaker.enrolled() ? (c.speakerGate ? 'enrolled, only they can wake it' : 'enrolled, gate off') : 'not enrolled'}`,
     `YouTube Music extension: ${ctx.ytmLink.connected ? 'connected' : 'not connected'}`,
     `listening log: ${c.music.logPlays ? `${ctx.playLog.count()} plays recorded${ctx.playLog.since() ? ` since ${new Date(ctx.playLog.since()).toLocaleDateString('en-US')}` : ''}` : 'off'} (music_stats tool)`,
-    'media control with per-app and system volume, play/pause/skip, queue',
-    'math, unit conversion, time, system stats, weather, news, scores, Wikipedia',
-    'timers, alarms and reminders (spoken when they fire)',
-    'open, close and switch apps and windows; find, open and move files in Desktop, Documents, Downloads and Projects; Recycle Bin; volume; lock; shutdown (risky ones ask the user first)',
+    skills.capsLine(ctx.catalog),   // every skill group; risky PC actions ask the user first, timers are spoken when they fire
     `speech-to-text ${c.engines.stt}${c.sttGpu ? ' on GPU' : ''}, saved memory of the user`,
   ].join('; ') + '.';
 }
@@ -175,11 +173,13 @@ ctx.actionLog = createActionLog({ file: path.join(DATA_DIR, 'actions.log'), log:
 ctx.confirm = createConfirm({ actionLog: ctx.actionLog });
 ctx.timerStore = createTimerStore({ file: path.join(DATA_DIR, 'timers.json'), log: ctx.log });
 ctx.scheduler = createScheduler({ store: ctx.timerStore, bus: ctx.bus, log: ctx.log });
-ctx.toolList = brain.defaultTools({ memory: ctx.memory, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog } });
-ctx.tools = createToolRunner(ctx.toolList);
+ctx.catalog = brain.defaultCatalog({ memory: ctx.memory, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog } });
+ctx.toolList = ctx.catalog.tools;
+ctx.tools = createToolRunner(ctx.toolList, { groups: ctx.catalog.groups });
 ctx.orchestrator = createOrchestrator({
   bus: ctx.bus, sessions: ctx.sessions, providers: ctx.providers, tools: ctx.tools, getConfig: ctx.getConfig,
   systemPrompt: brain.systemPrompt, route: brain.route,
+  selectGroups: (text, o) => skills.selectGroups(text, o, ctx.catalog),
   // the model always sees what is playing, read fresh for the turn (skipped if Windows is slow)
   promptInfo: async () => {
     let media;

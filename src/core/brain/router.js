@@ -32,4 +32,4 @@ function route(text, { source = 'text' } = {}) {
   return { tier: 'deep', tools: true, think, reason: asked ? 'asked to think' : reasoning ? 'reasoning' : knowledge ? 'knowledge' : technical ? 'technical' : 'long' };
 }
 
-module.exports = { route };
+module.exports = { route, MATH, SCIENCE, UNITS, DATES, FACT };

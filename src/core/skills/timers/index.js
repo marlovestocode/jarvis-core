@@ -11,7 +11,9 @@ const ALIASES = {
 
 function createGroup({ scheduler } = {}) {
   const tools = scheduler ? createTimerTools({ scheduler }) : [];
-  return { id: 'timers', label: 'Timers, alarms and reminders', triggers: [], tools: tools.map(t => own(t, ALIASES[t.name] || [])) };
+  return { id: 'timers', label: 'Timers, alarms and reminders', triggers: [
+    { words: ['timer', 'timers', 'alarm', 'alarms', 'remind', 'reminder', 'reminders', 'wake me'], w: 3 },
+  ], tools: tools.map(t => own(t, ALIASES[t.name] || [])) };
 }
 
 module.exports = { createGroup };

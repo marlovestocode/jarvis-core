@@ -42,8 +42,9 @@ function forProvider(m) {
 // (media commands). An empty reply is silent; record is what the chat history keeps.
 const { unbackedClaim, UNBACKED_FIX, UNTRUSTED_TOOLS, NEEDS_OK } = require('./brain/guard');
 
-function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, route, promptInfo = () => ({}), fastPath, onQuestionLost = () => {} }) {
+function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, route, selectGroups, promptInfo = () => ({}), fastPath, onQuestionLost = () => {} }) {
   let current = null; // AbortController of the running turn
+  const lastGroups = new Map();   // session id → skill groups the last turn used (follow-up bonus)
 
   function pickProvider() {
     const id = getConfig().provider;
@@ -154,16 +155,25 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       const st = await providerStatus(p);
       bus.emit('provider', { id: p.id, label: p.label, ready: !!st.ready });
       const hints = route ? route(String(text), { source }) : undefined;
-      const toolSpecs = p.capabilities?.tools && tools && hints?.tools !== false ? tools.specs() : undefined;
-      const useTools = toolSpecs && toolSpecs.length ? toolSpecs : undefined;
+      const toolsOn = !!(p.capabilities?.tools && tools && hints?.tools !== false);
+      // skill groups: only the groups this request needs are offered; the scope can load more mid-turn
+      const scope = toolsOn && selectGroups && tools.turn ? tools.turn(selectGroups(String(text), { lastGroups: lastGroups.get(s.id) || [], source })) : null;
+      const currentSpecs = () => {
+        if (!toolsOn) return undefined;
+        const sp = scope ? scope.specs() : tools.specs();
+        return sp.length ? sp : undefined;
+      };
+      let useTools = currentSpecs();
+      let loadedKey = scope ? scope.loaded().join() : '';
       let model = null;
       try { model = p.resolveModel ? p.resolveModel(hints || {}) : null; } catch { model = null; }
       if (hints) bus.emit('route', { tier: hints.tier, think: !!hints.think, reason: hints.reason, model });
       let sys = null;
+      let info = {};
+      const buildSys = () => systemPrompt({ source, now: new Date(), tools: (useTools || []).map(t => t.name), model, brief: hints?.tools === false, groupHints: scope ? scope.hints() : [], ...info });
       if (systemPrompt) {
-        let info = {};
         try { info = (await promptInfo({ source, hints })) || {}; } catch { info = {}; }
-        sys = systemPrompt({ source, now: new Date(), tools: (useTools || []).map(t => t.name), model, brief: hints?.tools === false, ...info });
+        sys = buildSys();
       }
       const t0 = Date.now();
       let firstTokenAt = 0;
@@ -183,6 +193,12 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
 
       for (;;) {
         reply = '';
+        // a group loaded last round changes the tools and the system prompt for this one
+        if (scope) {
+          useTools = currentSpecs();
+          const key = scope.loaded().join();
+          if (key !== loadedKey) { loadedKey = key; if (systemPrompt) sys = buildSys(); }
+        }
         // the tool definitions are part of the prompt too; JSON costs more tokens per char than prose.
         // When they were left out, a full window made Ollama cut the start of the prompt (system prompt and tools), and the model answered nothing.
         const toolChars = useTools ? Math.ceil(JSON.stringify(useTools).length * TOOL_CHAR_WEIGHT) : 0;
@@ -222,12 +238,12 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           bus.emit('tool', { id: call.id, name: call.name, phase: 'start' });
           inTool = true;
           let res;
-          try { res = await tools.run(call.name, call.args, { signal: ac.signal, turn }); }
+          try { res = await (scope || tools).run(call.name, call.args, { signal: ac.signal, turn }); }
           finally { inTool = false; }
           bus.emit('tool', { id: call.id, name: call.name, phase: 'end', ok: res.ok });
           if (res.untrusted || UNTRUSTED_TOOLS.has(call.name)) turn.tainted = true;
           if (res.ok && String(res.text).startsWith(NEEDS_OK)) question = String(res.text).slice(NEEDS_OK.length);
-          else if (res.ok && !/^error/i.test(String(res.text)) && !res.untrusted && !UNTRUSTED_TOOLS.has(call.name)) okTools++;
+          else if (res.ok && !/^error/i.test(String(res.text)) && !res.untrusted && !UNTRUSTED_TOOLS.has(call.name) && call.name !== 'more_skills') okTools++;   // loading a skill is not an action
           s.messages.push({ role: 'tool', content: res.text, toolCallId: call.id, name: call.name });
           if (ac.signal.aborted) break;
         }
@@ -242,6 +258,8 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           break;
         }
       }
+
+      if (scope && !error && !stopped) lastGroups.set(s.id, scope.loaded().filter(id => id !== 'core'));
 
       // never leave a risky action armed behind a question the user did not hear
       if (question && !asked) { try { onQuestionLost(); } catch { /* best effort */ } }

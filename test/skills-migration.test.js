@@ -6,6 +6,11 @@ const { loadGroups, buildCatalog } = require('../src/core/skills');
 const { toolDeps } = require('./helpers/tool-deps');
 const manifest = require('./fixtures/tool-manifest.json');
 
+// Tools added by later skill-group work (not part of the pre-migration snapshot)
+const ADDED = ['more_skills'];
+const ORIGINAL_GROUPS = ['core', 'media', 'ytmusic', 'timers', 'knowledge', 'system', 'pc', 'math', 'memory'];
+const original = tools => tools.filter(t => manifest.some(m => m.name === t.name));
+
 const project = tools => tools.map(t => ({ name: t.name, description: t.description, params: t.params, risk: t.risk ?? null, timeoutMs: t.timeoutMs ?? null })).sort((a, b) => (a.name < b.name ? -1 : 1));
 
 // the global alias table as it was before tool-owned aliases
@@ -62,8 +67,18 @@ const OLD_ALIASES = {
   sleep: 'power',
 };
 
+// tools that belong to groups added after the migration
+function newGroupTools() {
+  const s = new Set();
+  for (const g of loadGroups(toolDeps())) if (!ORIGINAL_GROUPS.includes(g.id)) for (const t of g.tools) s.add(t.name);
+  return s;
+}
+
 test('migration: every tool keeps name, description, params, risk and timeout', () => {
-  assert.deepEqual(project(defaultTools(toolDeps())), manifest);
+  const tools = defaultTools(toolDeps());
+  assert.deepEqual(project(original(tools)), manifest);
+  const extra = tools.filter(t => !manifest.some(m => m.name === t.name)).map(t => t.name);
+  assert.deepEqual(extra.filter(n => !ADDED.includes(n) && !newGroupTools().has(n)), [], 'unexpected extra tools');
 });
 
 test('migration: every old alias still resolves to the same tool', async () => {
@@ -81,15 +96,15 @@ test('catalog: each tool belongs to exactly one group', () => {
   const groups = loadGroups(toolDeps());
   const seen = new Map();
   for (const g of groups) for (const t of g.tools) { assert.ok(!seen.has(t.name), `${t.name} in two groups`); seen.set(t.name, g.id); }
-  assert.equal(seen.size, manifest.length);
+  assert.equal(seen.size, manifest.length + ADDED.length + newGroupTools().size);
   const catalog = buildCatalog(groups);
   for (const [n, id] of seen) assert.equal(catalog.groupOf(n), id);
   assert.equal(catalog.groupOf('nope'), null);
 });
 
 test('catalog: group ids', () => {
-  assert.deepEqual(loadGroups(toolDeps()).map(g => g.id), ['core', 'media', 'ytmusic', 'timers', 'knowledge', 'system', 'pc', 'math', 'memory']);
-  assert.deepEqual(buildCatalog(loadGroups(toolDeps())).ids, ['core', 'media', 'ytmusic', 'timers', 'knowledge', 'system', 'pc', 'math', 'memory']);
+  assert.deepEqual(loadGroups(toolDeps()).map(g => g.id), ORIGINAL_GROUPS);
+  assert.deepEqual(buildCatalog(loadGroups(toolDeps())).ids, ORIGINAL_GROUPS);
 });
 
 test('catalog: a group with no tools is dropped', () => {
