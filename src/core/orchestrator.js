@@ -1,4 +1,5 @@
 // Turn flow (spec §4): input → provider → tools → reply. Speaking is the caller's job.
+const { createSignoffFilter } = require('./brain/signoff');
 const ABORTED = Symbol('aborted');
 const CHARS_PER_TOKEN = 4;
 const MSG_OVERHEAD_CHARS = 32;  // about 8 tokens of chat template per message (measured on the local model)
@@ -110,6 +111,8 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
     let it;
     const toolCalls = [];
     let usage;
+    const signoff = createSignoffFilter();   // a trailing "Very good" is neither shown nor spoken
+    const out = text => { if (text) { onText(text); bus.emit('token', { text }); } };
     arm();
     try {
       it = p.chat(args)[Symbol.asyncIterator]();
@@ -122,11 +125,15 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
         arm();
         const c = r.value || {};
         if (c.type === 'token') {
-          const ev = { text: String(c.text ?? '') };
-          if (c.prob !== undefined) ev.prob = c.prob;
-          if (c.alts !== undefined) ev.alts = c.alts;
-          onText(ev.text);
-          bus.emit('token', ev);
+          const raw = String(c.text ?? '');
+          const text = signoff.push(raw);
+          if (text === raw) {   // nothing held back: the token goes out as it came, with its probabilities
+            const ev = { text };
+            if (c.prob !== undefined) ev.prob = c.prob;
+            if (c.alts !== undefined) ev.alts = c.alts;
+            onText(text);
+            bus.emit('token', ev);
+          } else out(text);
         } else if (c.type === 'reasoning') {
           bus.emit('reasoning', { chars: String(c.text ?? '').length });
         } else if (c.type === 'tool_call') {
@@ -136,6 +143,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           break;
         }
       }
+      out(signoff.end());
     } finally {
       clearTimeout(timer);
       if (it && typeof it.return === 'function') {
