@@ -154,6 +154,22 @@ test('cortex-recall: kinds filter seeds and output', async () => {
   assert.deepEqual(r.items.map(i => i.id), [f]);
 });
 
+test('cortex-recall: a very common word is dropped when a rarer one is in the query', async () => {
+  const db = openDb({ file: ':memory:' });
+  const now = () => T0;
+  const sources = createSources(db, { now });
+  const nodes = createNodes(db, { now, sources });
+  const edges = createEdges(db, { now });
+  const s = sources.add({ kind: 'user', ref: 'x' });
+  for (let i = 0; i < 12; i++) nodes.upsert({ kind: 'fact', text: `music note number ${i}`, source: s });
+  const rare = nodes.upsert({ kind: 'fact', text: 'Rex has a vet visit', source: s }).id;
+  const r = createRecall({ db, edges, vectors: createVectors(db, { dim: 8 }), now, commonDf: 5 });
+  const out = await r.recall('music vet', { debug: true });
+  assert.deepEqual(out.stages.seeds.map(x => x.id), [rare]);           // "music" is in 12 nodes > 5: not a seed word
+  const only = await r.recall('music', { debug: true });
+  assert.equal(only.stages.seeds.length, 12);                           // all words common: the rarest is kept
+});
+
 test('cortex-recall: debug returns the stages', async () => {
   const { recall, add } = setup();
   add('fact', 'Rex has a vet visit in March');

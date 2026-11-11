@@ -4,7 +4,7 @@ const { openDb } = require('../src/core/cortex/db');
 const guard = require('../src/core/cortex/guard');
 
 test('cortex-fts: operators become quoted words', () => {
-  assert.equal(guard.ftsQuery('"hello" AND world*'), '"hello" OR "and" OR "world"');
+  assert.equal(guard.ftsQuery('"hello" NEAR world*'), '"hello" OR "near" OR "world"');
 });
 
 test('cortex-fts: empty and punctuation-only give null', () => {
@@ -34,6 +34,12 @@ test('cortex-fts: every sanitized query runs in MATCH', () => {
   }
   assert.equal(db.raw.prepare('SELECT count(*) n FROM node_fts WHERE node_fts MATCH ?').get(guard.ftsQuery('cafe')).n, 1); // diacritics folded
   db.close();
+});
+
+test('cortex-fts: stopwords are dropped; only stopwords gives null', () => {
+  assert.equal(guard.ftsQuery('when is my dog going to the vet'), '"dog" OR "going" OR "vet"');
+  assert.equal(guard.ftsQuery('what is it about'), null);
+  assert.deepEqual(guard.ftsTokens('The Rex and THE vet'), ['rex', 'vet']);
 });
 
 test('cortex-fts: isCorrection', () => {

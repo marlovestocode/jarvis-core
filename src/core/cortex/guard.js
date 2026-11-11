@@ -35,18 +35,28 @@ function checkData(data) {
   return s;
 }
 
-// User text → a MATCH expression of quoted words joined by OR; operators never pass through. null = nothing to search.
-function ftsQuery(text) {
+// English function words: they match most of the store and carry no topic, so they never reach MATCH.
+const STOPWORDS = new Set(('the of and to in is it you that he was for on are with as his they at be this have from or one had by but not what all were we when ' +
+  'your can said there an each which she do how their if will up about out many then them so some her would my me has him its our us i am been ' +
+  'did does who whom whose why where these those than too very just also into over again any no nor only own same such both few more most other ' +
+  'off once here should could may might must shall let get got please tell know').split(' '));
+
+// User text → the search words: lowercased, letters/digits only, no stopwords, no one-letter tokens, at most 12, once each
+function ftsTokens(text) {
   const seen = new Set();
   for (const w of String(text ?? '').toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
-    if (w.length < 2 || seen.has(w)) continue;
+    if (w.length < 2 || STOPWORDS.has(w) || seen.has(w)) continue;
     seen.add(w);
     if (seen.size === 12) break;
   }
-  return seen.size ? [...seen].map(w => `"${w}"`).join(' OR ') : null;
+  return [...seen];
 }
+
+// Tokens → a MATCH expression of quoted words joined by OR; operators never pass through. null = nothing to search.
+const ftsOr = tokens => (tokens.length ? tokens.map(w => `"${w}"`).join(' OR ') : null);
+const ftsQuery = text => ftsOr(ftsTokens(text));
 
 const CORRECTION = /^\s*(?:no\b|wrong\b|that[’']?s not\b|stop saying\b)/i;
 const isCorrection = text => CORRECTION.test(String(text ?? ''));
 
-module.exports = { CortexError, SECRET, CAPS, NODE_KINDS, EVENT_KINDS, SOURCE_KINDS, MIN_TEXT, MAX_DATA, MAX_QUOTE, checkText, checkData, ftsQuery, isCorrection };
+module.exports = { CortexError, SECRET, CAPS, NODE_KINDS, EVENT_KINDS, SOURCE_KINDS, MIN_TEXT, MAX_DATA, MAX_QUOTE, checkText, checkData, ftsQuery, ftsTokens, ftsOr, STOPWORDS, isCorrection };

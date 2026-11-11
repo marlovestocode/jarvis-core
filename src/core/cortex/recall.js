@@ -1,8 +1,9 @@
 // Cortex recall (core spec §6): seeds (FTS bm25 + vector cosine, fused by reciprocal rank), two hops of spreading
 // activation over effective edge weights, then score and greedy pack into a character budget, one tagged line per item.
-const { ftsQuery } = require('./guard');
+const { ftsTokens, ftsOr } = require('./guard');
 
 const DAY = 864e5;
+const COMMON_DF = 1000, DF_TTL = 10 * 60e3, DF_CACHE = 4096;
 const SEEDS = 20, RRF_K = 60, HOPS = 2, FLOOR = 0.02, MAX_TOUCHED = 200, QUOTA = 0.6;
 const LABEL = { user: 'you said', tool: 'tool', import: 'import', wiki: 'wikipedia', web: 'web', model: 'guess' };
 
@@ -16,7 +17,26 @@ function age(ms) {
 // plan D6: half weight after 30 idle days, never below 0.5
 const recency = (lastMs, now) => 0.5 + 0.5 * Math.pow(0.5, Math.max(0, now - lastMs) / DAY / 30);
 
-function createRecall({ db, edges, vectors, queryVector = async () => null, now = Date.now, log = () => {} }) {
+function createRecall({ db, edges, vectors, queryVector = async () => null, now = Date.now, log = () => {}, commonDf = COMMON_DF }) {
+  // Document frequency, counted only up to commonDf + 1 (cheap), cached for a while: it changes slowly.
+  const dfCache = new Map();
+  function df(token) {
+    const hit = dfCache.get(token);
+    if (hit && now() - hit.at < DF_TTL) return hit.n;
+    const n = db.stmt('SELECT count(*) n FROM (SELECT rowid FROM node_fts WHERE node_fts MATCH ? LIMIT ?)').get(`"${token}"`, commonDf + 1).n;
+    dfCache.set(token, { n, at: now() });
+    if (dfCache.size > DF_CACHE) dfCache.delete(dfCache.keys().next().value);
+    return n;
+  }
+  // A word in more than commonDf nodes is near-stopword for this store: ranking every node it is in costs tens of ms
+  // and says little. Such words are dropped when a rarer word is in the query; if all are common, the rarest stays.
+  function seedQuery(query) {
+    const toks = ftsTokens(query).map(t => ({ t, n: df(t) })).filter(x => x.n > 0);
+    if (!toks.length) return null;
+    const rare = toks.filter(x => x.n <= commonDf);
+    return ftsOr((rare.length ? rare : [toks.reduce((a, b) => (b.n < a.n ? b : a))]).map(x => x.t));
+  }
+
   const rowsFor = ids => db.stmt(`SELECT id, kind, text, status, importance, confidence, updated, last_used FROM node
                                   WHERE id IN (SELECT value FROM json_each(?))`).all(JSON.stringify(ids));
   const labelsFor = ids => new Map(db.stmt(`SELECT p.node_id id, s.kind, max(s.trust) t FROM provenance p JOIN source s ON s.id = p.source_id
@@ -38,7 +58,7 @@ function createRecall({ db, edges, vectors, queryVector = async () => null, now 
 
     // 1. seeds
     const ranked = [];
-    const fq = ftsQuery(query);
+    const fq = seedQuery(query);
     if (fq) ranked.push(db.stmt(`SELECT n.id FROM node_fts JOIN node n ON n.id = node_fts.rowid
                                  WHERE node_fts MATCH ?1 AND n.status = 'active' AND (?2 IS NULL OR n.kind IN (SELECT value FROM json_each(?2)))
                                  ORDER BY bm25(node_fts) LIMIT ${SEEDS}`).all(fq, kindJson).map(r => r.id));
