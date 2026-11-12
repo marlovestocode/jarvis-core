@@ -39,7 +39,7 @@ Background execution, scheduled or recurring tasks, nested tasks, parallel steps
 - `effects.js` — allowlist of read-only tool names. Any tool not listed counts as "changes something". No new metadata on existing tools.
 - `runner.js` — `createTaskRunner({ store, tools, bus, now })` → `{ run, resume, control }`. See Run flow.
 - `src/core/tools/tasks.js` — `task_run({ title, steps })` and `task_control({ id?, action, steps? })` with action `status | pause | resume | cancel | replan`. Registered in the `core` group.
-- `src/core/skills/tasks/index.js` — deterministic fast-path: "task status", "pause", "resume", "cancel", "what happened", only when a task exists; otherwise no match.
+- `src/core/tasks/skill.js` — deterministic fast-path (not under `skills/`, which holds loadable groups): phrases containing "task" ("task status", "pause the task", "resume the task", "cancel the task") and "what happened" shortly after a task finished or failed; only when a task exists. Bare "resume", "pause" and "cancel" never match: they belong to media and live-state follow-ups.
 
 ### Task record
 
@@ -85,7 +85,10 @@ Corrupt file quarantined; one task lost at most. A task cannot start another tas
 
 These files carry the user's uncommitted edits, so they are edited in place and left unstaged.
 
-## Testing (`test/*.t` style)
+## Testing (`test/*.test.js`, `node:test`)
+
+A confirm step caught awaiting its answer carries `asked: true`; `resume` re-calls its tool to re-propose it (nothing ran, so it is not treated as a mid-flight write).
+
 
 - `tasks-store`: atomic write and reload; pruning; 4 KB cap; corrupt file quarantined with others intact; sweep.
 - `tasks-plan`: validation, forward refs rejected, pick (JSON and regex), every `expect`, tainted confirm refusal.
