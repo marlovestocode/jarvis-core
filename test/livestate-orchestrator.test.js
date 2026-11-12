@@ -13,7 +13,7 @@ const { DEFAULTS } = require('../src/core/config');
 const { createOrchestrator } = require('../src/core/orchestrator');
 const { createFakeProvider } = require('./helpers/fake-provider');
 
-function setup({ live, selectGroups, route } = {}) {
+function setup({ live, selectGroups, route, tools } = {}) {
   const fp = createFakeProvider([{ type: 'token', text: 'Okay.' }, { type: 'done' }]);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jc-live-'));
   const bus = createBus();
@@ -24,7 +24,7 @@ function setup({ live, selectGroups, route } = {}) {
   providers.add(NullProvider);
   providers.add(fp);
   const orc = createOrchestrator({
-    bus, sessions, providers, tools: createToolRunner([]), getConfig: () => ({ ...DEFAULTS, provider: fp.id }),
+    bus, sessions, providers, tools: tools || createToolRunner([]), getConfig: () => ({ ...DEFAULTS, provider: fp.id }),
     live, selectGroups, route,
   });
   const s = sessions.create(); sessions.save(s);
@@ -83,4 +83,21 @@ test('livestate: getLastGroups returns [] with no history', () => {
   const { orc } = setup();
   assert.deepEqual(orc.getLastGroups(), []);
   assert.deepEqual(orc.getLastGroups('nope'), []);
+});
+
+test('livestate: continue with a runner that has no turn() completes without throwing', async () => {
+  const tools = { specs: () => [], run: async () => ({ ok: true, text: '' }) };
+  const { events, orc, s } = setup({ tools, live: { snapshot: contSnap }, selectGroups: () => ['core'], route: chatRoute });
+  const res = await orc.send(s.id, 'do it again', { source: 'text' });
+  assert.equal(res.reply, 'Okay.');
+  assert.ok(events.some(e => e.type === 'followup' && e.kind === 'continue'));
+});
+
+test('livestate: continue hands the follow-up groups to tools.turn when selectGroups finds only core', async () => {
+  const runner = createToolRunner([]);
+  const turned = [];
+  const tools = Object.assign(Object.create(runner), { turn: g => { turned.push(g); return runner.turn(g); } });
+  const { orc, s } = setup({ tools, live: { snapshot: contSnap }, selectGroups: () => ['core'], route: chatRoute });
+  await orc.send(s.id, 'do it again', { source: 'text' });
+  assert.deepEqual(turned[0], ['media']);
 });
