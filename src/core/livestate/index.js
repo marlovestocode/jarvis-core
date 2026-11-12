@@ -88,4 +88,32 @@ function createLiveState({ bus, now = Date.now, log = () => {} } = {}) {
   return { register, snapshot, close };
 }
 
-module.exports = { createLiveState, TOOL_TTL_MS, MAX_TOOLS };
+function fmtDur(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 90) return `${s} sec`;
+  const m = Math.round(s / 60);
+  if (m < 90) return `${m} min`;
+  return `${Math.round(m / 60)} h`;
+}
+
+// The "Right now" prompt block. Media is left out on purpose: mediaPromptLine already renders it.
+function liveLine(snap, { max = 5 } = {}) {
+  if (!isPlainObject(snap)) return '';
+  const items = [];
+  if (typeof snap.voice === 'string' && snap.voice && snap.voice !== 'idle') items.push(`voice: ${snap.voice}`);
+  const tm = snap.timers;
+  if (isPlainObject(tm) && tm.count > 0) {
+    let s = `${tm.count} timer${tm.count === 1 ? '' : 's'}`;
+    if (typeof tm.nextInMs === 'number') s += `, next in ${fmtDur(tm.nextInMs)}`;
+    items.push(s);
+  }
+  if (isPlainObject(snap.confirm) && snap.confirm.summary) items.push(`waiting for the user to confirm: ${snap.confirm.summary}`);
+  if (Array.isArray(snap.tools) && snap.tools.length && max > 0) {
+    const last = snap.tools.slice(-max).map((x) => `${x.name} ${x.ok ? 'ok' : 'failed'}`);
+    items.push(`last actions: ${last.join(', ')}`);
+  }
+  if (!items.length) return '';
+  return ['Right now:', ...items.map((i) => `- ${i}`)].join('\n');
+}
+
+module.exports = { createLiveState, liveLine, TOOL_TTL_MS, MAX_TOOLS };

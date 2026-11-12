@@ -109,3 +109,39 @@ test('tolerates events with missing fields', () => {
   });
   assert.doesNotThrow(() => ls.snapshot());
 });
+
+const { liveLine } = require('../src/core/livestate');
+
+test('liveLine: empty for null, {} and idle with no tools', () => {
+  assert.equal(liveLine(null), '');
+  assert.equal(liveLine({}), '');
+  assert.equal(liveLine({ voice: 'idle', tools: [] }), '');
+});
+
+test('liveLine: renders voice, timers, confirm and last actions in order', () => {
+  const s = liveLine({
+    voice: 'listening',
+    timers: { count: 2, nextInMs: 3 * 60 * 1000 },
+    confirm: { summary: 'delete notes.txt', ageMs: 1000 },
+    tools: [{ name: 'youtube_music', ok: true, soft: false, t: 1 }, { name: 'set_volume', ok: false, soft: false, t: 2 }],
+  });
+  const lines = s.split('\n');
+  assert.equal(lines[0], 'Right now:');
+  assert.ok(lines.slice(1).every((l) => l.startsWith('- ')));
+  assert.match(lines[1], /listening/);
+  assert.match(lines[2], /2 timers, next in 3 min/);
+  assert.match(lines[3], /waiting for the user to confirm: delete notes\.txt/);
+  assert.match(lines[4], /last actions: youtube_music ok, set_volume failed/);
+});
+
+test('liveLine: never mentions media', () => {
+  const s = liveLine({ voice: 'thinking', media: { title: 'SecretSong', playing: true } });
+  assert.doesNotMatch(s, /SecretSong|media/i);
+});
+
+test('liveLine: honors max on tool runs (keeps the most recent)', () => {
+  const tools = ['a', 'b', 'c', 'd'].map((name, i) => ({ name, ok: true, soft: false, t: i }));
+  const s = liveLine({ tools }, { max: 2 });
+  assert.match(s, /last actions: c ok, d ok/);
+  assert.doesNotMatch(s, /\ba ok/);
+});
