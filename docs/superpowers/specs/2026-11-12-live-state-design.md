@@ -28,13 +28,13 @@ Active-window feed, persistence across restarts (task continuity sub-project), C
 `createLiveState({ bus, now = Date.now })` returns `{ register, snapshot, close }`.
 
 - Event ring, fed by `bus.on('*')`, all bounded:
-  - `tools`: last 8 runs `{ name, group, ok, soft, t }`. Never stores args or output text.
+  - `tools`: last 8 runs `{ name, ok, soft, t }`. Never stores args or output text. (The tool event carries no group; the follow-up group comes from the `groups` source.)
   - `route`: last route and model.
   - `turn`: last turn latency.
   - `voice`: from `state` events (idle, thinking, listening, speaking).
 - Sources: `register(name, fn)`; `fn` is a sync getter returning a small plain object. A throwing getter is skipped and logged once at warn level; never fatal. Registered in `main.js`: `media` (cached state, no await), `timers` (next due, count), `confirm` (summary, age), `groups` (current chat's `lastGroups`).
 - `snapshot()` returns a fresh plain object `{ t, voice, tools, route, turn, media, timers, confirm, groups }`. Tool entries older than 10 min are dropped. Target < 5 ms.
-- `liveLine(snap)` renders a 3-6 line "Right now" block for the system prompt; empty string when nothing to say.
+- `liveLine(snap)` renders a short "Right now" block for the system prompt (voice state, timers, pending confirm, last tool runs); media is omitted because `mediaPromptLine` already renders it. Empty string when nothing to say.
 - Nothing is persisted. Independent of orchestrator, router and Cortex.
 
 ## Component 2: `src/core/livestate/followup.js`
@@ -42,14 +42,14 @@ Active-window feed, persistence across restarts (task continuity sub-project), C
 Pure function `resolveFollowUp(text, snap) → { kind, ... } | null`. First match wins:
 
 1. `confirm` pending and text is yes/no → `{ kind: 'confirm' }` (handling stays in `confirm.handle`; this only tags it).
-2. Text ≤ 6 words with a pronoun or ellipsis ("it", "that", "again", "undo", "the other one", "same") and a tool run within 3 min → `{ kind: 'continue', group }`.
+2. Text ≤ 6 words with a pronoun or ellipsis ("it", "that", "again", "undo", "the other one", "same") and a tool run within 3 min → `{ kind: 'continue', groups }` (`groups` = `snap.groups`).
 3. Bare transport word ("pause", "skip", "next", "louder") and `media.playing` → `{ kind: 'media', action }`, routed to the existing media fast-path.
 4. Otherwise `null`.
 
 ## Wiring
 
-- `orchestrator.js`: optional `live` option. Before `route()`, call `resolveFollowUp`. `continue` seeds `selectGroups` with the group and forces `tools: true` (the `lastGroups` fallback stays). `media` goes to `mediaSkill.handle`. Signatures of `route` and `selectGroups` unchanged.
-- `main.js`: create `ctx.live`, register the four sources, pass `live` to the orchestrator, `promptInfo` uses `liveLine(ctx.live.snapshot())` in place of the media line.
+- `orchestrator.js`: optional `live` option. Before `route()`, call `resolveFollowUp`. `continue` seeds `selectGroups` with the group and forces `tools: true` (the `lastGroups` fallback stays). `media` is already served by `mediaSkill.handle` in the fast-path chain, so the orchestrator only emits a `followup` bus event for it (metrics). Signatures of `route` and `selectGroups` unchanged.
+- `main.js`: create `ctx.live`, register the four sources, pass `live` to the orchestrator, `promptInfo` adds `live: liveLine(ctx.live.snapshot())`; the media line stays.
 - If `live` is absent or throws, behavior equals today's.
 
 ## Errors and performance
