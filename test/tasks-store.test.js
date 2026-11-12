@@ -32,13 +32,29 @@ test('create then reload with a new instance returns equal data', () => {
 });
 
 test('bad ids return null and read nothing outside dir', () => {
-  const dir = tmp();
+  const parent = tmp();
+  const dir = path.join(parent, 'tasks');
+  fs.mkdirSync(path.join(dir, 'a'), { recursive: true });
+  const planted = [
+    [path.join(parent, 'x.json'), '../x'],
+    [path.join(dir, 'a', 'b.json'), 'a/b'],
+    [path.join(dir, '.json'), ''],
+  ];
+  const body = id => JSON.stringify({ id, status: 'planned', steps: [] });
+  for (const [f, id] of planted) fs.writeFileSync(f, body(id));
+  const orig = fs.readFileSync;
+  const reads = [];
+  fs.readFileSync = (p, ...rest) => { reads.push(String(p)); return orig.call(fs, p, ...rest); };
   try {
     const s = createTaskStore({ dir });
-    fs.writeFileSync(path.join(dir, '..', 'x.json'), JSON.stringify({ id: 'x' }));
     for (const id of ['../x', 'a/b', '', 'a\b', null, undefined, 42]) assert.equal(s.get(id), null);
-    fs.rmSync(path.join(dir, '..', 'x.json'), { force: true });
-  } finally { rm(dir); }
+    for (const [f] of planted) {
+      assert.ok(!reads.includes(f), `read ${f}`);
+      assert.ok(fs.existsSync(f), `moved ${f}`);
+      assert.equal(orig.call(fs, f, 'utf8').length > 0, true);
+    }
+    assert.ok(!fs.existsSync(path.join(dir, 'broken')));
+  } finally { fs.readFileSync = orig; rm(parent); }
 });
 
 test('corrupt file is quarantined, others still load', () => {
