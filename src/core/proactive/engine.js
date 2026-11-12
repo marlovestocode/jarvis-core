@@ -3,7 +3,9 @@
 // on idle), quiet hours and Do-not-disturb give a notification only, at most one spoken item per
 // minGapSec, alarm > timer > reminder > info, duplicates collapse. Each item: one notification, one
 // history entry tagged proactive:true, and when allowed a chime plus speech. A cut or failed speech
-// is not repeated.
+// is not repeated. Monitor items (push({ monitor: true })) also drop the same key within cooldownMin (or the
+// item's cooldownMs) and fall back to notification only past maxPerHour spoken; timers are never capped.
+// isBusy() (e.g. a pending confirmation) holds speech like the state flag does and is re-polled every 2 s.
 // speak(text) → Promise<boolean> (false: TTS missing, busy or cut by barge-in); notify(title, body); chime();
 // appendHistory({ role, content, proactive }).
 const PRIORITY = { alarm: 4, timer: 3, reminder: 2, info: 1 };
@@ -35,34 +37,48 @@ function inQuiet(cfg, t) {
   return s < e ? n >= s && n < e : n >= s || n < e;
 }
 
-function createProactiveEngine({ bus, getConfig, speak, chime = () => {}, notify = () => {}, appendHistory = () => {}, now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, log = () => {} }) {
+function createProactiveEngine({ bus, getConfig, speak, chime = () => {}, notify = () => {}, appendHistory = () => {}, now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout, log = () => {}, isBusy = () => false }) {
   const queue = [];   // { kind, text, key, at }
   let busy = false;
   let delivering = false;
   let lastSpoke = -Infinity;
   let wait = null;
+  const delivered = new Map();   // monitor key -> last delivery time
+  let spokenAt = [];             // monitor items spoken in the last hour
   let briefingFn = null;
   const offs = [];
 
   const cfg = () => getConfig().proactive;
+  const safeIsBusy = () => { try { return !!isBusy(); } catch { return false; } };
+  const held = () => busy || safeIsBusy();
   const record = item => {
     try { notify(TITLES[item.kind] || 'JARVIS', item.text); } catch (err) { log(`notification failed: ${err.message}`); }
     try { appendHistory({ role: 'assistant', content: item.text, proactive: true }); } catch (err) { log(`proactive history failed: ${err.message}`); }
   };
 
-  function push({ kind = 'info', text, key } = {}) {
+  function push({ kind = 'info', text, key, monitor = false, cooldownMs } = {}) {
     if (!text) return;
-    const item = { kind: PRIORITY[kind] ? kind : 'info', text: String(text), key: key || `${kind}:${text}`, at: now() };
+    const item = { kind: PRIORITY[kind] ? kind : 'info', text: String(text), key: key || `${kind}:${text}`, at: now(), monitor: !!monitor };
     const c = cfg();
     if (!c.enabled || c.dnd || inQuiet(c, item.at)) { record(item); return; }   // silent: notification only
     if (queue.some(q => q.key === item.key)) return;
+    if (item.monitor) {
+      const last = delivered.get(item.key);
+      if (last !== undefined && item.at - last < (cooldownMs ?? (c.cooldownMin ?? 15) * 60000)) return;
+      spokenAt = spokenAt.filter(t => item.at - t < 3.6e6);
+      if (spokenAt.length >= (c.maxPerHour ?? 6)) { record(item); return; }   // over the cap: notification only
+    }
     queue.push(item);
     queue.sort((a, b) => PRIORITY[b.kind] - PRIORITY[a.kind] || a.at - b.at);
     pump();
   }
 
   function pump() {
-    if (delivering || busy || !queue.length) return;
+    if (delivering || !queue.length) return;
+    if (held()) {
+      if (!busy && wait === null) wait = setTimer(() => { wait = null; pump(); }, 2000);   // no idle event follows a cleared confirm
+      return;
+    }
     const gap = cfg().minGapSec * 1000 - (now() - lastSpoke);
     if (gap > 0) {
       if (wait === null) wait = setTimer(() => { wait = null; pump(); }, gap);
@@ -74,11 +90,13 @@ function createProactiveEngine({ bus, getConfig, speak, chime = () => {}, notify
   async function deliver(item) {
     delivering = true;
     lastSpoke = now();
+    if (item.monitor) delivered.set(item.key, lastSpoke);
     try {
       if (cfg().chime) chime();
       // false or a throw: TTS missing, the user got busy, or barge-in cut it. The notification below
       // is then the only delivery; the item is never re-queued.
-      if ((await speak(item.text)) !== true) log('proactive item not spoken, notification only');
+      if ((await speak(item.text)) === true) { if (item.monitor) spokenAt.push(now()); }
+      else log('proactive item not spoken, notification only');
     } catch (err) { log(`proactive speech failed: ${err.message}`); }
     record(item);
     delivering = false;

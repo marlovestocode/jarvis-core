@@ -8,7 +8,7 @@ const { DEFAULTS } = require('../src/core/config');
 const at = (h, m = 0) => new Date(2026, 10, 10, h, m).getTime();
 const tick = () => new Promise(r => setImmediate(r));
 
-function setup({ time = at(19, 30), cfg = {}, speakOk = true } = {}) {
+function setup({ time = at(19, 30), cfg = {}, speakOk = true, isBusy } = {}) {
   let t = time;
   const timers = new Map(); let seq = 0;
   const calls = [];
@@ -23,6 +23,7 @@ function setup({ time = at(19, 30), cfg = {}, speakOk = true } = {}) {
     now: () => t,
     setTimer: (fn, ms) => { const id = ++seq; timers.set(id, { fn, at: t + ms }); return id; },
     clearTimer: id => timers.delete(id),
+    ...(isBusy ? { isBusy } : {}),
   });
   const advance = async ms => {
     const end = t + ms;
@@ -214,4 +215,64 @@ test('settings: proactive patch is validated', () => {
   r = applyPatch(cur, { proactive: { quietStart: 'late' } }, deps);
   assert.equal(r.errors.length, 1);
   assert.equal(r.config.proactive.quietStart, '22:00');
+});
+
+const MIN = 60000;
+
+test('monitor item: same key within cooldown is dropped, spoken again after cooldown', async () => {
+  const { engine, spoken, advance } = setup();
+  engine.push({ text: 'CPU is high.', key: 'k', monitor: true });
+  await advance(5 * MIN);
+  engine.push({ text: 'CPU is high.', key: 'k', monitor: true });
+  await advance(1000);
+  assert.equal(spoken().length, 1);
+  await advance(11 * MIN);
+  engine.push({ text: 'CPU is high.', key: 'k', monitor: true });
+  await advance(1000);
+  assert.equal(spoken().length, 2);
+});
+
+test('monitor item: cooldownMs on the item overrides config', async () => {
+  const { engine, spoken, advance } = setup();
+  engine.push({ text: 'Disk is full.', key: 'k', monitor: true, cooldownMs: 60000 });
+  await advance(2 * MIN);
+  engine.push({ text: 'Disk is full.', key: 'k', monitor: true, cooldownMs: 60000 });
+  await advance(1000);
+  assert.equal(spoken().length, 2);
+});
+
+test('non-monitor items ignore cooldown and cap', async () => {
+  const { bus, spoken, advance } = setup({ cfg: { maxPerHour: 2 } });
+  for (let i = 0; i < 8; i++) { fire(bus, { id: `t${i}` }); await advance(11000); }
+  assert.equal(spoken().length, 8);
+});
+
+test('hourly cap: items over maxPerHour are notification only, history still recorded', async () => {
+  const { engine, calls, spoken, advance } = setup({ cfg: { maxPerHour: 2 } });
+  for (const k of ['a', 'b', 'c']) { engine.push({ text: `item ${k}`, key: k, monitor: true }); await advance(11000); }
+  assert.deepEqual(spoken(), ['item a', 'item b']);
+  assert.ok(calls.some(c => c[0] === 'notify' && c[2] === 'item c'));
+  assert.ok(calls.some(c => c[0] === 'history' && c[1].content === 'item c' && c[1].proactive === true));
+  await advance(61 * MIN);
+  engine.push({ text: 'item d', key: 'd', monitor: true });
+  await advance(1000);
+  assert.deepEqual(spoken(), ['item a', 'item b', 'item d']);
+});
+
+test('isBusy true holds speech, delivered once it turns false', async () => {
+  let busy = true;
+  const { bus, spoken, advance } = setup({ isBusy: () => busy });
+  fire(bus);
+  await advance(1000);
+  assert.deepEqual(spoken(), []);
+  busy = false;
+  await advance(3000);
+  assert.deepEqual(spoken(), ['Your pasta timer is done.']);
+});
+
+test('isBusy throwing counts as not busy', async () => {
+  const { bus, spoken, advance } = setup({ isBusy: () => { throw new Error('boom'); } });
+  fire(bus);
+  await advance(1000);
+  assert.deepEqual(spoken(), ['Your pasta timer is done.']);
 });
