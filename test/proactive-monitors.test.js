@@ -153,3 +153,17 @@ test('runner: start re-arms after each tick, stop clears the timer', async () =>
   assert.equal(r.snaps(), 0);
   r.m.stop(); assert.equal(r.timers.size, 0);
 });
+
+test('engine: a monitor item is titled JARVIS, a real timer event keeps Timer done', () => {
+  const { createBus } = require('../src/core/bus');
+  const { createProactiveEngine } = require('../src/core/proactive/engine');
+  const bus = createBus(); const notes = [];
+  const engine = createProactiveEngine({
+    bus, getConfig: () => ({ proactive: { enabled: false, dnd: true, quietStart: '22:00', quietEnd: '07:00' } }),
+    speak: async () => true, chime() {}, notify: (title, body) => notes.push([title, body]), appendHistory() {},
+    now: () => 1e9, setTimer: () => 1, clearTimer() {}, isBusy: () => false,
+  });
+  engine.push({ kind: 'timer', text: 'Your pasta timer is in 9 minutes.', key: 'm1', monitor: true });
+  engine.push({ kind: 'timer', text: 'Your pasta timer is done.', key: 't1' });
+  assert.deepEqual(notes.map(n => n[0]), ['JARVIS', 'Timer done']);
+});

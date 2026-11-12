@@ -98,3 +98,7 @@ test('monitors group: loads with the shared tool deps, and is missing without ap
   assert.ok(g.triggers.some(t => t.re?.test('warn me if the ram gets high')));
   assert.ok(loadGroups({ ...toolDeps(), applySettings: undefined }).missing.some(m => m.id === 'monitors'));
 });
+
+test('monitor_set: carries needsClean so a tainted turn refuses it', () => {
+  assert.equal(setup().tool.needsClean, true);
+});

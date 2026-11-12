@@ -52,7 +52,7 @@ function createProactiveEngine({ bus, getConfig, speak, chime = () => {}, notify
   const safeIsBusy = () => { try { return !!isBusy(); } catch { return false; } };
   const held = () => busy || safeIsBusy();
   const record = item => {
-    try { notify(TITLES[item.kind] || 'JARVIS', item.text); } catch (err) { log(`notification failed: ${err.message}`); }
+    try { notify(item.monitor ? 'JARVIS' : TITLES[item.kind] || 'JARVIS', item.text); } catch (err) { log(`notification failed: ${err.message}`); }
     try { appendHistory({ role: 'assistant', content: item.text, proactive: true }); } catch (err) { log(`proactive history failed: ${err.message}`); }
   };
 

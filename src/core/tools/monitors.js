@@ -10,6 +10,7 @@ function createMonitorTools({ getConfig, applySettings }) {
   const monitorSet = {
     name: 'monitor_set',
     examples: ['warn me before a timer ends', 'alert me when memory is high', 'stop warning me about the cpu', 'notify me if the disk fills up'],   // wording the ranker matches requests against (skills/rank.js)
+    needsClean: true,   // changes what JARVIS does on its own later: refused on a turn that read outside text
     direct: true,   // its result is already a sentence: it is the reply, no second model call
     hint: 'monitor_set: turn proactive warnings on or off. monitor timers (leadMin = minutes ahead) or system (metric cpu, ram, disk or temp, limit = the percent, or degrees for temp). Saying a limit or lead time turns it on. Read back the sentence it gives.',
     description: 'Turn proactive warnings on or off, or change when they fire: heads-ups before a timer ends (monitor "timers"), or warnings when the CPU, RAM, disk or temperature runs high (monitor "system").',
