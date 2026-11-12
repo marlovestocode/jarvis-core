@@ -63,10 +63,10 @@ function createProactiveEngine({ bus, getConfig, speak, chime = () => {}, notify
     if (!c.enabled || c.dnd || inQuiet(c, item.at)) { record(item); return; }   // silent: notification only
     if (queue.some(q => q.key === item.key)) return;
     if (item.monitor) {
+      for (const [k, d] of delivered) if (item.at - d.at >= d.ms) delivered.delete(k);
       const last = delivered.get(item.key);
-      if (last !== undefined && item.at - last < (cooldownMs ?? (c.cooldownMin ?? 15) * 60000)) return;
-      spokenAt = spokenAt.filter(t => item.at - t < 3.6e6);
-      if (spokenAt.length >= (c.maxPerHour ?? 6)) { record(item); return; }   // over the cap: notification only
+      if (last) return;
+      item.cooldownMs = cooldownMs ?? (c.cooldownMin ?? 15) * 60000;
     }
     queue.push(item);
     queue.sort((a, b) => PRIORITY[b.kind] - PRIORITY[a.kind] || a.at - b.at);
@@ -74,7 +74,14 @@ function createProactiveEngine({ bus, getConfig, speak, chime = () => {}, notify
   }
 
   function pump() {
-    if (delivering || !queue.length) return;
+    if (delivering) return;
+    // the cap is checked here, not at push: items queued while held must not slip past it
+    while (queue.length && queue[0].monitor) {
+      spokenAt = spokenAt.filter(t => now() - t < 3.6e6);
+      if (spokenAt.length < (cfg().maxPerHour ?? 6)) break;
+      record(queue.shift());   // over the cap: notification only
+    }
+    if (!queue.length) return;
     if (held()) {
       if (!busy && wait === null) wait = setTimer(() => { wait = null; pump(); }, 2000);   // no idle event follows a cleared confirm
       return;
@@ -90,7 +97,7 @@ function createProactiveEngine({ bus, getConfig, speak, chime = () => {}, notify
   async function deliver(item) {
     delivering = true;
     lastSpoke = now();
-    if (item.monitor) delivered.set(item.key, lastSpoke);
+    if (item.monitor) delivered.set(item.key, { at: lastSpoke, ms: item.cooldownMs });
     try {
       if (cfg().chime) chime();
       // false or a throw: TTS missing, the user got busy, or barge-in cut it. The notification below

@@ -276,3 +276,17 @@ test('isBusy throwing counts as not busy', async () => {
   await advance(1000);
   assert.deepEqual(spoken(), ['Your pasta timer is done.']);
 });
+
+test('hourly cap holds for items queued while busy', async () => {
+  let busy = true;
+  const { engine, calls, spoken, advance } = setup({ cfg: { maxPerHour: 2 }, isBusy: () => busy });
+  for (const k of ['a', 'b', 'c', 'd']) engine.push({ text: `item ${k}`, key: k, monitor: true });
+  await advance(1000);
+  busy = false;
+  await advance(60000);
+  assert.deepEqual(spoken(), ['item a', 'item b']);
+  for (const k of ['c', 'd']) {
+    assert.equal(calls.filter(c => c[0] === 'notify' && c[2] === `item ${k}`).length, 1);
+    assert.equal(calls.filter(c => c[0] === 'history' && c[1].content === `item ${k}`).length, 1);
+  }
+});
