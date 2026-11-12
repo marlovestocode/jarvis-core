@@ -116,6 +116,8 @@ test('liveLine: empty for null, {} and idle with no tools', () => {
   assert.equal(liveLine(null), '');
   assert.equal(liveLine({}), '');
   assert.equal(liveLine({ voice: 'idle', tools: [] }), '');
+  assert.equal(liveLine({ voice: 'thinking', tools: [] }), '');
+  assert.equal(liveLine({ voice: 'error', tools: [] }), '');
 });
 
 test('liveLine: renders voice, timers, confirm and last actions in order', () => {
@@ -135,7 +137,7 @@ test('liveLine: renders voice, timers, confirm and last actions in order', () =>
 });
 
 test('liveLine: never mentions media', () => {
-  const s = liveLine({ voice: 'thinking', media: { title: 'SecretSong', playing: true } });
+  const s = liveLine({ voice: 'speaking', media: { title: 'SecretSong', playing: true } });
   assert.doesNotMatch(s, /SecretSong|media/i);
 });
 

@@ -100,7 +100,7 @@ function fmtDur(ms) {
 function liveLine(snap, { max = 5 } = {}) {
   if (!isPlainObject(snap)) return '';
   const items = [];
-  if (typeof snap.voice === 'string' && snap.voice && snap.voice !== 'idle') items.push(`voice: ${snap.voice}`);
+  if (typeof snap.voice === 'string' && snap.voice && !['idle', 'thinking', 'error'].includes(snap.voice)) items.push(`voice: ${snap.voice}`);
   const tm = snap.timers;
   if (isPlainObject(tm) && tm.count > 0) {
     let s = `${tm.count} timer${tm.count === 1 ? '' : 's'}`;

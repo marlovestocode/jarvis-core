@@ -32,7 +32,7 @@ function setup({ live, selectGroups, route, tools } = {}) {
 }
 const chatRoute = () => ({ tier: 'fast', think: false, tools: false, reason: 'chat' });
 const now = Date.now();
-const contSnap = () => ({ t: now, tools: [{ t: now }], groups: { list: ['media'] }, media: null, confirm: null });
+const contSnap = () => ({ t: now, tools: [{ t: now }], groups: { list: ['media'], at: now }, media: null, confirm: null });
 
 test('livestate: without live a turn behaves as before', async () => {
   const seen = [];
