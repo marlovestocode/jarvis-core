@@ -11,10 +11,14 @@
 const { isYes, isNo } = require('../brain/guard');
 
 const FOLLOWUP_MS = 3 * 60 * 1000;
-const REPEAT = /\b(again|undo|redo|same|another one|one more|the other one)\b/i;
-const IMPERATIVE_PRONOUN = /^(do|play|skip|open|close|save|move|delete|put|turn|set|cancel|stop|repeat|replay|send|try|pause|resume|undo)\b.*\b(it|that|this)(?![\w'’])/i;
-const QUESTION = /^(who|whom|whose|what|when|where|why|which|how|is|are|does|was|were)\b/i;
-const CHAT = /^(thanks|thank you|thx|ok|okay|cool|nice|great|awesome|perfect|bye|goodbye|good (morning|afternoon|evening|night)|hi|hello|hey|no worries|never ?mind|sure)\b/i;
+// Closed set of whole-utterance shapes (anchored); anything else is not a follow-up.
+const SHAPES = [
+  /^(do|try|play|run|say|send|make)\s+(it|that|this)\s+(again|once more|the same way|too)$/,
+  /^(again|once more|one more time|another one|one more|the other one|the same|same again|same as before|do the same|do the same for the other one|undo|undo that|undo it|redo|redo that|redo it|revert that|put it back|put it back the way it was)$/,
+  /^(skip|pause|stop|cancel|repeat|replay|resume|reverse)\s+(it|that|this)$/,
+];
+const QUESTION = /^(who|whom|whose|what|when|where|why|which|how|is|are|does|was|were|did|do you|can|could|would|will|should|have|you)\b/;
+const CHAT = /^(thanks|thank you|thx|ok|okay|cool|nice|great|awesome|perfect|bye|goodbye|good (morning|afternoon|evening|night)|hi|hello|hey|no worries|never ?mind|sure)\b/;
 const NEEDS_PLAYING = new Set(['pause', 'skip', 'next', 'previous', 'back', 'louder', 'quieter', 'mute']);
 const NEEDS_PAUSED = new Set(['play', 'resume', 'unmute']);
 
@@ -26,8 +30,10 @@ function resolveFollowUp(text, snap) {
 
     if (snap.confirm && (isYes(raw) || isNo(raw))) return { kind: 'confirm' };
 
-    if (raw.split(/\s+/).length <= 6 && !raw.endsWith('?') && !QUESTION.test(raw) && !CHAT.test(raw)
-        && (REPEAT.test(raw) || IMPERATIVE_PRONOUN.test(raw))) {
+    let norm = raw.toLowerCase().replace(/[.!\s]+$/, '');
+    for (let m; (m = /^(please|ok|okay|and|now)\b[,\s]*/.exec(norm)); ) norm = norm.slice(m[0].length);
+    if (raw.split(/\s+/).length <= 6 && !raw.endsWith('?') && !QUESTION.test(norm) && !CHAT.test(norm)
+        && SHAPES.some(re => re.test(norm))) {
       const tools = Array.isArray(snap.tools) ? snap.tools : [];
       const recent = tools.some(r => r && typeof r.t === 'number' && snap.t - r.t <= FOLLOWUP_MS);
       const g = snap.groups;

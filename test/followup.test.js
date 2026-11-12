@@ -19,15 +19,20 @@ test('confirm', () => {
 });
 
 test('continue', () => {
-  for (const t of ['do it again', 'play it again', 'undo that', 'another one', 'skip it'])
-    assert.deepEqual(resolveFollowUp(t, ran(30000)), { kind: 'continue', groups: ['media'] });
-  assert.equal(resolveFollowUp('play it again', snap()), null);
+  const go = { kind: 'continue', groups: ['media'] };
+  for (const t of ['do it again', 'play it again', 'again', 'undo that', 'undo', 'another one', 'one more', 'the other one', 'do the same',
+    'skip it', 'pause that', 'cancel it', 'put it back', 'okay, undo that', 'stop it', 'Please undo that!'])
+    assert.deepEqual(resolveFollowUp(t, ran(30000)), go, t);
+  for (const t of ['do you like it', 'put that aside for now', "stop it, you're annoying", 'set it up for me later', 'send it to mom', 'save it for later',
+    'same here', 'one more thing', 'not again', "it's the same", "I'll do it again later", "thanks, that's great", "that's it", 'is that right?',
+    "that's all, thank you", 'no worries about it', 'I like that', 'do it', 'send it', 'can you undo that', 'would you do it again'])
+    assert.equal(resolveFollowUp(t, ran(1000)), null, t);
+  assert.deepEqual(resolveFollowUp('okay please and now undo that', ran(1000)), go); // 6 words
+  assert.equal(resolveFollowUp('okay please and now now undo that', ran(1000)), null); // 7 words
+  assert.equal(resolveFollowUp('play it again', snap()), null); // no tool run, no groups
+  assert.equal(resolveFollowUp('play it again', snap({ groups: { list: ['media'], at: T } })), null); // no tool run
   assert.equal(resolveFollowUp('play it again', ran(5 * 60 * 1000)), null);
   assert.equal(resolveFollowUp('play it again', ran(1000, { groups: { list: [], at: T } })), null);
-  for (const t of ["thanks, that's great", "that's it", 'is that right?', "that's all, thank you", 'no worries about it'])
-    assert.equal(resolveFollowUp(t, ran(1000)), null, t);
-  assert.deepEqual(resolveFollowUp('do it again one two three', ran(1000)), { kind: 'continue', groups: ['media'] }); // 6 words
-  assert.equal(resolveFollowUp('do it again one two three four', ran(1000)), null); // 7 words
   assert.equal(resolveFollowUp('play it again', snap({ tools: [{ name: 'x', ok: true, soft: false, t: T - 1000 }], groups: { list: ['media'], at: T - FOLLOWUP_MS - 1 } })), null);
   assert.equal(resolveFollowUp('please tell me what it was that you did', ran(1000)), null);
 });
