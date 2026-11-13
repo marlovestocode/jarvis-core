@@ -61,9 +61,11 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
   let current = null;          // the TTS stream/handle now speaking
   let spoken = '';             // what JARVIS has said this turn (echo check)
   let lastSend = Promise.resolve();
+  let convo = null;            // this conversation's speaker verdict: owner | unsure | guest; null = no conversation yet. Only ever moves down.
+  let spVerdict = 'owner';     // effective verdict of the interrupt utterance being handled
 
   function setState(state, detail) {
-    if (state === 'idle') endTrace();
+    if (state === 'idle') { endTrace(); convo = null; }   // back to idle ends the conversation
     bus.emit('state', detail ? { state, detail } : { state });
   }
   function endTrace() {
@@ -96,6 +98,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
   }
 
   function listen() {
+    if (mode === 'idle') convo = 'owner';   // hotkey / wake engine: pressing it is already the user; a mid-conversation listen keeps the verdict
     stripWake = false;
     ext = 0; held = null; during = null; clearTimeout(contTimer);
     abortOp();
@@ -116,6 +119,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     if ((was === 'working' || was === 'speaking') && orchestrator.busy) orchestrator.stop();
     current = null;
     mode = 'idle';
+    convo = null;
     if (was !== 'idle') setState('idle');
   }
 
@@ -158,22 +162,42 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     return out;
   }
 
-  // Only the enrolled voice may wake JARVIS (config.speakerGate, and only once a voice is enrolled).
-  // The hotkey is never gated: pressing it is already the user. A broken model never blocks (verify fails open).
-  async function speakerOk(audio, sampleRate, lenient, strict = false) {
-    if (!speaker || !getConfig().speakerGate || !speaker.enrolled()) return true;
-    const r = await speaker.verify(audio, sampleRate, { lenient, strict });
-    if (r.ok) return true;
-    bus.emit('log', { level: 'info', text: strict ? `Ignored a spoken yes from a voice that is not yours (${r.reason || 'match ' + r.score})` : `Ignored "Jarvis" from a voice that is not yours (match ${r.score}, needs ${r.threshold})` });
-    bus.emit('speaker', { ok: false, score: r.score });
-    return false;
+  // Speaker verdict per conversation (config.speakerGate, and only once a voice is enrolled).
+  // The wake utterance sets the conversation verdict (hotkey = owner); every later utterance can only lower it
+  // (owner > unsure > guest). Too-short audio (null) or a model error keeps the verdict. In `block` mode a guest
+  // utterance is ignored; in `guest` mode it proceeds as a guest. Never carries words: the bus event has no text.
+  const RANK = { owner: 0, unsure: 1, guest: 2 };
+  const gateActive = () => !!(speaker && getConfig().speakerGate && speaker.enrolled());
+  // -> { ignored, verdict (effective), raw (this utterance's own verdict, or null) }
+  async function judge(audio, sampleRate, { lenient = false, strict = false, learn = false } = {}) {
+    if (!gateActive()) return { ignored: false, verdict: 'owner', raw: 'owner' };
+    let r = null;
+    try { r = await speaker.verify(audio, sampleRate, { lenient, strict, learn }); } catch { r = null; }
+    const raw = r ? (r.verdict === undefined ? (r.ok ? 'owner' : 'guest') : r.verdict) : null;
+    if (raw === 'guest' && getConfig().speakerMode === 'block') {
+      bus.emit('speaker', { ok: false, score: r.score, verdict: raw });
+      bus.emit('log', { level: 'info', text: `Ignored a voice that is not yours (match ${r.score}${r.threshold !== undefined ? ', needs ' + r.threshold : ''})` });
+      return { ignored: true, verdict: convo ?? 'owner', raw };
+    }
+    if (raw) {
+      if (convo === null || RANK[raw] > RANK[convo]) convo = raw;
+      if (raw !== 'owner') bus.emit('speaker', { ok: false, score: r.score, verdict: raw });
+    }
+    return { ignored: false, verdict: convo ?? 'owner', raw };
   }
 
-  // A risky action waits for a yes: when it comes by voice, only the enrolled voice may give it (strict: no pass on errors).
-  // Without an enrolled voice there is nothing to check against; the answer still has to be a plain yes within 60 s.
-  async function yesOk(text, audio, sampleRate) {
-    if (!confirmPending() || !isYes(text)) return true;
-    return speakerOk(audio, sampleRate, false, true);
+  // A risky action waits for a yes: when it comes by voice only a confident, non-lenient owner match confirms it
+  // (no pass on errors or short audio). Without an enrolled voice there is nothing to check against.
+  // -> the effective verdict to send with, or null when the utterance is to be ignored.
+  async function gateUtterance(text, audio, sampleRate, lenient) {
+    const yes = confirmPending() && isYes(text);
+    const j = await judge(audio, sampleRate, { lenient, strict: yes, learn: !lenient });
+    if (j.ignored) return null;
+    if (yes && j.raw !== 'owner') {
+      bus.emit('log', { level: 'info', text: 'Ignored a spoken yes from a voice that is not confirmed as yours' });
+      return null;
+    }
+    return j.verdict;
   }
 
   async function finishCapture(heard) {
@@ -195,6 +219,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       return;
     }
     if (my !== turn) return;
+    const lenient = stripWake;         // a capture opened by a spoken interrupt has JARVIS's voice mixed in
     trace.mark('stt_done');
     if (getConfig().continuationGuard && ext < CONT_MAX_EXT && partsMs < CONT_MAX_MS && dangling(text)) {
       extend(parts, partsMs, text);
@@ -207,8 +232,10 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       if (hits.length) { const h = hits.at(-1); text = text.slice(h.index + h[0].length).trim(); }
       if (STOP_WORDS.test(text)) { mode = 'idle'; setState('idle'); return; }
     }
-    if (!(await yesOk(text, pcm, rate))) { if (my === turn) { mode = 'idle'; setState('idle'); } return; }
-    await runText(text, my);
+    const verdict = await gateUtterance(text, pcm, rate, lenient);
+    if (my !== turn) return;
+    if (verdict === null) { mode = 'idle'; setState('idle'); return; }
+    await runText(text, my, verdict);
   }
 
   // Reopen the capture (audio kept) for up to continuationMs. New speech → the whole audio is transcribed
@@ -227,7 +254,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       const t = held; held = null;
       const now = ++turn;
       mode = 'working';
-      yesOk(t, concat(parts), rate).then(ok => { if (ok) return runText(t, now); if (now === turn) { mode = 'idle'; setState('idle'); } });
+      gateUtterance(t, concat(parts), rate, stripWake).then(v => { if (now !== turn) return; if (v !== null) return runText(t, now, v); mode = 'idle'; setState('idle'); });
     }, continuationMs);
     for (const c of late) feed(c, rate);
   }
@@ -249,13 +276,15 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       idleBusy = false;
       const said = String(t || '').trim();
       if (mode !== 'idle' || !WAKE_PREFIX.test(said)) return;   // not for JARVIS: forget it
-      if (!(await speakerOk(audio, sampleRate, false)) || mode !== 'idle') return;   // someone else said it
+      convo = null;                                              // a new conversation starts here
+      const j = await judge(audio, sampleRate, { lenient: false });
+      if (j.ignored || mode !== 'idle') return;                  // someone else said it (block mode)
       bus.emit('wake', { text: said });
       trace.reset(); trace.mark('speech_end', endedAt); trace.mark('wake_heard'); trace.mark('stt_done');
       const my = ++turn;
       mode = 'working';
       rate = sampleRate;
-      await runText(said, my);
+      await runText(said, my, j.verdict);
     }, err => { idleBusy = false; if (err.timedOut) logHung('Wake word listening', err); });
   }
 
@@ -277,8 +306,13 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     transcribeWithin(audio, sampleRate, STT_WAKE_TIMEOUT_MS, new AbortController()).then(async t => {
       const said = String(t || '').trim();
       // JARVIS's own voice is mixed into this audio, so the bar is a little lower than for the idle wake
-      if (speaker && [...said.matchAll(WAKE_ANY)].length && !(await speakerOk(audio, sampleRate, true))) { spBusy = false; return; }
-      spBusy = false; onSpeakingUtterance(said, cut);
+      let v = convo ?? 'owner';
+      if (speaker && [...said.matchAll(WAKE_ANY)].length) {
+        const j = await judge(audio, sampleRate, { lenient: true });
+        if (j.ignored) { spBusy = false; return; }
+        v = j.verdict;
+      }
+      spBusy = false; spVerdict = v; onSpeakingUtterance(said, cut);
     }, err => { spBusy = false; if (err.timedOut) logHung('Interrupt listening', err); });
   }
   function resetSpeaking() { spChunks = []; spMs = 0; speakVad.reset(); speakVad.setGain(SPEAKING_GAIN); }
@@ -306,6 +340,10 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       cancel();
       return;
     }
+    if (gateActive() && confirmPending() && isYes(rest)) {          // lenient audio never confirms a risky action
+      bus.emit('log', { level: 'info', text: 'Ignored a spoken yes from a voice that is not confirmed as yours' });
+      return;
+    }
     if (getConfig().wakeInterrupt === 'sentence') { softInterrupt(rest); return; }   // old: finish the sentence first
     if (rest && !cut) { interruptNow(rest); return; }
     interruptListen();
@@ -313,6 +351,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
 
   // "Jarvis, <command>" heard whole while speaking: cut the speech and run the command.
   async function interruptNow(rest) {
+    const v = spVerdict;
     const my = ++turn;
     abortOp();
     if (orchestrator.busy) orchestrator.stop();
@@ -320,7 +359,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     mode = 'working';
     await lastSend;                    // let the stopped reply settle before the next turn
     if (my !== turn) return;
-    await runText(rest, my);
+    await runText(rest, my, v);
   }
   // "Jarvis" heard but the command is missing or was cut by the window: stop speaking, listen, and replay
   // the audio held since the window (≥ 1 s overlap) so the words already said are transcribed whole,
@@ -336,6 +375,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
 
   // "Jarvis, <request>": the model stops writing, the sentence being spoken ends, then the request runs.
   async function softInterrupt(rest) {
+    const v = spVerdict;
     const my = ++turn;                 // the old turn's async steps stand down
     if (orchestrator.busy) orchestrator.stop();
     const handle = current;
@@ -349,10 +389,10 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     if (my !== turn) return;
     if (!rest) { listen(); return; }
     mode = 'working';
-    await runText(rest, my);
+    await runText(rest, my, v);
   }
 
-  async function runText(text, my) {
+  async function runText(text, my, verdict = convo ?? 'owner') {
     const said = text;
     text = text.replace(WAKE_PREFIX, '').trim();
     if (!text && WAKE_PREFIX.test(said)) { listen(); return; }   // just "Jarvis": wait for the command
@@ -383,7 +423,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
 
     let res;
     try {
-      const sending = orchestrator.send(getSessionId(), text, { source: 'voice' });
+      const sending = orchestrator.send(getSessionId(), text, { source: 'voice', speaker: verdict });
       lastSend = sending.then(() => {}, () => {});
       res = await sending;
     } catch (err) {

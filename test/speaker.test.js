@@ -98,7 +98,7 @@ test('enroll: speechClips drops quiet frames and cuts ~3 s clips; enrollVoice re
 });
 
 // ---- controller gate ----
-function gateSetup({ enrolled, ok, gate = true }) {
+function gateSetup({ enrolled, ok, gate = true, mode = 'guest' }) {
   const bus = createBus(); const events = []; bus.on('*', e => events.push(e));
   const stt = { id: 'w', label: 'W', async status() { return { ready: true }; }, async transcribe() { return 'Jarvis, what time is it?'; } };
   const sends = [];
@@ -107,7 +107,7 @@ function gateSetup({ enrolled, ok, gate = true }) {
   const calls = [];
   const speaker = { enrolled: () => enrolled, async verify(pcm, rate, o) { calls.push(o); return ok ? { ok: true, score: 0.9 } : { ok: false, score: 0.12, threshold: 0.45 }; } };
   const wake = { id: 'whisper', label: 'W', kind: 'listen', async status() { return { ready: true }; } };
-  const vc = createVoiceController({ bus, orchestrator, speaker, engines: { stt, tts, wake }, getConfig: () => ({ ...DEFAULTS, wakeEnabled: true, speakerGate: gate }), getSessionId: () => 's' });
+  const vc = createVoiceController({ bus, orchestrator, speaker, engines: { stt, tts, wake }, getConfig: () => ({ ...DEFAULTS, wakeEnabled: true, speakerGate: gate, speakerMode: mode }), getSessionId: () => 's' });
   vc.applyWake();
   return { vc, events, sends, calls };
 }
@@ -115,7 +115,7 @@ const feedAll = (vc, frames) => { for (const f of frames) vc.feed(f, 16000); };
 const utterance = () => [...noise(300), ...tone(1200), ...noise(700)];
 
 test('controller gate: another voice saying "Jarvis" is ignored and logged', async () => {
-  const g = gateSetup({ enrolled: true, ok: false });
+  const g = gateSetup({ enrolled: true, ok: false, mode: 'block' });
   feedAll(g.vc, utterance());
   await tick(30);
   assert.equal(g.sends.length, 0);
@@ -173,7 +173,7 @@ test('controller: with a pending action, a spoken yes must come from the enrolle
   const none = yesSetup({ pending: false, enrolled: true, ok: false });
   none.vc.listen(); feedAll(none.vc, speech()); await tick(40);
   assert.deepEqual(none.sends, ['yes'], 'no pending action: nothing extra to check');
-  assert.equal(none.calls.length, 0);
+  assert.deepEqual(none.calls.map(c => c.strict), [false], 'every utterance is verified now, but only a yes is strict');
 
   const notYes = yesSetup({ pending: true, enrolled: true, ok: false, said: 'what time is it' });
   notYes.vc.listen(); feedAll(notYes.vc, speech()); await tick(40);

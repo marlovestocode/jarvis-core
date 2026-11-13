@@ -83,7 +83,7 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
     cortex: { level: oneOf('debug', 'info', 'warn', 'error') },
     memory: { level: oneOf('ok', 'warn', 'critical'), rssMB: num, heapMB: num, externalMB: num, peakMB: num },
     modelfail: { model: word },
-    speaker: { ok: bool, score: num },
+    speaker: { ok: bool, score: num, verdict: oneOf('owner', 'unsure', 'guest') },
     retract: {},
   };
   function publicEvent(ev) {
