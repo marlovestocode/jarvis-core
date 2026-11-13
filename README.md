@@ -120,7 +120,7 @@ Binaries and model files live in `engines/`, which is git-ignored. Put these in 
 | `vad/silero_vad.onnx` | Voice activity detection (v5.1.2) | [snakers4/silero-vad](https://github.com/snakers4/silero-vad) |
 | `wake/melspectrogram.onnx`, `wake/embedding_model.onnx`, `wake/hey_jarvis_v0.1.onnx` | Wake word (openWakeWord v0.5.1; the "hey jarvis" model is non-commercial) | [openWakeWord releases](https://github.com/dscripka/openWakeWord/releases) |
 | `speaker/wespeaker_en_voxceleb_resnet34_LM.onnx` | Speaker ID for the voice gate | [sherpa-onnx speaker models](https://github.com/k2-fsa/sherpa-onnx/releases/tag/speaker-recongition-models) |
-| `kiwix/` | Offline Wikipedia server | run `scripts/install-library.ps1` (downloads kiwix-tools and the Wikipedia ZIM into `C:\JarvisData\library`) |
+| `kiwix/` | Offline Wikipedia server | run `scripts/install-library.ps1` (downloads kiwix-tools and the Wikipedia ZIM into `library.dir`, default `C:\JarvisData\library`; pass `-Dir` to choose another folder) |
 
 Every engine is optional: when one is missing JARVIS falls back (Windows speech for STT/TTS/wake, energy VAD, online Wikipedia) and `self_diagnostics` says what is off.
 
@@ -246,7 +246,7 @@ These are enforced in code, not only in the prompt:
 ## Testing and benchmarks
 
 ```bash
-npm test                                     # about 1,000 tests, ~10 s, no GPU or network needed
+npm test                                     # about 1,540 tests, ~15 s, no GPU or network needed
 node --expose-gc scripts/mem-bench.js        # memory use of the long-lived parts
 node scripts/selftest-latency.js             # voice latency self-test
 node eval/run.js                             # live-model eval (loads the model on the GPU: do not run while JARVIS is running)
@@ -259,15 +259,17 @@ Tests use fakes for Ollama, the network, the PC host and ONNX models (`test/help
 | Branch | State |
 |---|---|
 | `main` | an earlier stable point |
-| `fix/router-tool-reliability` | the newest finished work: web search, voice polish, secret music picks, router and tool-loop hardening |
-| `feat/cortex` | **in progress:** the *cortex*, one local SQLite "brain" (nodes, weighted edges, provenance, embeddings, spreading-activation recall) that becomes the source of truth for memory, music, actions, knowledge and timers. Core engine done and benchmarked; memory on the cortex is next |
-| `feat/*`, `perf/*` | the feature branches each stage was built on |
+| `feat/jarvis-audit-pass` | **current:** audit pass (connections, extension, skills, analytics dashboard, speech dialect, memory) plus the gap-closure fixes: crash handler, untrusted flag on the tool, no words on the public stream, library folder setting, described tool parameters |
+| `feat/cortex` | the *cortex*, one local SQLite "brain" (nodes, weighted edges, provenance, embeddings, spreading-activation recall) for memory, music, actions, knowledge and timers |
+| `feat/constrained-tool-choice`, `fix/router-tool-reliability` | earlier router and tool-loop work the audit branch was cut from |
+| `feat/*`, `perf/*`, `fix/*` | the feature branches each stage was built on |
 
 The cortex design is in `docs/specs/2026-11-11-cortex-*.md` and the plans in `docs/superpowers/plans/`.
 
 ## Further reading
 
 - [docs/jarvis-prompt-rules.md](docs/jarvis-prompt-rules.md): every prompt rule and the real failure it fixes
+- [docs/audit-2026-11-12-results.md](docs/audit-2026-11-12-results.md): the latest audit pass, what changed and what is open (analytics dashboard: tray, or `/ai/dashboard` on the bridge port)
 - [docs/audit-2026-11-10.md](docs/audit-2026-11-10.md): how JARVIS is wired, what was checked, open findings
 - [docs/specs/](docs/specs/) and [docs/superpowers/plans/](docs/superpowers/plans/): design specs and implementation plans for each stage
 - [extension/README.md](extension/README.md): installing and pairing the Chrome extension
