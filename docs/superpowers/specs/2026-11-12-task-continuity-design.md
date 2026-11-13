@@ -55,7 +55,7 @@ Step `status`: `pending | running | done | failed | skipped`.
 1. `validatePlan`; an invalid plan returns an error text to the model and nothing is saved.
 2. Save the task `running`. For each pending step: resolve refs (an unresolvable ref is a failed step); mark the step `running` and save (write-ahead); call `tools.run(tool, args, { signal, turn })`; store the capped result; mark `done` or `failed`; check `expect`. One retry for a transient failure; errors matching the orchestrator's `NO_RETRY` pattern are not retried. A failed step ends the run.
 3. Emit `tool` bus events per step (live state keeps seeing them) and a `task` event (`id`, `step`, `status`).
-4. Result text is built only from stored step records. Done: "Done: n/n steps" plus one line per step, returned as a `direct` result (no second model call). Failed: the failing step and its evidence, the completed steps, and the instruction to call `task_control(replan)` or stop.
+4. Result text is built only from stored step records. Done: "Done: n/n steps" plus one line per step, returned as the tool result; the model words the final answer from it (the existing figure-grounding guard applies), there is no direct-reply path. Failed: the failing step and its evidence, the completed steps, and the instruction to call `task_control(replan)` or stop.
 5. `replan` replaces only the pending steps after the failure (up to 2 per task) and continues. The runner never calls the provider.
 6. Pause is checked between steps and on the turn's abort signal; the task is saved `paused`.
 
