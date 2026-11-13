@@ -4,9 +4,14 @@
 // so a crash leaves an accurate record. Report text is built only from stored step records.
 const { validatePlan, resolveRefs, check } = require('./plan');
 const { NEEDS_OK } = require('../brain/guard');
+const { isReadOnly } = require('./effects');
 
 const NO_RETRY = /not running|not in Ollama|not allowed|must be local|timed out|aborted/i;
 const LINE_CAP = 160;
+const MAX_REPLANS = 2;
+const FINISHED = ['done', 'cancelled', 'failed'];
+const isFinished = t => FINISHED.includes(t.status);
+const settled = s => s.status === 'done' || s.status === 'skipped';
 
 const clip = (s, n = LINE_CAP) => {
   const one = String(s ?? '').replace(/\s+/g, ' ').trim();
@@ -33,7 +38,8 @@ function describe(task) {
 
 function reportDone(task) {
   const n = task.steps.length;
-  return `Done: ${n}/${n} steps\n${task.steps.map(stepLine).join('\n')}`;
+  const done = task.steps.filter(s => s.status === 'done').length;
+  return `Done: ${done}/${n} steps\n${task.steps.map(stepLine).join('\n')}`;
 }
 
 function reportFailed(task, step, why) {
@@ -77,16 +83,24 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
     return { ok: false, text: err || reportFailed(task, step, why), task };
   }
 
-  // Runs pending steps in order. Shared by start and (later) resume/replan.
-  async function execute(task, { turn, signal } = {}) {
+  const inFlight = new Set();
+  const stops = new Map();   // id → 'paused' | 'cancelled', requested while the task is running
+
+  // Runs pending steps in order. Shared by start, resume and replan.
+  async function execute(task, opts = {}) {
+    inFlight.add(task.id);
+    try { return await runSteps(task, opts); } finally { inFlight.delete(task.id); stops.delete(task.id); }
+  }
+
+  async function runSteps(task, { turn, signal } = {}) {
     task.status = 'running';
     for (const step of task.steps) {
-      if (step.status === 'done') continue;
-      if (signal?.aborted) {
-        task.status = 'paused';
+      if (settled(step)) continue;
+      if (signal?.aborted || stops.has(task.id)) {
+        task.status = stops.get(task.id) || 'paused';
         const err = persist(task);
-        if (!err) emit('task', { id: task.id, step: step.id, status: 'paused' });
-        return { ok: false, text: err || `Task ${task.id} paused before ${step.id}. ${describe(task)}`, task };
+        if (!err) emit('task', { id: task.id, step: step.id, status: task.status });
+        return { ok: false, text: err || `Task ${task.id} ${task.status} before ${step.id}. ${describe(task)}`, task };
       }
       const refs = resolveRefs(step.args, doneResults(task));
       if (!refs.ok) return fail(task, step, refs.text);
@@ -104,13 +118,15 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
       const verdict = awaiting ? { ok: false } : result.ok ? check(step.expect, result) : { ok: false, why: `the tool reported an error: ${clip(text, 200)}` };
       emit('tool', { id: toolId(task, step), name: step.tool, phase: 'end', ok: verdict.ok });
 
+      delete step.asked;
       if (awaiting || (!verdict.ok && signal?.aborted)) {
+        // A confirm tool only proposed its action: nothing ran, the question goes to the user as is.
         step.status = 'pending';
-        task.status = 'paused';
+        if (awaiting) step.asked = true;
+        task.status = awaiting ? 'awaiting_confirm' : 'paused';
         const err = persist(task);
-        if (!err) emit('task', { id: task.id, step: step.id, status: 'paused' });
-        if (!awaiting) return { ok: false, text: err || `Task ${task.id} paused during ${step.id}. ${describe(task)}`, task };
-        return { ok: false, text: err || `Task ${task.id} is waiting at ${step.id}: ${clip(text, 200)}`, task };
+        if (!err) emit('task', { id: task.id, step: step.id, status: task.status });
+        return { ok: false, text: err || (awaiting ? text : `Task ${task.id} paused during ${step.id}. ${describe(task)}`), task };
       }
       if (!verdict.ok) return fail(task, step, verdict.why);
 
@@ -125,9 +141,39 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
     return { ok: !err, text: err || reportDone(task), task };
   }
 
+  const validate = (steps, turn) => validatePlan(steps, { resolves: n => tools.resolves(n), riskOf, tainted: !!turn?.tainted });
+
+  // An awaiting_confirm task stays so only while confirm still holds its step's action; otherwise
+  // the question was answered elsewhere, timed out or dropped, and the task is paused.
+  function reconcile(task) {
+    if (task?.status !== 'awaiting_confirm') return task;
+    let p = null;
+    try { p = confirmPending(); } catch { /* treat as none */ }
+    const asked = task.steps.find(s => s.asked);
+    if (asked && p && p.tool === asked.tool) return task;
+    task.status = 'paused';
+    persist(task);
+    return task;
+  }
+
+  function tasksNewestFirst() {
+    try { return store.list().map(t => store.get(t.id)).filter(Boolean); } catch (err) {
+      log(`task list failed: ${err.message}`);
+      return [];
+    }
+  }
+
+  // Only one task may wait on the user's answer at a time.
+  function blocker(exceptId) {
+    const t = tasksNewestFirst().find(x => x.id !== exceptId && reconcile(x).status === 'awaiting_confirm');
+    return t ? `Task ${t.id} "${t.title}" is waiting for your answer. Answer it or cancel that task first.` : null;
+  }
+
   async function start({ title, steps, turn, sessionId, signal } = {}) {
-    const plan = validatePlan(steps, { resolves: n => tools.resolves(n), riskOf });
+    const plan = validate(steps, turn);
     if (!plan.ok) return { ok: false, text: plan.text };
+    const busy = blocker();
+    if (busy) return { ok: false, text: busy };
     let task;
     try {
       task = store.create({ title: String(title || 'Untitled task').slice(0, 120), steps: plan.steps, origin: { turn, sessionId } });
@@ -137,7 +183,107 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
     return execute(task, { turn, signal });
   }
 
-  return { start, describe, execute };
+  // Loads a task for resume/replan; returns { task } or { refusal }.
+  function loadUnfinished(id) {
+    const task = reconcile(store.get(id));
+    if (!task) return { refusal: `No task ${id}.` };
+    if (task.status === 'done' || task.status === 'cancelled') return { refusal: `Task ${id} is already ${task.status}.`, task };
+    if (inFlight.has(id)) return { refusal: `Task ${id} is already running.`, task };
+    if (task.status === 'awaiting_confirm') return { refusal: `Task ${id} is waiting for your answer: say yes or no.`, task };
+    const busy = blocker(id);
+    return busy ? { refusal: busy, task } : { task };
+  }
+
+  async function resume(id, { turn, signal } = {}) {
+    const { task, refusal } = loadUnfinished(id);
+    if (refusal) return { ok: false, text: refusal };
+    if (task.status === 'failed') return { ok: false, text: `Task ${id} failed. Use task_control with action replan to fix the remaining steps, or cancel it.` };
+    if (turn?.tainted && task.steps.some(s => riskOf(s.tool) === 'confirm')) {
+      return { ok: false, text: `Task ${id} has a step that needs the user's OK, and this turn was influenced by untrusted content. Ask the user to resume it directly.` };
+    }
+    const mid = task.steps.find(s => s.status === 'running');
+    if (mid && !isReadOnly(mid.tool) && !mid.asked) {
+      // A write step was cut off mid-flight: it may have acted. Ask; a later resume is the yes.
+      mid.status = 'pending';
+      task.status = 'awaiting_confirm';
+      const err = persist(task);
+      if (err) return { ok: false, text: err };
+      emit('task', { id, step: mid.id, status: 'awaiting_confirm' });
+      const what = `${mid.tool} ${clip(JSON.stringify(mid.args ?? {}), 80)}`;
+      return { ok: false, text: `${NEEDS_OK}Step ${mid.id} of task ${id} may already have run: ${what}. Run it again? Say "resume the task" to run it, or "cancel the task" to drop it.`, task };
+    }
+    return execute(task, { turn, signal });
+  }
+
+  async function replan(id, steps, { turn, signal } = {}) {
+    const { task, refusal } = loadUnfinished(id);
+    if (refusal) return { ok: false, text: refusal };
+    const k = task.steps.findIndex(s => s.status === 'failed');
+    if (task.status !== 'failed' || k < 0) return { ok: false, text: `Task ${id} has no failed step to replan (it is ${task.status}).` };
+    if ((task.replans || 0) >= MAX_REPLANS) return { ok: false, text: `Task ${id} was already replanned ${MAX_REPLANS} times. Cancel it and start a new task.` };
+    if (!Array.isArray(steps) || !steps.length) return { ok: false, text: 'Replan needs at least one step.' };
+    const kept = task.steps.slice(0, k);
+    const plan = validate([...kept.map(s => ({ tool: s.tool, args: s.args, expect: s.expect })), ...steps], turn);
+    if (!plan.ok) return { ok: false, text: plan.text };
+    task.steps = [...kept, ...plan.steps.slice(k)];
+    task.replans = (task.replans || 0) + 1;
+    return execute(task, { turn, signal });
+  }
+
+  // Pause or cancel an unfinished task; one running in this process stops at its next step boundary.
+  function control(id, to) {
+    const task = store.get(id);
+    if (!task) return { ok: false, text: `No task ${id}.` };
+    if (isFinished(task)) return { ok: false, text: `Task ${id} is already ${task.status}; nothing to ${to === 'paused' ? 'pause' : 'cancel'}.` };
+    if (inFlight.has(id)) {
+      stops.set(id, to);
+      return { ok: true, text: `Task ${id} will be ${to} after its current step.` };
+    }
+    if (to === 'paused' && task.status === 'paused') return { ok: true, text: `Task ${id} is already paused.` };
+    task.status = to;
+    const err = persist(task);
+    if (!err) emit('task', { id, step: null, status: to });
+    return { ok: !err, text: err || `Task ${id} "${task.title}" ${to}.` };
+  }
+
+  function status(id) {
+    let task;
+    if (id) task = store.get(id);
+    else {
+      const all = tasksNewestFirst();
+      task = all.find(t => !isFinished(t)) || all[0];
+    }
+    if (!task) return { ok: false, text: id ? `No task ${id}.` : 'There are no tasks.' };
+    return { ok: true, text: describe(reconcile(task)) };
+  }
+
+  function onConfirmResolved({ tool, ok, text, declined } = {}) {
+    const task = tasksNewestFirst().find(t => t.status === 'awaiting_confirm' && t.steps.some(s => s.asked && s.tool === tool));
+    if (!task) return;
+    const step = task.steps.find(s => s.asked && s.tool === tool);
+    delete step.asked;
+    step.status = declined ? 'skipped' : ok ? 'done' : 'failed';
+    if (!declined) step.result = { ok: !!ok, text: String(text ?? ''), t: now() };
+    task.status = step.status === 'failed' ? 'failed' : 'paused';
+    if (!persist(task)) emit('task', { id: task.id, step: step.id, status: step.status });
+  }
+
+  function active() {
+    const t = tasksNewestFirst().find(x => !isFinished(x));
+    if (!t) return null;
+    return { id: t.id, title: t.title, status: t.status, done: t.steps.filter(s => s.status === 'done').length, total: t.steps.length };
+  }
+
+  function lastFinished(withinMs) {
+    const t = tasksNewestFirst().find(x => x.status === 'done' || x.status === 'failed');
+    return t && now() - (t.updated || 0) <= withinMs ? { id: t.id, status: t.status } : null;
+  }
+
+  return {
+    start, resume, replan, status, onConfirmResolved, active, lastFinished, describe, execute,
+    pause: id => control(id, 'paused'),
+    cancel: id => control(id, 'cancelled'),
+  };
 }
 
 module.exports = { createTaskRunner };
