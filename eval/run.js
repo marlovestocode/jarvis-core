@@ -24,7 +24,24 @@ function numbers(text) {
   return out;
 }
 
+// a question's `live` fixture is a LiveState snapshot with times relative to the ask: tools[].t, models[].t and groups.at are
+// "ms ago"; the snapshot's own t is now
+function liveSnapshot(fix, now = Date.now()) {
+  const snap = { ...fix, t: now };
+  for (const k of ['tools', 'models']) if (Array.isArray(fix[k])) snap[k] = fix[k].map(e => ({ ...e, t: now - e.t }));
+  if (fix.groups) snap.groups = { ...fix.groups, at: now - fix.groups.at };
+  return snap;
+}
+
 function grade(q, answer, result = {}) {
+  // route-note checks (adaptive routing): `reason` must appear in the route reason, `noReason` must not, `not` is a tool that must not be called
+  if (q.reason || q.noReason || q.not) {
+    const why = String(result.reason || '');
+    if (q.reason && !why.includes(q.reason)) return false;
+    if (q.noReason && why.includes(q.noReason)) return false;
+    if (q.not && (result.tools || []).includes(q.not)) return false;
+    if (!q.pick && !q.tool && !q.text && q.num === undefined) return !result.error;
+  }
   // tool choice: the model called the expected tool (against stub hosts, so what the tool answered does not matter)
   if (q.pick) return (result.tools || []).includes(q.pick) && !result.error;
   if (q.tool) return (result.toolResults || []).some(t => t.name === q.tool && t.ok) && !result.error;
@@ -42,16 +59,16 @@ async function rawAsk(model, q) {
   return { answer: j.message?.content || '', tokens: j.eval_count, ms: Math.round((j.total_duration || 0) / 1e6) };
 }
 
-async function appAsk(make, q) {
-  const { orc, sessions, events } = make();
+async function appAsk(make, q, spec = {}) {
+  const { orc, sessions, events } = make(spec.live ? { live: { snapshot: () => liveSnapshot(spec.live) } } : {});
   const t0 = Date.now();
-  const res = await orc.send(null, q, { source: 'text' });
+  const res = await orc.send(null, q, { source: spec.source || 'text' });
   const tools = events.filter(e => e.type === 'tool' && e.phase === 'start').map(e => e.name);
   const route = events.find(e => e.type === 'route');
   const s = sessions.load(res.sessionId);
   const repairs = events.filter(e => e.type === 'log' && /^Repaired tool call/.test(e.text || '')).map(e => e.text);
   const unknown = s.messages.filter(m => m.role === 'tool' && /^Error: unknown tool/.test(String(m.content))).length;
-  return { answer: res.reply || res.error || '', error: res.error, ms: Date.now() - t0, tools, repairs, unknown, route: route && `${route.model}${route.think ? '+think' : ''}`, steps: s.messages.length,
+  return { answer: res.reply || res.error || '', error: res.error, ms: Date.now() - t0, tools, repairs, unknown, route: route && `${route.model}${route.think ? '+think' : ''}`, reason: route?.reason, steps: s.messages.length,
     toolResults: events.filter(e => e.type === 'tool' && e.phase === 'end').map(e => ({ name: e.name, ok: e.ok })),
     sources: events.filter(e => e.type === 'net'), evidence: s.messages.filter(m => m.role === 'tool').map(m => ({ name: m.name, text: m.content })) };
 }
@@ -97,7 +114,7 @@ function appFactory({ before = false } = {}) {
   config.provider = 'ollama';
   config.constrainTools = process.env.JARVIS_EVAL_CONSTRAIN !== '0';
   const kiwix = createKiwix({ exe: path.join(__dirname, '../engines/kiwix/kiwix-serve.exe'), zimDir: config.library.dir });
-  const make = () => {
+  const make = ({ live } = {}) => {
     const bus = createBus();
     const events = [];
     bus.on('*', e => events.push(e));
@@ -143,6 +160,7 @@ function appFactory({ before = false } = {}) {
     const orc = createOrchestrator({
       bus, sessions, providers, tools, getConfig: () => config, selectGroups, ...extra,
       systemPrompt: brain.systemPrompt, stamp: brain.nowLine, route: brain.route, timeoutMs: 120000,
+      ...(live ? { live, catalog } : {}),
       promptInfo: () => ({ hardware: probe.cached(), ...(caps ? { caps } : {}) }),
     });
     return { orc, sessions, events };
@@ -165,14 +183,14 @@ async function run() {
   try {
     for (const q of questions) {
       let r;
-      try { r = make ? await appAsk(make, q.q) : await rawAsk(model, q.q); } catch (err) { r = { answer: 'ERROR ' + err.message, error: err.message, ms: 0 }; }
+      try { r = make ? await appAsk(make, q.q, q) : await rawAsk(model, q.q); } catch (err) { r = { answer: 'ERROR ' + err.message, error: err.message, ms: 0 }; }
       const ok = grade(q, r.answer, r);
       pass += ok; totalMs += r.ms || 0;
       rows.push({ id: q.id, group: q.group || 'brain', ok, ...r, answer: String(r.answer) });
       console.log(`${ok ? 'PASS' : 'FAIL'} ${q.id.padEnd(12)} ${String(r.ms).padStart(6)} ms ${r.route ? '[' + r.route + '] ' : ''}${r.tools?.length ? '{' + r.tools.join(',') + '} ' : ''}${String(r.answer).replace(/\s+/g, ' ').slice(0, 110)}`);
     }
   } finally { make?.close(); }
-  const groups = Object.fromEntries(['brain', 'fact', 'live', 'tools', 'followup'].map(group => {
+  const groups = Object.fromEntries(['brain', 'fact', 'live', 'tools', 'followup', 'adaptive'].map(group => {
     const rs = rows.filter(r => r.group === group);
     return [group, { pass: rs.filter(r => r.ok).length, total: rs.length, offlineRetrieved: rs.filter(r => r.sources?.some(s => s.offline)).length }];
   }));
@@ -184,4 +202,4 @@ async function run() {
 }
 
 if (require.main === module) run().catch(err => { console.error(err); process.exitCode = 1; });
-module.exports = { grade, numbers, baselineBrain, appFactory };
+module.exports = { grade, liveSnapshot, numbers, baselineBrain, appFactory };

@@ -52,6 +52,7 @@ function forProvider(m) {
 const { repairCall } = require('./tools/constrain');
 const { unbackedClaim, stripClaims, softFail, ungroundedFigures, UNBACKED_FIX, NEEDS_OK } = require('./brain/guard');
 const { resolveFollowUp } = require('./livestate/followup');
+const { plan } = require('./brain/plan');
 
 // A tool result the model sees is capped: a log dump or a long list swamps a small context window and the model loses the thread.
 // This turn's results keep more (the model is answering from them); results from earlier turns are only a reminder.
@@ -79,7 +80,7 @@ const nudgeGround = figs => `Your reply gave figures that appear in no tool resu
 const NUDGE_CAP = 'You have used all the tool rounds you are allowed. Answer the user now with what the tool results above gave you, and say plainly what you could not get.';
 const NUDGE_PLAIN ="Reply to the user's last message in one or two sentences.";
 
-function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, rankTools = null, learnTool = null, onQuestionLost = () => {}, memoryBlock = null, live = null }) {
+function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, rankTools = null, learnTool = null, onQuestionLost = () => {}, memoryBlock = null, live = null, catalog = null }) {
   let current = null; // AbortController of the running turn
   const lastGroupsAt = new Map(); // session id → when lastGroups was last set
   // the areas the last turn used, only while that turn is recent: "make it 10" an hour later does not mean the timer from back then
@@ -186,9 +187,11 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
 
       // live state: resolve short follow-ups ("do it again", "pause") once; any failure leaves the turn unchanged
       let fu = null;
+      let snap = null;   // one snapshot per turn: follow-ups and plan() read the same one
       if (live) {
         try {
-          fu = resolveFollowUp(String(text), live.snapshot()) || null;
+          snap = live.snapshot();
+          fu = resolveFollowUp(String(text), snap) || null;
           if (fu) bus.emit('followup', { kind: fu.kind });
         } catch (err) { fu = null; bus.emit('log', { level: 'warn', text: `Live state failed, continuing without it: ${err?.message || err}` }); }
       }
@@ -219,10 +222,25 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       const p = pickProvider();
       const st = await providerStatus(p);
       bus.emit('provider', { id: p.id, label: p.label, ready: !!st.ready });
-      let hints = route ? route(routeText, { source }) : undefined;
-      let picked = selectGroups && tools?.turn ? selectGroups(routeText, { lastGroups: fu?.kind === 'continue' ? fu.groups : (recentGroups(s.id)), source }) : null;
-      if (tools?.turn && fu?.kind === 'continue' && fu.groups?.length && !picked?.some(id => id !== 'core')) picked = fu.groups;
-      if (fu?.kind === 'continue' && hints?.tools === false) hints = { ...hints, tier: 'deep', tools: true, think: false, reason: 'follow-up' };
+      // live state: one plan() call routes the turn (follow-up, pending confirm, voice, cooldown); any failure uses the plain path below
+      let planned = null;
+      if (live) {
+        try {
+          planned = plan(routeText, snap, { source, lastGroups: fu?.kind === 'continue' ? fu.groups : recentGroups(s.id), fu, catalog, route, selectGroups: selectGroups && tools?.turn ? selectGroups : undefined });
+        } catch (err) { planned = null; bus.emit('log', { level: 'warn', text: `Routing plan failed, using the plain route: ${err?.message || err}` }); }
+      }
+      let hints, picked;
+      const avoidTools = planned?.avoid?.tools || null;   // cooling tools: not offered while another tool remains (a call by name still runs)
+      const notes = planned?.notes || [];
+      if (planned) {
+        hints = planned.hints;
+        picked = planned.picked;
+      } else {
+        hints = route ? route(routeText, { source }) : undefined;
+        picked = selectGroups && tools?.turn ? selectGroups(routeText, { lastGroups: fu?.kind === 'continue' ? fu.groups : (recentGroups(s.id)), source }) : null;
+        if (tools?.turn && fu?.kind === 'continue' && fu.groups?.length && !picked?.some(id => id !== 'core')) picked = fu.groups;
+        if (fu?.kind === 'continue' && hints?.tools === false) hints = { ...hints, tier: 'deep', tools: true, think: false, reason: 'follow-up' };
+      }
       // a short command ("take a screenshot") can look like chat to the router while a skill group clearly matches:
       // quick chat has no tools and would only pretend to act, so the match wins
       if (hints?.tools === false && picked?.some(id => id !== 'core' && id !== 'knowledge')) {
@@ -238,6 +256,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       const currentSpecs = () => {
         if (!toolsOn || forceAnswer) return undefined;
         let sp = (scope ? scope.specs() : tools.specs()).filter(t => !blocked(t.name));
+        if (avoidTools?.size) { try { const keep = sp.filter(t => !avoidTools.has(t.name)); if (keep.length) sp = keep; } catch { /* the cooldown is a nicety */ } }
         if (rankTools) { try { sp = rankTools(routeText, sp) || sp; } catch { /* ordering is a nicety */ } }   // the likeliest tools first
         return sp.length ? sp : undefined;
       };
@@ -248,7 +267,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       let loadedKey = scope ? scope.loaded().join() : '';
       let model = null;
       try { model = p.resolveModel ? p.resolveModel(hints || {}) : null; } catch { model = null; }
-      if (hints) bus.emit('route', { tier: hints.tier, think: !!hints.think, reason: hints.reason, model });
+      if (hints) bus.emit('route', { tier: hints.tier, think: !!hints.think, reason: notes.length ? [...new Set([hints.reason, ...notes].filter(Boolean))].join('; ') : hints.reason, model });
       let sys = null;
       let info = {};
       const turnNow = new Date();
@@ -323,6 +342,8 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
         try {
           round = await streamRound(p, window, useTools, ac, t => { if (!firstTokenAt) firstTokenAt = Date.now(); reply += t; }, hints);
         } catch (err) {
+          // a genuine call failure (not a stop or a timeout: both abort the signal) is noted in live state, so later turns can avoid the model
+          if (live && model && !ac.signal.aborted) { try { bus.emit('modelfail', { model }); } catch { /* observers only */ } }
           // a model call that failed before saying anything (a crash, an HTTP 500, an out-of-memory load) is tried once more, on another
           // installed model when there is one; a timeout, a stop or a missing Ollama is not retried
           if (!ac.signal.aborted && !retriedModel && !reply && !NO_RETRY.test(err?.message || '')) {

@@ -81,5 +81,16 @@
   { "id": "f-undo2", "group": "followup", "q": "Put it back the way it was.", "pick": "undo_last" },
   { "id": "f-cancel", "group": "followup", "q": "Cancel that timer.", "pick": "cancel_timer" },
   { "id": "f-again", "group": "followup", "q": "Set another timer for 10 minutes, same as before.", "pick": "set_timer" },
-  { "id": "f-what", "group": "followup", "q": "What is this that is playing?", "pick": "media_status" }
+  { "id": "f-what", "group": "followup", "q": "What is this that is playing?", "pick": "media_status" },
+  { "id": "a-confirm", "group": "adaptive", "q": "Actually, cancel that.", "pick": "cancel_timer", "reason": "confirm pending", "live": {"confirm": {"summary": "cancel the 10 minute timer", "group": "timers"}} },
+  { "id": "a-confirm-none", "group": "adaptive", "q": "Actually, cancel that.", "pick": "cancel_timer", "noReason": "confirm pending" },
+  { "id": "a-voice-one", "group": "adaptive", "q": "Set a timer for 10 minutes.", "source": "voice", "pick": "set_timer", "reason": "voice: fast", "live": {"voice": "listening"} },
+  { "id": "a-voice-one-none", "group": "adaptive", "q": "Set a timer for 10 minutes.", "source": "voice", "pick": "set_timer", "noReason": "voice: fast" },
+  { "id": "a-voice-multi", "group": "adaptive", "q": "Check the weather, then set a timer for 20 minutes so I leave on time.", "source": "voice", "pick": "get_weather", "noReason": "voice: fast", "live": {"voice": "listening"} },
+  { "id": "a-tool-failed", "group": "adaptive", "q": "Search the web for the latest James Webb telescope discoveries.", "not": "web_search", "reason": "cooldown: web_search", "live": {"tools": [{"name": "web_search", "ok": false, "soft": false, "t": 20000},{"name": "web_search", "ok": false, "soft": false, "t": 10000}]} },
+  { "id": "a-tool-failed-none", "group": "adaptive", "q": "Search the web for the latest James Webb telescope discoveries.", "pick": "web_search", "noReason": "cooldown" },
+  { "id": "a-model-failed", "group": "adaptive", "q": "Set a timer for 10 minutes.", "pick": "set_timer", "reason": "cooldown: fixture-model:1b", "live": {"models": [{"name": "fixture-model:1b", "t": 20000},{"name": "fixture-model:1b", "t": 10000}]} },
+  { "id": "a-model-failed-none", "group": "adaptive", "q": "Set a timer for 10 minutes.", "pick": "set_timer", "noReason": "cooldown" },
+  { "id": "a-again", "group": "adaptive", "q": "Do it again.", "pick": "set_timer", "reason": "follow-up", "live": {"tools": [{"name": "set_timer", "ok": true, "soft": false, "t": 5000}], "groups": {"list": ["timers"], "at": 5000}} },
+  { "id": "a-again-none", "group": "adaptive", "q": "Do it again.", "noReason": "follow-up" }
 ]

@@ -329,11 +329,11 @@ let lastMedia = null;   // { st, at } from the media state promptInfo already fe
 ctx.live = createLiveState({ bus: ctx.bus, log: ctx.log });
 ctx.live.register('media', () => (lastMedia && Date.now() - lastMedia.at <= 60000 && Array.isArray(lastMedia.st?.sessions) ? { playing: lastMedia.st.sessions.some(s => s.status === 'playing') } : null));
 ctx.live.register('timers', timersSource({ list: () => ctx.scheduler?.list?.() || [] }));
-ctx.live.register('confirm', () => { const a = ctx.confirm?.pending?.(); return a?.summary ? { summary: a.summary } : null; });   // pending() exposes no age, so no ageMs
+ctx.live.register('confirm', () => { const a = ctx.confirm?.pending?.(); if (!a?.summary) return null; const group = a.tool ? ctx.catalog?.groupOf?.(a.tool) : null; return group ? { summary: a.summary, group } : { summary: a.summary }; });   // pending() exposes no age, so no ageMs; group: the skill area of the waiting tool, when known
 ctx.live.register('task', () => ctx.tasks?.active() ?? null);
 ctx.live.register('groups', () => { const list = ctx.orchestrator?.getLastGroups?.(); const at = ctx.orchestrator?.getLastGroupsAt?.(); return Array.isArray(list) ? { list, at: typeof at === 'number' ? at : 0 } : null; });
 ctx.orchestrator = createOrchestrator({
-  live: ctx.live,
+  live: ctx.live, catalog: ctx.catalog,   // catalog: plan() checks a pending confirm's group against it
   bus: ctx.bus, sessions: ctx.sessions, providers: ctx.providers, tools: ctx.tools, getConfig: ctx.getConfig,
   systemPrompt: brain.systemPrompt, stamp: brain.nowLine, route: brain.route,
   selectGroups: (text, o) => skills.selectGroups(text, o, ctx.catalog),
