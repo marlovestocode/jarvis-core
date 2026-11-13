@@ -54,6 +54,14 @@ const { repairCall } = require('./tools/constrain');
 const { unbackedClaim, stripClaims, softFail, ungroundedFigures, UNBACKED_FIX, NEEDS_OK } = require('./brain/guard');
 const { resolveFollowUp } = require('./livestate/followup');
 const { plan } = require('./brain/plan');
+const { instant } = require('./brain/instant');
+
+// speaker (speaker recognition): absent or 'owner' = the owner; 'unsure' and 'guest' taint the turn (no confirm tools, no memory or
+// clipboard writes, no memory recall, no shortcut that acts); 'guest' also loses the owner's personal context in the prompt.
+// Any other value fails closed as 'guest'.
+const speakerOf = v => (v === undefined || v === null || v === 'owner' ? 'owner' : v === 'unsure' ? 'unsure' : 'guest');
+// the owner's personal facts in promptInfo(): a guest's prompt never gets them
+const GUEST_DROP = { user: undefined, memory: undefined, memoryIds: [], library: undefined, media: undefined, live: undefined };
 
 // A tool result the model sees is capped: a log dump or a long list swamps a small context window and the model loses the thread.
 // This turn's results keep more (the model is answering from them); results from earlier turns are only a reminder.
@@ -160,8 +168,10 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
     return { toolCalls, usage };
   }
 
-  async function send(sessionId, text, { source = 'text' } = {}) {
+  async function send(sessionId, text, { source = 'text', speaker: speakerIn } = {}) {
     if (current) throw busyError();
+    const speaker = speakerOf(speakerIn);
+    const owner = speaker === 'owner';
     const ac = new AbortController();
     current = ac;
     const lookups = new Map();
@@ -175,7 +185,8 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       s.messages.push({ role: 'user', content: String(text), at: Date.now() });
       const turnStart = s.messages.length - 1;   // tool results before this message are old
       sessions.save(s);
-      if (memoryBlock) {
+      if (memoryBlock && !owner) lastRecall = null;   // not the owner: no correction of the owner's recall, nothing learned
+      else if (memoryBlock) {
         try { memoryBlock.onUserMessage({ text: String(text), lastIds: lastRecall?.sessionId === s.id ? lastRecall.ids : [] }); } catch { /* memory must not break a turn */ }
         lastRecall = null;
       }
@@ -199,7 +210,9 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
 
       if (fastPath) {
         let fp = null;
-        try { fp = await fastPath(routeText, { source, lastGroups: recentGroups(s.id), signal: ac.signal }); } catch (err) { bus.emit('log', { level: 'warn', text: `Skill failed, asking the model: ${err?.message || err}` }); }
+        // not the owner: none of the skill chain runs (it can resolve a pending confirm, save a name or a note, control media,
+        // tasks or timers); only the pure-read instant answers (time, date, arithmetic, units, days) stay. The rest goes to the model.
+        try { fp = owner ? await fastPath(routeText, { source, lastGroups: recentGroups(s.id), signal: ac.signal }) : instant(routeText, { now: new Date() }); } catch (err) { bus.emit('log', { level: 'warn', text: `Skill failed, asking the model: ${err?.message || err}` }); }
         if (fp && !ac.signal.aborted) {
           const id = `skill${Date.now()}`;
           bus.emit('route', { tier: 'skill', think: false, reason: 'skill', model: null });
@@ -288,14 +301,14 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       let sys = null;
       let info = {};
       const turnNow = new Date();
-      const buildSys = () => systemPrompt({ source, now: turnNow, tools: useTools || [], model, brief: hints?.tools === false, groupHints: scope ? scope.hints() : [], matchConfidence: picked?.confidence, ...info });
+      const buildSys = () => systemPrompt({ source, now: turnNow, tools: useTools || [], model, brief: hints?.tools === false, groupHints: scope ? scope.hints() : [], matchConfidence: picked?.confidence, ...info, ...(speaker === 'guest' ? { ...GUEST_DROP, guest: true } : {}) });
       if (systemPrompt) {
         try { info = (await promptInfo({ source, hints })) || {}; } catch { info = {}; }
         sys = buildSys();
       }
       // the memory block is computed once and saved on the user message, so later turns send the same text (E6)
       let recalled = [];
-      if (memoryBlock) {
+      if (memoryBlock && owner) {
         const prev = s.messages.slice(0, turnStart).reverse().find(m => m.role === 'user');
         try {
           const r = await memoryBlock.forTurn({ text: String(text), previousUserText: prev ? String(prev.content) : '', brief: hints?.tools === false, profileIds: info.memoryIds || [] });
@@ -315,7 +328,8 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       let groundRetried = false;
       const seenCalls = new Set();   // name+args of every call this turn
       let okTools = 0;   // tools that ran, did not fail and can back an action claim (lookups cannot)
-      const turn = { source, tainted: false };   // tainted: text from outside (pages, files) came in this turn
+      // tainted: text from outside (pages, files) came in this turn, or the speaker is not known to be the owner (turn.speaker says which)
+      const turn = owner ? { source, tainted: false } : { source, tainted: true, speaker };
       let question = null;   // a confirm tool is waiting for the user's yes: this is the question
       let asked = false;     // ...and the user got it (not lost to a stop or an error)
       let sentChars = 0;
@@ -345,7 +359,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
         }
         const toolChars = useTools ? Math.ceil(JSON.stringify(useTools).length * TOOL_CHAR_WEIGHT) : 0;
         let window = fitWindow(s.messages.map((m, i) => (m.role === 'tool' ? { ...m, content: capText(m.content, i < turnStart ? TOOL_CHARS_OLD : TOOL_CHARS_NOW) }
-          : m.role === 'user' && m.memo ? { ...m, content: `${m.content}
+          : m.role === 'user' && m.memo && speaker !== 'guest' ? { ...m, content: `${m.content}
 
 ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min(REPLY_CHARS, Math.floor((st.contextMax || 0) * CHARS_PER_TOKEN * REPLY_SHARE)), stamp ? stamp(turnNow).length + 2 : 0).map(m => {
           const o = forProvider(m);
@@ -489,7 +503,7 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
           if (res.ok && String(res.text).startsWith(NEEDS_OK)) question = String(res.text).slice(NEEDS_OK.length);
           else if (res.ok && !/^error/i.test(String(res.text)) && !softFail(res.text) && !res.untrusted && call.name !== 'more_skills') okTools++;   // loading a skill is not an action
           s.messages.push({ role: 'tool', content: capText(res.text, 6000), toolCallId: call.id, name: call.name, label });
-          if (learnTool && res.ok && !res.untrusted && !softFail(res.text) && !String(res.text).startsWith(NEEDS_OK)) { try { learnTool(routeText, call.name); } catch { /* learning is a nicety */ } }
+          if (learnTool && owner && res.ok && !res.untrusted && !softFail(res.text) && !String(res.text).startsWith(NEEDS_OK)) { try { learnTool(routeText, call.name); } catch { /* learning is a nicety */ } }
           directs.push(res.ok && !res.untrusted && !turn.tainted && !String(res.text).startsWith(NEEDS_OK) && !softFail(res.text) ? ((scope || tools).direct?.(call.name, res.text) ?? null) : null);
           if (ac.signal.aborted) break;
         }

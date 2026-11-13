@@ -41,7 +41,13 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
   const groupList = () => (catalog ? catalog.groups.map(g => ({ id: g.id, label: g.label })) : []);
   // confirm tools need a known clean turn; durable-state tools (needsClean: memory) only refuse a turn known to be tainted
   const tainted = (tool, ctx) => (tool.risk === 'confirm' && (!ctx.turn || ctx.turn.tainted)) || (tool.needsClean === true && !!ctx.turn?.tainted);
-  const taintedText = { ok: false, text: "Error: I won't start that from text I read. Ask me directly." };
+  const pageText = { ok: false, text: "Error: I won't start that from text I read. Ask me directly." };
+  // a turn tainted by who is speaking (speaker recognition: unsure or guest) says so; a page or file taint keeps the text above
+  const SPEAKER_TEXT = {
+    unsure: { ok: false, text: "Error: I can't be sure it's you, so I won't do that by voice. Confirm with the keyboard or the hotkey." },
+    guest: { ok: false, text: 'Error: I only do that for my owner.' },
+  };
+  const taintedText = ctx => SPEAKER_TEXT[ctx.turn?.speaker] || pageText;
 
   function specs() {
     return tools.map(({ name, description, params }) => ({ name, description, params }));
@@ -49,7 +55,7 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
 
   async function exec(tool, name, args, ctx) {
     // confirm tools only start from the user's own words (see brain/guard.js)
-    if (tainted(tool, ctx)) return taintedText;
+    if (tainted(tool, ctx)) return taintedText(ctx);
     // the arguments must fit the tool's own schema before its code runs ("5" becomes 5; a missing or impossible value is refused, not guessed)
     const flag = tool.untrusted === true ? { untrusted: true } : {};   // only set when true, so results of ordinary tools stay { ok, text }
     const checked = checkArgs(tool, args);
@@ -125,7 +131,7 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
       const c = { ...ctx, skills: { ...view, load, loaded: () => [...loaded] } };
       if (!inScope(tool)) {
         // refuse before loading anything: auto-load never gets around risk or taint
-        if (tainted(tool, c)) return taintedText;
+        if (tainted(tool, c)) return taintedText(c);
         const gid = catalog.groupOf(tool.name);
         if (gid) {
           const r = load(gid);
