@@ -320,7 +320,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
             // the cross-system assembler (owner, not brief) gives the hint; live state alone is the fallback if it fails or has nothing
             if (assembler) {
               try {
-                const pkg = await assembler.assemble({ text: String(text), speaker, brief: false, sessionId: s.id });
+                const pkg = await assembler.assemble({ text: String(text), speaker, brief: false, sessionId: s.id, snap });
                 if (pkg) bus.emit('ctxpkg', { items: pkg.items?.length || 0, dropped: pkg.dropped?.length || 0, errors: pkg.errors?.length || 0, ms: Number(pkg.ms) || 0 });   // counts only, never text
                 if (typeof pkg?.hint === 'string') context = pkg.hint;
               } catch { context = ''; }

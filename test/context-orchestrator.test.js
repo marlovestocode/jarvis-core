@@ -46,6 +46,21 @@ test('assembler hint reaches forTurn instead of liveContext', async () => {
   assert.equal(block.calls[0].context, 'assembled hint');
 });
 
+test('one snapshot per turn: the request carries snap; no second live.snapshot() and no tasks.active()', async () => {
+  const { createAssembler } = require('../src/core/context/assemble');
+  const { liveProvider, taskProvider } = require('../src/core/context/providers');
+  let snaps = 0, actives = 0;
+  const snap = { activeWindow: { app: 'Code' }, task: { id: 't1', title: 'wallpaper project', status: 'running', done: 0, total: 2 } };
+  const live = { snapshot: () => { snaps++; return snap; } };
+  const tasks = { active: () => { actives++; return snap.task; } };
+  const context = createAssembler({ providers: [liveProvider({ live }), taskProvider({ tasks })] });
+  const block = spyBlock();
+  const { orc } = orcWith({ memoryBlock: block, live, context });
+  await orc.send(null, 'what port does it use', { source: 'text' });
+  assert.equal(snaps, 1); assert.equal(actives, 0);
+  assert.equal(block.calls[0].context, 'Code wallpaper project');
+});
+
 test('assembler throws: falls back to liveContext', async () => {
   const block = spyBlock();
   const { orc } = orcWith({ memoryBlock: block, live: liveWith(SNAP), context: spyContext(new Error('boom')) });
@@ -93,7 +108,7 @@ test('bus event carries counts only', async () => {
   assert.ok(!/assembled hint|secret/.test(JSON.stringify(ev)));
 });
 
-test('bridge: ctxpkg forwards as exactly {type,t}; the context gauge still forwards used/max', async () => {
+test('bridge: ctxpkg forwards as exactly {type,t}; the context gauge still forwards used/max', { timeout: 5000 }, async () => {
   const http = require('node:http');
   const port = await new Promise(res => { const sv = http.createServer().listen(0, '127.0.0.1', () => { const p = sv.address().port; sv.close(() => res(p)); }); });
   const bus = createBus();
@@ -102,10 +117,11 @@ test('bridge: ctxpkg forwards as exactly {type,t}; the context gauge still forwa
     const re = new RegExp('event: ' + name + String.fromCharCode(10) + 'data: (.+)' + String.fromCharCode(10, 10));
     const r = http.get({ host: '127.0.0.1', port: br.port, path: '/ai/stream' }, resp => {
       let buf = '';
-      resp.on('data', d => { buf += d; const m = re.exec(buf); if (m) { r.destroy(); res(JSON.parse(m[1])); } });
+      const tick = setInterval(() => { bus.emit('ctxpkg', { items: 2, dropped: 1, errors: 0, ms: 3 }); bus.emit('context', { used: 10, max: 100 }); }, 25);
+      resp.on('close', () => clearInterval(tick));
+      resp.on('data', d => { buf += d; const m = re.exec(buf); if (m) { clearInterval(tick); r.destroy(); res(JSON.parse(m[1])); } });
     });
     r.on('error', () => {});
-    setTimeout(() => { bus.emit('ctxpkg', { items: 2, dropped: 1, errors: 0, ms: 3 }); bus.emit('context', { used: 10, max: 100 }); }, 50);
   });
   const pkg = await grab('ctxpkg');
   assert.deepEqual(Object.keys(pkg).sort(), ['t', 'type']);

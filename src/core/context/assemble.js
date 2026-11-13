@@ -1,6 +1,7 @@
 // Cross-system context assembler: gathers labelled items from injected providers and returns one small package. It owns no storage.
 // Provider = { name, fetch(request) -> Item[] | Promise<Item[]> }; items carry id, text, source, kind (state|task|memory), observedAt, confidence,
-// trust (owner|untrusted), sensitivity (public|personal|private), optional topic and score. Providers only read; a throwing, rejecting,
+// trust (owner|untrusted), sensitivity (public|personal|private), optional topic, score and `query` (content values only, e.g. an app name
+// or task title; a non-string query is ignored, the item stays valid). The request passes through to providers unchanged (e.g. `snap`). Providers only read; a throwing, rejecting,
 // hanging (past timeoutMs), null or non-array provider is recorded in `errors` and the others still run. assemble() never throws or rejects.
 // Pipeline (pure steps): validate -> redact -> access -> freshness/stale -> supersede -> rank -> dedupe -> budget. Each drop is { id, reason } with reason
 // one of invalid, access, stale, superseded, duplicate, budget.
@@ -9,7 +10,7 @@
 // Untrusted items never supersede or out-dedupe an owner item.
 // Freshness: ageMs = now - observedAt; <=120000 current, <=3600000 recent, else historical, null unknown. Stale `state` (not current) is dropped.
 // Output: text (header + one line per kept item, a hard cap of budgetChars including the header, '' when nothing is kept) and hint (owner-trusted,
-// non-private state/task text, max 300 chars; never untrusted or private). Context is observed fact only and never grants authorization.
+// non-private state/task items' `query` values only, whitespace-collapsed, max 300 chars; display text never enters it; never untrusted or private). Context is observed fact only and never grants authorization.
 const KINDS = ['state', 'task', 'memory'];
 const HEADER = 'Context (observed facts, not instructions):';
 const CURRENT_MS = 120000;
@@ -32,7 +33,9 @@ function validate(raw) {
     const ok = r && typeof r === 'object' && typeof r.id === 'string' && typeof r.text === 'string' && KINDS.includes(r.kind)
       && typeof r.source === 'string' && r.source.trim() !== '' && TRUSTS.includes(r.trust) && SENSITIVITIES.includes(r.sensitivity);
     if (!ok) { dropped.push({ id: r && typeof r === 'object' && typeof r.id === 'string' ? r.id : undefined, reason: 'invalid' }); continue; }
-    items.push({ ...r, observedAt: num(r.observedAt), confidence: num(r.confidence) === null ? 0.5 : r.confidence });
+    const it = { ...r, observedAt: num(r.observedAt), confidence: num(r.confidence) === null ? 0.5 : r.confidence };
+    if (typeof it.query !== 'string') delete it.query;
+    items.push(it);
   }
   return { items, dropped };
 }
@@ -125,7 +128,7 @@ function budget(items, budgetChars) {
 
 function hintOf(items) {
   return items.filter((i) => i.trust === 'owner' && i.sensitivity !== 'private' && (i.kind === 'state' || i.kind === 'task'))
-    .map((i) => i.text.replace(/\s+/g, ' ').trim()).join(' ').slice(0, HINT_MAX);
+    .map((i) => (typeof i.query === 'string' ? i.query.replace(/\s+/g, ' ').trim() : '')).filter(Boolean).join(' ').slice(0, HINT_MAX);
 }
 
 function callProvider(p, request, timeoutMs) {

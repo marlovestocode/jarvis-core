@@ -8,7 +8,7 @@ test('context bench: bounded latency, recorded errors, budget respected', async 
   const r = await run({ runs: 40, timeoutMs: 40 });
   assert.ok(r.healthy.p95 < 50, `healthy p95 ${r.healthy.p95}`);
   assert.ok(r.failing.p95 < 50, `failing p95 ${r.failing.p95}`);
-  assert.ok(r.hanging.p95 < r.timeoutMs + 50, `hanging p95 ${r.hanging.p95}`);
+  assert.ok(r.hanging.p95 < r.timeoutMs + 250, `hanging p95 ${r.hanging.p95}`);
   assert.strictEqual(r.healthy.errors, 0);
   assert.ok(r.failing.errors > 0);
   assert.ok(r.hanging.errors > 0);

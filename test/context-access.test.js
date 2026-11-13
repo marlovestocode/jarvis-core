@@ -90,6 +90,6 @@ test('validation requires source, trust and sensitivity values', async () => {
 });
 
 test('hint collapses whitespace', async () => {
-  const r = await mk([item({ kind: 'state', text: 'a   b\n\nc' })]).assemble(req());
+  const r = await mk([item({ kind: 'state', text: 'x', query: 'a   b\n\nc' })]).assemble(req());
   assert.equal(r.hint, 'a b c');
 });

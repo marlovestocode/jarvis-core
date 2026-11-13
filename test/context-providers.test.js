@@ -20,6 +20,8 @@ test('live: window app, timers, media items with exact shape', async () => {
   assert.equal(by['live:window'].sensitivity, 'personal'); assert.equal(by['live:window'].topic, 'window');
   assert.equal(by['live:timers'].text, '2 timers running, next in 45 sec'); assert.equal(by['live:timers'].topic, 'timers');
   assert.equal(by['live:media'].topic, 'media');
+  assert.equal(by['live:window'].query, 'Code');
+  assert.equal('query' in by['live:timers'], false); assert.equal('query' in by['live:media'], false);
 });
 
 test('live: title only when present, private and untrusted', () => {
@@ -49,7 +51,7 @@ test('tasks: active task item, clipped, null observedAt', () => {
   const p = taskProvider({ tasks: { active: () => ({ id: 't1', title: 'Write report', status: 'running', done: 1, total: 3 }) }, now });
   assert.equal(p.name, 'tasks');
   const [i] = p.fetch({});
-  assert.deepEqual(i, { id: 'task:t1', text: 'Task "Write report" is running (1/3 steps done)', source: 'tasks', kind: 'task', observedAt: null, confidence: 0.8, trust: 'owner', sensitivity: 'personal', topic: 'task' });
+  assert.deepEqual(i, { id: 'task:t1', text: 'Task "Write report" is running (1/3 steps done)', source: 'tasks', kind: 'task', observedAt: null, confidence: 0.8, trust: 'owner', sensitivity: 'personal', topic: 'task', query: 'Write report' });
   const [long] = taskProvider({ tasks: { active: () => ({ id: 't2', title: 'x'.repeat(500), status: 'running', done: 0, total: 1 }) }, now }).fetch({});
   assert.ok(long.text.length <= 160);
 });
@@ -98,4 +100,33 @@ test('through the real assembler: nothing invalid, title never reaches hint', as
   assert.deepEqual(r.items.map((i) => i.id).sort(), ['live:media', 'live:timers', 'live:title', 'live:window', 'mem:a', 'task:t']);
   assert.ok(!r.hint.includes('TOPSECRET'));
   assert.ok(r.hint.includes('Code')); assert.ok(r.text.includes('TOPSECRET'));
+});
+
+test('live: request.snap is used instead of a second live.snapshot()', async () => {
+  let calls = 0;
+  const l = { snapshot: () => { calls++; return { activeWindow: { app: 'Old' } }; } };
+  const p = liveProvider({ live: l, now });
+  const viaSnap = await p.fetch({ snap: { activeWindow: { app: 'Code' } } });
+  assert.equal(calls, 0); assert.equal(viaSnap[0].query, 'Code');
+  const fallback = await p.fetch({});
+  assert.equal(calls, 1); assert.equal(fallback[0].query, 'Old');
+});
+
+test('tasks: request.snap.task is used instead of tasks.active(); fallback when no snap', async () => {
+  let calls = 0;
+  const p = taskProvider({ tasks: { active: () => { calls++; return { id: 'a', title: 'Fallback', status: 'running' }; } }, now });
+  const [i] = await p.fetch({ snap: { task: { id: 't9', title: 'From snap', status: 'paused', done: 1, total: 2 } } });
+  assert.equal(calls, 0); assert.equal(i.id, 'task:t9'); assert.equal(i.query, 'From snap');
+  assert.deepEqual(await p.fetch({ snap: {} }), []); assert.equal(calls, 0);
+  const [f] = await p.fetch({});
+  assert.equal(calls, 1); assert.equal(f.query, 'Fallback');
+});
+
+test('tasks: a missing title or status never renders "undefined"', () => {
+  const [a] = taskProvider({ tasks: { active: () => ({ id: 't1', status: 'paused' }) }, now }).fetch({});
+  assert.ok(!/undefined/.test(a.text)); assert.equal('query' in a, false);
+  const [b] = taskProvider({ tasks: { active: () => ({ id: 't2', title: 'Report' }) }, now }).fetch({});
+  assert.ok(!/undefined/.test(b.text)); assert.match(b.text, /Report/);
+  const [c] = taskProvider({ tasks: { active: () => ({ id: 't3' }) }, now }).fetch({});
+  assert.ok(!/undefined/.test(c.text));
 });

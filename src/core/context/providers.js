@@ -16,16 +16,17 @@ function dur(ms) {
 }
 
 function liveProvider({ live, now = Date.now } = {}) {
-  function fetch() {
+  function fetch(request) {
     try {
-      const snap = live && typeof live.snapshot === 'function' ? live.snapshot() : null;
+      // the turn's own snapshot when the caller passes one (one snapshot per turn), else read it here
+      const snap = request && isObj(request.snap) ? request.snap : live && typeof live.snapshot === 'function' ? live.snapshot() : null;
       if (!isObj(snap)) return [];
       const t = now();
       const base = { source: 'livestate', kind: 'state', observedAt: t, confidence: 0.9, trust: 'owner', sensitivity: 'personal' };
       const out = [];
       const w = snap.activeWindow;
       if (isObj(w) && typeof w.app === 'string' && w.app.trim()) {
-        out.push({ ...base, id: 'live:window', text: clip(`Active window: ${w.app}`), topic: 'window' });
+        out.push({ ...base, id: 'live:window', text: clip(`Active window: ${w.app}`), topic: 'window', query: clip(w.app, 80) });
         if (typeof w.title === 'string' && w.title.trim()) {
           out.push({ ...base, id: 'live:title', text: clip(`Window title: ${w.title}`), topic: 'window-title', sensitivity: 'private', trust: 'untrusted' });
         }
@@ -44,13 +45,15 @@ function liveProvider({ live, now = Date.now } = {}) {
 }
 
 function taskProvider({ tasks, now = Date.now } = {}) {
-  function fetch() {
+  function fetch(request) {
     try {
-      const a = tasks && typeof tasks.active === 'function' ? tasks.active() : null;
+      const a = request && isObj(request.snap) ? request.snap.task : tasks && typeof tasks.active === 'function' ? tasks.active() : null;
       if (!isObj(a) || a.id === undefined || a.id === null || a.id === '') return [];
       const steps = typeof a.done === 'number' && typeof a.total === 'number' ? ` (${a.done}/${a.total} steps done)` : '';
-      const text = clip(`Task "${a.title}" is ${a.status}${steps}`);
-      return [{ id: `task:${a.id}`, text, source: 'tasks', kind: 'task', observedAt: null, confidence: 0.8, trust: 'owner', sensitivity: 'personal', topic: 'task' }];
+      const title = typeof a.title === 'string' ? clip(a.title) : '';
+      const status = typeof a.status === 'string' && a.status.trim() ? a.status.trim() : 'running';
+      const text = clip(`Task ${title ? `"${title}" ` : ''}is ${status}${steps}`);
+      return [{ id: `task:${a.id}`, text, source: 'tasks', kind: 'task', observedAt: null, confidence: 0.8, trust: 'owner', sensitivity: 'personal', topic: 'task', ...(title ? { query: title } : {}) }];
     } catch { return []; }
   }
   return { name: 'tasks', fetch };

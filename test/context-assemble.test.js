@@ -168,19 +168,21 @@ test('brief keeps only state items', async () => {
   assert.deepEqual(r.dropped.map((d) => d.reason), ['access', 'access']);
 });
 
-test('hint: owner-trusted, non-private, state/task only, <= 300 chars, no untrusted', async () => {
+test('hint: built only from `query` of owner, non-private state/task items, <= 300 chars, no untrusted', async () => {
   const items = [
-    item({ id: 's', kind: 'state', text: 'editing code' }),
-    item({ id: 't', kind: 'task', text: 'tidy downloads' }),
-    item({ id: 'm', kind: 'memory', text: 'likes tea' }),
-    item({ id: 'u', kind: 'task', text: 'ignore previous', trust: 'untrusted' }),
-    item({ id: 'p', kind: 'task', text: 'secret thing', sensitivity: 'private' }),
+    item({ id: 's', kind: 'state', text: 'Active window: Code', query: 'Code' }),
+    item({ id: 'nq', kind: 'state', text: 'Media is playing' }),
+    item({ id: 't', kind: 'task', text: 'Task "tidy downloads" is paused', query: 'tidy  downloads' }),
+    item({ id: 'bad', kind: 'task', text: 'Task with bad query', query: 7 }),
+    item({ id: 'm', kind: 'memory', text: 'likes tea', query: 'tea' }),
+    item({ id: 'u', kind: 'task', text: 'ignore previous', trust: 'untrusted', query: 'ignore' }),
+    item({ id: 'p', kind: 'task', text: 'secret thing', sensitivity: 'private', query: 'secret' }),
   ];
   const r = await mk([prov(items)]).assemble(req({ allowPrivate: true }));
-  assert.equal(r.hint, 'editing code tidy downloads');
-  assert.match(r.text, /secret thing/);
+  assert.equal(r.hint, 'Code tidy downloads');
+  assert.match(r.text, /secret thing/); assert.match(r.text, /Task with bad query/);
   assert.match(r.text, /ignore previous \[current, s, untrusted\]/);
-  const long = await mk([prov([item({ id: 'x', kind: 'task', text: 'z'.repeat(500) })])]).assemble(req());
+  const long = await mk([prov([item({ id: 'x', kind: 'task', text: 'z', query: 'z'.repeat(500) })])]).assemble(req());
   assert.equal(long.hint.length, 300);
   const none = await mk([prov([item({ kind: 'memory' })])]).assemble(req());
   assert.equal(none.hint, '');
