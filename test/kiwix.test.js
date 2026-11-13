@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const { fixture } = require('./helpers/fakenet');
 const { createKiwix, parseSearch, pickZim } = require('../src/core/knowledge/kiwix');
+const path = require('node:path');
 
 const ZIM = 'wikipedia_en_all_nopic_2026-10.zim';
 function fakeSpawn() {
@@ -128,4 +129,34 @@ test('kiwix reads zim files from config library.dir', async () => {
   assert.equal(spawn.kids[0].args.at(-1), path.join('E:\\Zims', ZIM));
   config.library.dir = 'F:\\Other';
   assert.equal((await k.info()).path, path.join('F:\\Other', ZIM));
+});
+
+test('kiwix: a changed library folder restarts the server on the new ZIM; the same folder does not', async () => {
+  const config = { dir: 'E:\Zims' };
+  const spawn = fakeSpawn();
+  const k = createKiwix({ exe: 'C:/x/kiwix-serve.exe', zimDir: () => config.dir, spawn, fetch: fakeFetch(), exists: () => true, readdir: () => [ZIM], stat: () => ({ size: 1 }) });
+  await k.warm();
+  await k.warm();
+  assert.equal(spawn.kids.length, 1, 'same path: no respawn');
+  config.dir = 'F:\Other';
+  await k.warm();
+  assert.equal(spawn.kids.length, 2);
+  assert.equal(spawn.kids[0].killed, true, 'the old server is stopped');
+  assert.equal(spawn.kids[1].args.at(-1), path.join('F:\Other', ZIM));
+  await k.warm();
+  assert.equal(spawn.kids.length, 2);
+});
+
+test('kiwix: a folder change after the crash limit starts fresh', async () => {
+  const config = { dir: 'E:\Zims' };
+  const spawn = fakeSpawn();
+  const k = createKiwix({ exe: 'C:/x/kiwix-serve.exe', zimDir: () => config.dir, spawn, fetch: fakeFetch(), exists: () => true, readdir: () => [ZIM], stat: () => ({ size: 1 }) });
+  await k.warm();
+  spawn.kids[0].emit('exit', 1);
+  await k.warm();
+  spawn.kids[1].emit('exit', 1);
+  assert.equal(await k.warm(), false, 'gave up');
+  config.dir = 'F:\Other';
+  assert.equal(await k.warm(), true);
+  assert.equal(spawn.kids.length, 3);
 });

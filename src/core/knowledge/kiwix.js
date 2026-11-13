@@ -31,7 +31,7 @@ function createKiwix({
 }) {
   if (address !== '127.0.0.1') throw new Error('kiwix-serve must bind 127.0.0.1');
   const base = `http://127.0.0.1:${port}`;
-  let proc = null, starting = null, starts = 0, gaveUp = false;
+  let proc = null, starting = null, starts = 0, gaveUp = false, spawnedPath = null;
   const dirOf = () => (typeof zimDir === 'function' ? zimDir() : zimDir);   // a function follows config changes
   const zim = () => pickZim(readdir(dirOf()));
   const book = () => (zim() || '').replace(/\.zim$/, '');
@@ -49,12 +49,19 @@ function createKiwix({
 
   function ensure() {
     if (!available()) return Promise.reject(new Error('The offline library is not installed'));
+    const zimPath = path.join(dirOf(), zim());
+    if (spawnedPath !== null && spawnedPath !== zimPath) {   // the library folder (or file) changed: serve the new one
+      const old = proc;
+      proc = null; starting = null; starts = 0; gaveUp = false; spawnedPath = null;
+      if (old) { try { old.kill(); } catch { /* gone */ } }
+    }
     if (gaveUp) return Promise.reject(new Error('The offline library server stopped; restart JARVIS to retry'));
     if (proc && !starting) return Promise.resolve();
     if (starting) return starting;
     starts++;
-    const kid = spawn(exe, ['--address', '127.0.0.1', '--port', String(port), path.join(dirOf(), zim())], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const kid = spawn(exe, ['--address', '127.0.0.1', '--port', String(port), zimPath], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     proc = kid;
+    spawnedPath = zimPath;
     kid.stdout?.on?.('data', () => {});
     kid.stderr?.on?.('data', () => {});
     const gone = why => {
@@ -65,8 +72,9 @@ function createKiwix({
     };
     kid.on('exit', code => gone(`exited (${code})`));
     kid.on('error', err => gone('error: ' + err.message));
-    starting = waitUp(kid).then(() => { starting = null; }, err => { starting = null; try { kid.kill(); } catch { /* gone */ } throw err; });
-    return starting;
+    const mine = waitUp(kid).then(() => { if (starting === mine) starting = null; }, err => { if (starting === mine) starting = null; try { kid.kill(); } catch { /* gone */ } throw err; });
+    starting = mine;
+    return mine;
   }
 
   async function get(p) {

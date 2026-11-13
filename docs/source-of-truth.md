@@ -21,4 +21,4 @@ Written from the code as of 2026-11-12; a line marked **not enforced** is a rule
 | Metrics | `<data>/metrics/YYYY-MM-DD.jsonl` (`core/metrics/store.js`, 90 days) | Dashboard, `analytics_summary` | Raw events win; summaries are recomputed on every request |
 | Live process memory | `memwatch` (in memory only) | Sampled into metrics once a minute | n/a |
 | Timers | `<data>/timers.json` (`timers/store.js`) | The scheduler arms from it at start | File wins |
-| Offline library folder | `config.library.dir` (default `C:\JarvisData\library`, absolute path, set in Settings) | Kiwix reads it through `ctx.getConfig()`; installer takes `-Dir` | The file wins; a relative value falls back to the default and is listed by `self_config` |
+| Offline library folder | `config.library.dir` (default `C:\JarvisData\library`, absolute path, set in Settings) | Kiwix reads it through `ctx.getConfig()` and restarts the server when the folder changes; installer takes `-Dir` | The file wins; a relative value falls back to the default and is listed by `self_config` |
