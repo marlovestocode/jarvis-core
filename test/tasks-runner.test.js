@@ -87,10 +87,14 @@ test('transient error retried once; no-retry error not', async () => {
 
 test('unresolvable ref fails step without calling tool', async () => {
   const { runner, calls, store } = setup(() => ({ ok: true, text: 'x' }));
-  const r = await runner.start({ title: 'T', steps: [{ tool: 'a', expect: { contains: 'nomatch' } }, { tool: 'b', args: { x: { $ref: 's1' } } }], turn: 1 });
+  const task = store.create({ title: 'T', origin: {}, steps: [
+    { id: 's1', tool: 'a', args: {}, status: 'done', attempts: 1, result: null },
+    { id: 's2', tool: 'b', args: { x: { $ref: 's1' } }, status: 'pending', attempts: 0, result: null },
+  ] });
+  const r = await runner.execute(task, { turn: 1 });
   assert.equal(r.ok, false);
-  assert.equal(calls.length, 1);
-  assert.equal(store.get(r.task.id).steps[1].status, 'pending');
+  assert.equal(calls.length, 0);
+  assert.equal(store.get(task.id).steps[1].status, 'failed');
 });
 
 test('ref pick failure fails step without tool call', async () => {
@@ -119,7 +123,7 @@ test('save failure mid-run stops with error and no more tools', async () => {
   const r = await runner.start({ title: 'T', steps: steps3, turn: 1 });
   assert.equal(r.ok, false);
   assert.match(r.text, /disk full/);
-  assert.ok(calls.length <= 1);
+  assert.equal(calls.length, 1);
 });
 
 test('bus gets tool and task events', async () => {
@@ -143,4 +147,26 @@ test('invalid plan and create failure return ok false', async () => {
   const r2 = await bad.runner.start({ title: 'T', steps: [{ tool: 'a' }], turn: 1 });
   assert.equal(r2.ok, false);
   assert.match(r2.text, /Too many open tasks/);
+});
+
+test('execute can re-run a failed step with attempts already 2', async () => {
+  let ok = false;
+  const { runner, calls, store } = setup(() => (ok ? { ok: true, text: 'fine' } : { ok: false, text: 'flaky' }));
+  const r = await runner.start({ title: 'T', steps: [{ tool: 'a' }], turn: 1 });
+  assert.equal(r.task.steps[0].attempts, 2);
+  ok = true;
+  const before = calls.length;
+  const r2 = await runner.execute(store.get(r.task.id), { turn: 2 });
+  assert.equal(r2.ok, true);
+  assert.equal(calls.length, before + 1);
+});
+
+test('abort during a tool call pauses instead of failing', async () => {
+  const ac = new AbortController();
+  const { runner, store } = setup(() => { ac.abort(); return { ok: false, text: 'aborted' }; });
+  const r = await runner.start({ title: 'T', steps: [{ tool: 'a' }, { tool: 'b' }], turn: 1, signal: ac.signal });
+  const t = store.get(r.task.id);
+  assert.equal(t.status, 'paused');
+  assert.equal(t.steps[0].status, 'pending');
+  assert.doesNotMatch(r.text, /replan/);
 });

@@ -57,6 +57,8 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
   // One tool call with at most one retry for transient errors.
   async function callWithRetry(step, args, ctx, signal) {
     let result;
+    step.attempts = 0;
+    step.result = null;
     while (step.attempts < 2) {
       step.attempts++;
       try { result = await tools.run(step.tool, args, ctx); } catch (err) { result = { ok: false, text: String(err?.message || err) }; }
@@ -70,8 +72,8 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
   function fail(task, step, why) {
     step.status = 'failed';
     task.status = 'failed';
-    emit('task', { id: task.id, step: step.id, status: 'failed' });
     const err = persist(task);
+    if (!err) emit('task', { id: task.id, step: step.id, status: 'failed' });
     return { ok: false, text: err || reportFailed(task, step, why), task };
   }
 
@@ -82,17 +84,17 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
       if (step.status === 'done') continue;
       if (signal?.aborted) {
         task.status = 'paused';
-        emit('task', { id: task.id, step: step.id, status: 'paused' });
         const err = persist(task);
+        if (!err) emit('task', { id: task.id, step: step.id, status: 'paused' });
         return { ok: false, text: err || `Task ${task.id} paused before ${step.id}. ${describe(task)}`, task };
       }
       const refs = resolveRefs(step.args, doneResults(task));
       if (!refs.ok) return fail(task, step, refs.text);
 
       step.status = 'running';
-      emit('task', { id: task.id, step: step.id, status: 'running' });
       const saveErr = persist(task);
       if (saveErr) return { ok: false, text: saveErr, task };
+      emit('task', { id: task.id, step: step.id, status: 'running' });
 
       emit('tool', { id: toolId(task, step), name: step.tool, phase: 'start', ok: true });
       const result = await callWithRetry(step, refs.args, { signal, turn }, signal);
@@ -102,23 +104,24 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
       const verdict = awaiting ? { ok: false } : result.ok ? check(step.expect, result) : { ok: false, why: `the tool reported an error: ${clip(text, 200)}` };
       emit('tool', { id: toolId(task, step), name: step.tool, phase: 'end', ok: verdict.ok });
 
-      if (awaiting) {
+      if (awaiting || (!verdict.ok && signal?.aborted)) {
         step.status = 'pending';
         task.status = 'paused';
-        emit('task', { id: task.id, step: step.id, status: 'paused' });
         const err = persist(task);
+        if (!err) emit('task', { id: task.id, step: step.id, status: 'paused' });
+        if (!awaiting) return { ok: false, text: err || `Task ${task.id} paused during ${step.id}. ${describe(task)}`, task };
         return { ok: false, text: err || `Task ${task.id} is waiting at ${step.id}: ${clip(text, 200)}`, task };
       }
       if (!verdict.ok) return fail(task, step, verdict.why);
 
       step.status = 'done';
-      emit('task', { id: task.id, step: step.id, status: 'done' });
       const err = persist(task);
       if (err) return { ok: false, text: err, task };
+      emit('task', { id: task.id, step: step.id, status: 'done' });
     }
     task.status = 'done';
-    emit('task', { id: task.id, step: null, status: 'done' });
     const err = persist(task);
+    if (!err) emit('task', { id: task.id, step: null, status: 'done' });
     return { ok: !err, text: err || reportDone(task), task };
   }
 
