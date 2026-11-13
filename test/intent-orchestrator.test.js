@@ -24,7 +24,7 @@ const P = { type: 'object', properties: { action: { type: 'string' }, path: { ty
 function setup(script, constrain) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jc-intent-'));
   const confirm = createConfirm({});
-  const c = { deleted: 0, constrain };
+  const c = { deleted: 0, constrain, picked: [] };
   const groups = [
     { id: 'core', label: 'Core', triggers: [], tools: [{ name: 'get_time', description: 'time', params: P, sideEffects: 'read', async run() { return 'NOON'; } }] },
     { id: 'media', label: 'Media', triggers: [{ words: ['play', 'music', 'jazz', 'volume'], w: 3 }], tools: [{ name: 'media_control', description: 'media', params: P, sideEffects: 'write', async run() { return 'done'; } }] },
@@ -43,7 +43,7 @@ function setup(script, constrain) {
   c.orc = createOrchestrator({
     bus: c.bus, sessions: c.sessions, providers, tools: createToolRunner(groups.flatMap(g => g.tools), { groups }), catalog,
     getConfig: () => ({ ...DEFAULTS, provider: c.fp.id }),
-    selectGroups: (t, o) => selectGroups(t, o, catalog),
+    selectGroups: (t, o) => { c.picked.push(t); return selectGroups(t, o, catalog); },
     route: () => ({ tier: 'deep', think: false, tools: true, reason: 'test' }),
   });
   c.s = c.sessions.create(); c.sessions.save(c.s);
@@ -110,6 +110,21 @@ test('a guest or unsure speaker never reaches the interpreter and gains no tools
     assert.ok(!c.offered(0).includes('delete_file'), speaker);
     c.done();
   }
+});
+
+test('a guest still gets the fixed clarify answer, with no model call and no question left for the owner', async () => {
+  const { clarify } = require('../src/core/skills/clarify');
+  const want = clarify('turn it off', { lastGroups: [] });
+  assert.equal(want?.kind, 'ask', 'fixture: clarify asks about this text');
+  const c = setup([say('OK.')], async () => ({ kind: 'new', groups: ['media'], confidence: 0.99 }));
+  const res = await c.orc.send(c.s.id, 'turn it off', { speaker: 'guest' });
+  assert.equal(res.reply, want.reply);
+  assert.equal(c.fp.constrained.length, 0);
+  assert.equal(c.fp.calls.length, 0);
+  assert.equal(c.routes().at(-1).decision, undefined, 'gate stayed closed: plain route payload');
+  await c.orc.send(c.s.id, 'the music');
+  assert.equal(c.picked.at(-1), 'the music', 'the owner answer is not merged with the guest request');
+  c.done();
 });
 
 test('a confirm tool still needs the OK even when the model recommends its group', async () => {

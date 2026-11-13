@@ -105,11 +105,16 @@ function orcSetup(provider, opts = {}) {
 }
 
 test('orchestrator: a low-confidence turn is decided by the model (act narrows the groups)', async () => {
-  const p = createFakeProvider([{ type: 'token', text: 'ok' }, { type: 'done' }], { constrain: async () => ({ choice: 'media' }) });
-  const { orc, s } = orcSetup(p);
+  const p = createFakeProvider([{ type: 'token', text: 'ok' }, { type: 'done' }], { constrain: async () => ({ kind: 'new', groups: ['media'], confidence: 0.9 }) });
+  const { orc, s } = orcSetup(p, { tools: createToolRunner(catalog.tools, { groups: catalog.groups }) });
   const res = await orc.send(s.id, LOW, { source: 'text' });
   assert.equal(p.constrained.length, 1);
   assert.equal(res.reply, 'ok');
+  const offered = p.calls[0].tools.map(t => t.name);
+  const media = catalog.groups.find(g => g.id === 'media').tools.map(t => t.name);
+  const knowledge = catalog.groups.find(g => g.id === 'knowledge').tools.map(t => t.name);
+  assert.ok(media.every(n => offered.includes(n)), 'the model pick (media) is offered');
+  assert.ok(!knowledge.some(n => offered.includes(n) && !media.includes(n)), 'the rule fallback (knowledge) is not');
 });
 
 test('orchestrator: model ask answers with its question and no chat call', async () => {
@@ -117,7 +122,7 @@ test('orchestrator: model ask answers with its question and no chat call', async
   const { orc, s } = orcSetup(p);
   const res = await orc.send(s.id, LOW, { source: 'text' });
   assert.equal(p.calls.length, 0);
-  assert.match(res.reply, /\?$/);
+  assert.equal(res.reply, 'Which thing should I start?');
 });
 
 test('orchestrator: chat turns (tools off) and high-confidence turns never call constrain', async () => {

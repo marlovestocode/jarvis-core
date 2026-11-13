@@ -131,6 +131,12 @@ async function resolveSelection({ text, rule, history, lastGroups = [], hint, li
   const asRule = extra => ({ action: 'act', groups: r, source: 'rule', ...extra, decision });
   const g = gate({ text, rule: r, catalog, provider, owner, lastGroups });
   decision.why = g.why;
+  // a guest or unsure speaker never reaches the model, but still gets the fixed, model-free clarify answer the old path gave
+  // (gate stays closed: the route payload stays plain)
+  if (!g.call && owner !== true && r.confidence === 'low' && provider && typeof provider.constrain === 'function') {
+    const hit = clarify(text, { lastGroups });
+    if (hit) { decision.status = 'rule'; decision.why = `clarify ${hit.kind} (not owner)`; return hit.kind === 'ask' ? { action: 'ask', groups: r, source: 'rule', ask: hit.reply, decision } : { action: 'decline', groups: r, source: 'rule', decline: hit.reply, decision }; }
+  }
   if (!g.call) return asRule();   // the simple-command path: no await on anything slow, no provider touch
 
   decision.gated = false;
@@ -152,7 +158,12 @@ async function resolveSelection({ text, rule, history, lastGroups = [], hint, li
 
   let picked = intent.groups.filter(id => catalog.ids.includes(id));
   // a continuation with no new area reuses the last ones, but never past an honest decline or a group that is down now
-  if (!picked.length && !intent.decline && ['followup', 'correction', 'modify'].includes(intent.kind)) picked = await usable(catalog, prev);
+  // group statuses may be slow: they share the turn's budget, and running out keeps the rule result
+  if (!picked.length && !intent.decline && ['followup', 'correction', 'modify'].includes(intent.kind)) {
+    const ok = await within(usable(catalog, prev), Math.max(1, budgetMs - (now() - t0)));
+    if (!ok) { decision.status = 'timeout'; return asRule({ intent }); }
+    picked = ok;
+  }
   if (!picked.length) {
     if (intent.decline) return { action: 'decline', groups: r, source: 'model', decline: intent.decline, intent, decision };
     if (intent.ask) return { action: 'ask', groups: r, source: 'model', ask: intent.ask, intent, decision };

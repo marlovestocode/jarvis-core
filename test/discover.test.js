@@ -95,6 +95,26 @@ test('followup / correction / modify with no groups reuses the last groups', asy
   }
 });
 
+test('followup reuse: slow group statuses stay inside the budget and fall back to the rule result', async () => {
+  let n = 0;
+  // the interpreter's own cardsNow is quick; the reuse check after it hangs
+  const slow = { ...catalog, cardsNow: () => (n++ === 0 ? catalog.cardsNow() : new Promise(() => {})) };
+  const p = fakeP(async () => ({ kind: 'followup', groups: [], confidence: 0.8 }));
+  const t0 = Date.now();
+  const r = await resolveSelection({ text: 'do that again but louder', catalog: slow, owner: true, provider: p, budgetMs: 80, lastGroups: ['core', 'media'], rule: selectGroups('do that again but louder', { lastGroups: ['core', 'media'] }, catalog) });
+  assert.ok(Date.now() - t0 < 1000);
+  assert.equal(r.source, 'rule');
+  assert.equal(r.decision.status, 'timeout');
+});
+
+test('guest gets the fixed clarify answer on a low match, never the model', async () => {
+  const p = never();
+  const r = await resolveSelection({ text: 'turn it off', catalog, owner: false, provider: p, rule: selectGroups('turn it off', {}, catalog) });
+  assert.equal(r.action, 'ask');
+  assert.equal(r.decision.gated, true);
+  assert.equal(p.constrained.length, 0);
+});
+
 test('guest / non-owner never reaches the model', async () => {
   for (const owner of [false, undefined]) {
     const p = never();
