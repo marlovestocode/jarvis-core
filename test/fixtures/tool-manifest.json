@@ -829,7 +829,7 @@
           "description": "Team name, city or abbreviation, e.g. \"Cowboys\"."
         },
         "league": {
-          "description": "nfl, nba, mlb, nhl, cfb, mls or epl; omit to search the followed leagues",
+          "description": "nfl, nba, mlb, nhl, cfb, mls or epl; omit to find the team across leagues, or to use the followed teams when no team is given",
           "type": "string",
           "enum": [
             "nfl",

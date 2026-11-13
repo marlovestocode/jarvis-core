@@ -162,7 +162,7 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
       examples: ['did the team win','game score last night','who won the match'],   // wording the ranker matches requests against (skills/rank.js)
       hint: 'sports_scores: live/final scores and next game; specify team and league, e.g. Cowboys/nfl.',
       description: 'Live and final scores, and the next game, from ESPN. Leagues: nfl, nba, mlb, nhl, cfb, mls, epl. With no team or league: the user\'s followed teams.',
-      params: obj({ team: { type: 'string', description: 'Team name, city or abbreviation, e.g. "Cowboys".' }, league: { description: 'nfl, nba, mlb, nhl, cfb, mls or epl; omit to search the followed leagues', type: 'string', enum: ['nfl', 'nba', 'mlb', 'nhl', 'cfb', 'mls', 'epl'] } }),
+      params: obj({ team: { type: 'string', description: 'Team name, city or abbreviation, e.g. "Cowboys".' }, league: { description: 'nfl, nba, mlb, nhl, cfb, mls or epl; omit to find the team across leagues, or to use the followed teams when no team is given', type: 'string', enum: ['nfl', 'nba', 'mlb', 'nhl', 'cfb', 'mls', 'epl'] } }),
       timeoutMs: 20000,
       run: guard(async args => {
         const s = await getScores(fetcher, { team: args.team, league: args.league }, getConfig());
