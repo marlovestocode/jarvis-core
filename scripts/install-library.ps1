@@ -1,6 +1,6 @@
 # Offline library installer (spec §2/§5). Downloads from download.kiwix.org only:
 #   kiwix-tools 3.8.1 (win-x86_64)          -> <jarvis-core>\engines\kiwix
-#   latest wikipedia_en_all_nopic_YYYY-MM.zim -> C:\JarvisData\library
+#   latest wikipedia_en_all_nopic_YYYY-MM.zim -> -Dir (default C:\JarvisData\library)
 # The ZIM is downloaded to <name>.zim.part with resume (curl -C -), its size is checked against the
 # server's Content-Length, and only then renamed to .zim, so JARVIS never opens a partial file.
 #   -Check   : print the latest ZIM name, URL and size; download nothing
@@ -62,7 +62,7 @@ if ($Zim -or $both) {
   if ((Test-Path $final) -and (Get-Item $final).Length -eq $z.Size) { Log "ZIM already complete: $final"; exit 0 }
   $free = (Get-PSDrive (Split-Path -Qualifier $lib).TrimEnd(':')).Free
   $have = if (Test-Path $part) { (Get-Item $part).Length } else { 0 }
-  if ($free -lt ($z.Size - $have + 2GB)) { throw ("not enough space on C: ({0:N1} GB free, need {1:N1} GB)" -f ($free / 1e9), (($z.Size - $have) / 1e9)) }
+  if ($free -lt ($z.Size - $have + 2GB)) { throw ("not enough space on {0} ({1:N1} GB free, need {2:N1} GB)" -f (Split-Path -Qualifier $lib), ($free / 1e9), (($z.Size - $have) / 1e9)) }
   Log ("downloading {0} ({1:N1} GB) to {2}, resuming from {3:N1} GB" -f $z.Url, ($z.Size / 1e9), $part, ($have / 1e9))
   for ($try = 1; $try -le 20; $try++) {
     & curl.exe -sSL --fail -C - --retry 5 --retry-delay 10 -o $part $z.Url

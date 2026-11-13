@@ -65,7 +65,7 @@ Data starts when JARVIS restarts with this code. It is stored in `<data>\metrics
 
 - **Not tested against live YouTube Music.** The prompt matcher passed unit tests and a mock page in a browser; the real dialog text and element names are from memory of how the site looks. If one is missed, the page will not say so. I also could not load the extension into your Chrome, so `background.js` was exercised in Node with a fake `chrome` and WebSocket (handshake, commands, queueing, silence), not in the browser.
 - Live model accuracy and speech quality by ear: not run. The speech changes are text transformations tested in Node; how Piper pronounces "twenty twenty-six" or the new commas is for you to judge.
-- `uncaughtException` handler (D-5), `actions.log` growth, the fixed library folder (D-2), and `UNTRUSTED_TOOLS` still repeating the `untrusted` flags are open.
+- Handled after this pass: the `uncaughtException` handler (D-5, `fix(main): handle uncaughtException`, `fix(main): crash handler survives a throwing log`), log growth (`fix(logs): cap growing log files`; `actions.log` was already capped, proven by `test/log-caps.test.js`; `music-plays.jsonl` is deliberately uncapped), the fixed library folder (D-2, `feat(config): library folder setting`, `fix(knowledge): restart kiwix when the library folder changes`), and `UNTRUSTED_TOOLS` repeating the flags (`refactor(guard): untrusted flag lives on the tool`).
 - Settings UI for the dialect is two controls (dialect, contractions); I did not look at the settings window itself.
 - Per-property descriptions: 59 tool parameters still have no description (the audit lint found them); I did not rewrite them.
 
