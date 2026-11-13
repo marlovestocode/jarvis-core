@@ -50,7 +50,7 @@ function forProvider(m) {
 // fastPath(text, { source }) → null | { reply, record?, tool, ok }: a skill that answers without the model
 // (media commands). An empty reply is silent; record is what the chat history keeps.
 const { repairCall } = require('./tools/constrain');
-const { unbackedClaim, stripClaims, softFail, ungroundedFigures, UNBACKED_FIX, UNTRUSTED_TOOLS, NEEDS_OK } = require('./brain/guard');
+const { unbackedClaim, stripClaims, softFail, ungroundedFigures, UNBACKED_FIX, NEEDS_OK } = require('./brain/guard');
 const { resolveFollowUp } = require('./livestate/followup');
 
 // A tool result the model sees is capped: a log dump or a long list swamps a small context window and the model loses the thread.
@@ -443,9 +443,9 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
           inTool = false;
           if (!res.ok && !res.badArgs) failed.set(failKey(call), (failed.get(failKey(call)) || 0) + 1);
           bus.emit('tool', { id: call.id, name: call.name, phase: 'end', ok: res.ok, soft: res.ok && softFail(res.text) || undefined, badArgs: res.badArgs || undefined });
-          if (res.untrusted || UNTRUSTED_TOOLS.has(call.name)) turn.tainted = true;
+          if (res.untrusted) turn.tainted = true;
           if (res.ok && String(res.text).startsWith(NEEDS_OK)) question = String(res.text).slice(NEEDS_OK.length);
-          else if (res.ok && !/^error/i.test(String(res.text)) && !softFail(res.text) && !res.untrusted && !UNTRUSTED_TOOLS.has(call.name) && call.name !== 'more_skills') okTools++;   // loading a skill is not an action
+          else if (res.ok && !/^error/i.test(String(res.text)) && !softFail(res.text) && !res.untrusted && call.name !== 'more_skills') okTools++;   // loading a skill is not an action
           s.messages.push({ role: 'tool', content: capText(res.text, 6000), toolCallId: call.id, name: call.name, label });
           if (learnTool && res.ok && !res.untrusted && !softFail(res.text) && !String(res.text).startsWith(NEEDS_OK)) { try { learnTool(routeText, call.name); } catch { /* learning is a nicety */ } }
           directs.push(res.ok && !res.untrusted && !turn.tainted && !String(res.text).startsWith(NEEDS_OK) && !softFail(res.text) ? ((scope || tools).direct?.(call.name, res.text) ?? null) : null);

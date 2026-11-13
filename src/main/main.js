@@ -83,7 +83,7 @@ const { createSpeaker } = require('../core/voice/speaker/speaker');
 const { enrollVoice } = require('../core/voice/speaker/enroll');
 const { createPlayLog } = require('../core/music/log');
 const { createMemorySystem } = require('../core/memory/system');
-const { UNTRUSTED_TOOLS } = require('../core/brain/guard');
+const { isUntrustedTool } = require('../core/brain/guard');
 const { createMemorySkill } = require('../core/memory/skill');
 const { clarify } = require('../core/skills/clarify');
 const { resolve: resolveDialect } = require('../core/voice/dialect');
@@ -233,7 +233,7 @@ async function completeQuick(messages, { signal } = {}) {
 ctx.memorySystem = createMemorySystem({
   dataDir: DATA_DIR, log: ctx.log, bus: ctx.bus, sessions: ctx.sessions, getConfig: ctx.getConfig, isIdle: memoryIdle, complete: completeQuick,
   notify: (title, body) => { if (Notification.isSupported()) new Notification({ title, body, silent: true }).show(); },
-  isUntrusted: name => UNTRUSTED_TOOLS.has(name) || !!ctx.catalog?.byName?.get(name)?.tool?.untrusted,
+  isUntrusted: name => isUntrustedTool(name, ctx.catalog),
 });
 ctx.cortex = ctx.memorySystem.cortex;
 ctx.memory = ctx.memorySystem.memory;

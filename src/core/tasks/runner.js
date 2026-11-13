@@ -3,7 +3,7 @@
 // Every step is saved as `running` before its tool is called and as `done`/`failed` after (write-ahead),
 // so a crash leaves an accurate record. Report text is built only from stored step records.
 const { validatePlan, resolveRefs, check } = require('./plan');
-const { NEEDS_OK, UNTRUSTED_TOOLS } = require('../brain/guard');
+const { NEEDS_OK } = require('../brain/guard');
 const { isReadOnly } = require('./effects');
 
 const NO_RETRY = /not running|not in Ollama|not allowed|must be local|timed out|aborted/i;
@@ -118,7 +118,7 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
       const result = await callWithRetry(step, refs.args, { signal, turn }, signal);
       const text = String(result.text ?? '');
       step.result = { ok: !!result.ok, text, t: now() };
-      if (result.untrusted || UNTRUSTED_TOOLS.has(step.tool)) {
+      if (result.untrusted) {
         // The orchestrator's turn is shared by reference: later steps and the rest of the turn see the taint.
         if (turn && typeof turn === 'object') turn.tainted = true;
         task.tainted = true;

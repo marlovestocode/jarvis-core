@@ -65,7 +65,8 @@ function stripClaims(reply) {
 // the next turn. That answer is read from the user's text only (the fastPath), never from a tool
 // result, page or file. The tools below return text from outside; after one of them runs in a turn,
 // no confirm tool may start in that turn (so a page saying "move all files" cannot queue the move).
-const UNTRUSTED_TOOLS = new Set(['lookup_knowledge', 'read_article', 'news_headlines', 'get_weather', 'weather_alerts', 'sports_scores', 'find_files', 'list_windows']);
+// The tool definition owns the flag: `untrusted: true` (see tools/registry.js). Unknown names are not untrusted.
+const isUntrustedTool = (name, catalog) => catalog?.byName?.get(name)?.tool?.untrusted === true;
 // a confirm tool's result starts with this: the turn ends and the question is the reply, word for word
 const NEEDS_OK = 'Needs your OK: ';
 const plain = t => String(t || '').toLowerCase().replace(/^\s*(?:(?:hey |ok(?:ay)? )?jarvis[,.!]?\s*)/, '').replace(/[.!,]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -74,4 +75,4 @@ const NO = new Set(['no', 'nope', 'cancel', 'stop', "don't", 'do not', 'never mi
 const isYes = t => YES.has(plain(t));
 const isNo = t => NO.has(plain(t));
 
-module.exports = { ungroundedFigures, softFail, unbackedClaim, stripClaims, UNBACKED_FIX, isYes, isNo, UNTRUSTED_TOOLS, NEEDS_OK };
+module.exports = { ungroundedFigures, softFail, unbackedClaim, stripClaims, UNBACKED_FIX, isYes, isNo, isUntrustedTool, NEEDS_OK };

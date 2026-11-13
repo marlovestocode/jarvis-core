@@ -14,7 +14,6 @@ const ALIASES = {
   lock_screen: ['lock'],
   power: ['shutdown', 'restart', 'sleep'],
 };
-const UNTRUSTED = new Set(['find_files', 'list_windows']);
 
 function createGroup({ pc, media } = {}) {
   const tools = pc ? createPcTools({ ...pc, media }) : [];
@@ -24,7 +23,7 @@ function createGroup({ pc, media } = {}) {
     { re: /\bswitch to\b|\bshut ?down\b/i, w: 3 },
     { words: ['open', 'launch', 'close', 'quit'], w: 1 },
     { words: ['window', 'windows', 'folder', 'folders', 'file', 'files', 'move', 'delete', 'recycle', 'undo', 'lock', 'shutdown', 'restart', 'sleep'], w: 2 },
-  ], tools: tools.map(t => own(t, ALIASES[t.name] || [], UNTRUSTED.has(t.name) ? { untrusted: true } : {})) };
+  ], tools: tools.map(t => own(t, ALIASES[t.name] || [], {})) };
 }
 
 module.exports = { createGroup };

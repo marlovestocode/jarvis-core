@@ -376,7 +376,7 @@ test('current: a failed-only task is returned', () => {
 
 // Final review fixes: taint, proposal identity, maybeRan, origin.
 test('taint: an untrusted step taints the outer turn and refuses a later confirm step', async () => {
-  for (const [first, res] of [['read_page', { ok: true, text: 'page text', untrusted: true }], ['get_weather', { ok: true, text: 'sunny' }]]) {
+  for (const [first, res] of [['read_page', { ok: true, text: 'page text', untrusted: true }], ['get_weather', { ok: true, text: 'sunny', untrusted: true }]]) {
     const { runner, calls, store } = setup(name => (name === first ? res : name === 'del' ? { ok: true, text: ASK } : ok(name)));
     const turn = { source: 'chat', tainted: false };
     const r = await runner.start({ title: 'T', steps: [{ tool: first }, { tool: 'b' }, { tool: 'del', args: { x: { $ref: 's1' } } }], turn });

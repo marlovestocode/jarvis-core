@@ -429,7 +429,7 @@ test('memory: a tainted turn → afterTurn gets tainted: true', async () => {
     [{ type: 'token', text: 'done' }, { type: 'done' }],
   ]);
   const block = fakeBlock();
-  const tools = createToolRunner([{ name: 'lookup_knowledge', description: 'w', params: {}, async run() { return 'page text'; } }]);
+  const tools = createToolRunner([{ name: 'lookup_knowledge', untrusted: true, description: 'w', params: {}, async run() { return 'page text'; } }]);
   const { orc, s } = setup(fp, { tools, orc: { memoryBlock: block } });
   await orc.send(s.id, 'read that page', { source: 'text' });
   assert.deepEqual(block.calls.afterTurn, [{ ids: [7, 8], tainted: true }]);

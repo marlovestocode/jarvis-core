@@ -116,7 +116,7 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
 
   const tools = [
     {
-      name: 'get_weather',
+      name: 'get_weather', untrusted: true,
       examples: ['is it raining outside','how hot cold is it temperature','do I need an umbrella or a jacket','will it snow this weekend forecast'],   // wording the ranker matches requests against (skills/rank.js)
       hint: 'get_weather: current weather and forecast; omit place for home. Use for rain tomorrow, temperatures, wind and air quality.',
       description: 'Live weather: current conditions and up to a 7-day forecast (highs, lows, rain chance, wind, UV, air quality). Default place is the user\'s home.',
@@ -130,7 +130,7 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
       }),
     },
     {
-      name: 'weather_alerts',
+      name: 'weather_alerts', untrusted: true,
       hint: 'weather_alerts: active US weather watches and warnings; omit place for home.',
       description: 'Active US National Weather Service watches, warnings and advisories for a place (default home).',
       params: obj({ place: { type: 'string' } }),
@@ -145,7 +145,7 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
       }),
     },
     {
-      name: 'news_headlines',
+      name: 'news_headlines', untrusted: true,
       examples: ['what is in the news','latest headlines today'],   // wording the ranker matches requests against (skills/rank.js)
       hint: 'news_headlines: current news; optionally topic and count.',
       description: 'Latest news headlines from the user\'s news feeds, optionally about a topic.',
@@ -158,7 +158,7 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
       }),
     },
     {
-      name: 'sports_scores',
+      name: 'sports_scores', untrusted: true,
       examples: ['did the team win','game score last night','who won the match'],   // wording the ranker matches requests against (skills/rank.js)
       hint: 'sports_scores: live/final scores and next game; specify team and league, e.g. Cowboys/nfl.',
       description: 'Live and final scores, and the next game, from ESPN. Leagues: nfl, nba, mlb, nhl, cfb, mls, epl. With no team or league: the user\'s followed teams.',
@@ -170,7 +170,7 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
       }),
     },
     {
-      name: 'lookup_knowledge',
+      name: 'lookup_knowledge', untrusted: true,
       examples: ['who is this person','what is the capital of a country','explain a concept encyclopedia facts','who invented discovered','tell me about a topic'],   // wording the ranker matches requests against (skills/rank.js)
       hint: 'lookup_knowledge: for facts about the world, look up the subject FIRST, then answer from the cited passages.',
       description: 'Look up facts about the world in Wikipedia (offline library first, then online). Returns cited passages. Use for who/what/when/where/why questions before answering.',
@@ -179,7 +179,7 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
       run: guard(lookup),
     },
     {
-      name: 'read_article',
+      name: 'read_article', untrusted: true,
       hint: 'read_article: follow-ups on an article title, optionally a section.',
       description: 'Read a longer extract of one Wikipedia article, optionally one section, for follow-up questions.',
       params: obj({ title: { type: 'string' }, section: { type: 'string' } }, ['title']),
