@@ -62,10 +62,12 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
   let spoken = '';             // what JARVIS has said this turn (echo check)
   let lastSend = Promise.resolve();
   let convo = null;            // this conversation's speaker verdict: owner | unsure | guest; null = no conversation yet. Only ever moves down.
-  let spVerdict = 'owner';     // effective verdict of the interrupt utterance being handled
+  let epoch = 0;               // bumps whenever a conversation starts or ends: a verify that finishes late must not touch the next one
+  let hotkeyTurn = false;      // the next capture was started by the hotkey / button: the user, whatever the voice model says
+  let spVerdict = 'owner';    // effective verdict of the interrupt utterance being handled
 
   function setState(state, detail) {
-    if (state === 'idle') { endTrace(); convo = null; }   // back to idle ends the conversation
+    if (state === 'idle') { endTrace(); convo = null; epoch++; hotkeyTurn = false; }   // back to idle ends the conversation
     bus.emit('state', detail ? { state, detail } : { state });
   }
   function endTrace() {
@@ -98,7 +100,8 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
   }
 
   function listen() {
-    if (mode === 'idle') convo = 'owner';   // hotkey / wake engine: pressing it is already the user; a mid-conversation listen keeps the verdict
+    hotkeyTurn = false;
+    if (mode === 'idle') { convo = 'owner'; epoch++; }   // a new conversation starts as owner (the hotkey is already the user; a keyword-engine wake is still verified on its first capture); a mid-conversation listen keeps the verdict
     stripWake = false;
     ext = 0; held = null; during = null; clearTimeout(contTimer);
     abortOp();
@@ -119,7 +122,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     if ((was === 'working' || was === 'speaking') && orchestrator.busy) orchestrator.stop();
     current = null;
     mode = 'idle';
-    convo = null;
+    convo = null; epoch++; hotkeyTurn = false;
     if (was !== 'idle') setState('idle');
   }
 
@@ -169,11 +172,16 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
   const RANK = { owner: 0, unsure: 1, guest: 2 };
   const gateActive = () => !!(speaker && getConfig().speakerGate && speaker.enrolled());
   // -> { ignored, verdict (effective), raw (this utterance's own verdict, or null) }
-  async function judge(audio, sampleRate, { lenient = false, strict = false, learn = false } = {}) {
+  // `hotkey`: the utterance is still verified (so the profile learns) but its verdict changes nothing.
+  async function judge(audio, sampleRate, { lenient = false, strict = false, learn = false, hotkey = false } = {}) {
     if (!gateActive()) return { ignored: false, verdict: 'owner', raw: 'owner' };
+    const at = epoch;
     let r = null;
     try { r = await speaker.verify(audio, sampleRate, { lenient, strict, learn }); } catch { r = null; }
-    const raw = r ? (r.verdict === undefined ? (r.ok ? 'owner' : 'guest') : r.verdict) : null;
+    if (at !== epoch) return { ignored: true, verdict: convo ?? 'owner', raw: null };   // the conversation ended or restarted meanwhile: drop it, touch nothing
+    let raw = r ? (r.verdict === undefined ? (r.ok ? 'owner' : 'guest') : r.verdict) : null;
+    if (r && strict && /^error/.test(r.reason || '')) raw = null;   // a strict check that failed on a model error says nothing about the voice
+    if (hotkey) return { ignored: false, verdict: convo ?? 'owner', raw };
     if (raw === 'guest' && getConfig().speakerMode === 'block') {
       bus.emit('speaker', { ok: false, score: r.score, verdict: raw });
       bus.emit('log', { level: 'info', text: `Ignored a voice that is not yours (match ${r.score}${r.threshold !== undefined ? ', needs ' + r.threshold : ''})` });
@@ -191,7 +199,9 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
   // -> the effective verdict to send with, or null when the utterance is to be ignored.
   async function gateUtterance(text, audio, sampleRate, lenient) {
     const yes = confirmPending() && isYes(text);
-    const j = await judge(audio, sampleRate, { lenient, strict: yes, learn: !lenient });
+    const hotkey = hotkeyTurn && !lenient;   // the first capture of a hotkey press is the user, whatever the voice model says
+    hotkeyTurn = false;
+    const j = await judge(audio, sampleRate, { lenient, strict: yes, learn: !lenient, hotkey });
     if (j.ignored) return null;
     if (yes && j.raw !== 'owner') {
       bus.emit('log', { level: 'info', text: 'Ignored a spoken yes from a voice that is not confirmed as yours' });
@@ -276,7 +286,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       idleBusy = false;
       const said = String(t || '').trim();
       if (mode !== 'idle' || !WAKE_PREFIX.test(said)) return;   // not for JARVIS: forget it
-      convo = null;                                              // a new conversation starts here
+      convo = null; epoch++;                                     // a new conversation starts here
       const j = await judge(audio, sampleRate, { lenient: false });
       if (j.ignored || mode !== 'idle') return;                  // someone else said it (block mode)
       bus.emit('wake', { text: said });
@@ -542,7 +552,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
   }
 
   return {
-    listen, feed, cancel, applyWake, announce,
+    listen: () => { listen(); hotkeyTurn = true; }, feed, cancel, applyWake, announce,
     get speaking() { return mode === 'speaking'; },
     get active() { return mode !== 'idle'; },
     get mode() { return mode; },

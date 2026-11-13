@@ -695,15 +695,17 @@ test('controller: announce without a TTS engine resolves false', async () => {
 
 // ---- per-conversation speaker verdict ----
 // verdicts: scripted per verify() call: 'owner' | 'unsure' | 'guest' | null (too short) | 'throw'
-function verdictSetup({ texts, verdicts, cfg = {}, confirm = false, enrolled = true, speaking = false }) {
+function verdictSetup({ texts, verdicts, cfg = {}, confirm = false, enrolled = true, speaking = false, engine = false }) {
   const bus = createBus(); const events = []; bus.on('*', e => events.push(e));
-  const q = [...verdicts]; const calls = [];
+  const q = [...verdicts]; const calls = []; let release = null;
   const speaker = {
     enrolled: () => enrolled,
     async verify(pcm, rate, o) {
       calls.push(o);
       const v = q.shift();
       if (v === 'throw') throw new Error('model gone');
+      if (v === 'defer') return new Promise(res => { release = x => res({ ok: x === 'owner', score: 0.3, verdict: x, threshold: 0.45 }); });
+      if (v === 'strict-error') return { ok: false, score: null, verdict: 'unsure', reason: 'error: model gone' };
       if (v === null) return { ok: true, score: null, verdict: null, reason: 'too short' };
       return { ok: v === 'owner', score: 0.3, verdict: v, threshold: 0.45 };
     },
@@ -711,14 +713,17 @@ function verdictSetup({ texts, verdicts, cfg = {}, confirm = false, enrolled = t
   const sends = [];
   const tts = speaking ? safeTts() : fakeTts();
   const orchestrator = { busy: false, stop() {}, async send(id, text, opts) { sends.push({ text, opts }); if (speaking) bus.emit('token', { text: 'It is sunny today.' }); return { reply: speaking ? 'It is sunny today.' : '', stopped: false, sessionId: 's' }; } };
-  const wake = { id: 'whisper', label: 'W', kind: 'listen', async status() { return { ready: true }; } };
+  let onWake = null;
+  const wake = engine
+    ? { id: 'kw', label: 'KW', async status() { return { ready: true }; }, start(fn) { onWake = fn; }, stop() {} }
+    : { id: 'whisper', label: 'W', kind: 'listen', async status() { return { ready: true }; } };
   const vc = createVoiceController({
     bus, orchestrator, speaker, confirmPending: () => confirm,
     engines: { stt: queueStt(texts), tts, wake },
     getConfig: () => ({ ...DEFAULTS, wakeEnabled: true, ...cfg }), getSessionId: () => 's',
   });
   vc.applyWake();
-  return { bus, events, vc, sends, calls, tts };
+  return { bus, events, vc, sends, calls, tts, wakeNow: () => onWake(), release: v => release(v) };
 }
 const utt = () => [...noise(300), ...tone(1200), ...noise(700)];
 const speakers = s => s.sends.map(x => x.opts.speaker);
@@ -840,4 +845,60 @@ test('verdict: interrupt audio is lenient and not learned; a lenient yes never c
   talk(y.vc);
   await tick(60);
   assert.equal(y.sends.length, 1, 'the spoken yes over the speech did not run');
+});
+
+const cap = () => [...noise(300), ...tone(600), ...noise(900)];
+
+test('verdict: the first capture after a hotkey press stays owner (guest and block mode), though it is still verified and learned from', async () => {
+  for (const cfg of [{}, { speakerMode: 'block' }]) {
+    const s = verdictSetup({ texts: ['what time is it'], verdicts: ['guest'], cfg });
+    s.vc.listen();
+    feedAll(s.vc, cap());
+    await tick(30);
+    assert.deepEqual(speakers(s), ['owner'], JSON.stringify(cfg));
+    assert.deepEqual(s.calls.map(c => c.learn), [true]);
+  }
+});
+
+test('verdict: a keyword-engine wake is not a hotkey: its first capture is judged (guest mode: guest, block mode: ignored)', async () => {
+  const g = verdictSetup({ texts: ['Jarvis, what time is it?'], verdicts: ['guest'], engine: true });
+  g.wakeNow(); feedAll(g.vc, cap()); await tick(30);
+  assert.deepEqual(speakers(g), ['guest']);
+  const b = verdictSetup({ texts: ['Jarvis, what time is it?'], verdicts: ['guest'], engine: true, cfg: { speakerMode: 'block' } });
+  b.wakeNow(); feedAll(b.vc, cap()); await tick(30);
+  assert.equal(b.sends.length, 0);
+});
+
+test('verdict: the hotkey only covers the first capture; the second utterance of that conversation still downgrades', async () => {
+  const s = verdictSetup({ texts: ['Jarvis.', 'what time is it'], verdicts: ['guest', 'guest'] });
+  s.vc.listen();
+  feedAll(s.vc, cap());
+  await tick(30);
+  assert.equal(s.vc.mode, 'listening');
+  feedAll(s.vc, cap());
+  await tick(30);
+  assert.deepEqual(speakers(s), ['guest']);
+});
+
+test('verdict: a verify that finishes after the hotkey started a new conversation changes nothing', async () => {
+  const s = verdictSetup({ texts: ['Jarvis, hello', 'what time is it'], verdicts: ['defer', 'owner'] });
+  feedAll(s.vc, utt());
+  await tick(30);
+  s.vc.listen();                 // hotkey while the wake utterance is still being verified
+  s.release('guest');
+  await tick(10);
+  assert.equal(s.vc.mode, 'listening');
+  feedAll(s.vc, cap());
+  await tick(30);
+  assert.deepEqual(speakers(s), ['owner']);
+  assert.equal(s.events.filter(e => e.type === 'speaker').length, 0, 'the late verdict emitted nothing');
+});
+
+test('verdict: a strict yes check that failed on a model error counts as no verdict (no speaker event) and does not confirm', async () => {
+  const s = verdictSetup({ texts: ['yes'], verdicts: ['strict-error'], confirm: true });
+  s.vc.listen();
+  feedAll(s.vc, cap());
+  await tick(30);
+  assert.equal(s.sends.length, 0);
+  assert.equal(s.events.filter(e => e.type === 'speaker').length, 0);
 });

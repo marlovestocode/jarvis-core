@@ -253,3 +253,16 @@ test('chat window bus path keeps the full events', async () => {
   assert.equal(seen[0].text, SECRET);
   await br.close();
 });
+
+test('public stream: the speaker event passes ok, score and a known verdict; a junk verdict string is dropped', async () => {
+  const out = await publicOf([
+    ['speaker', { ok: false, score: 0.31, verdict: 'guest', text: 'hello there' }],
+    ['speaker', { ok: false, score: 0.2, verdict: 'definitely not a verdict' }],
+  ]);
+  const sp = out.filter(e => e.event === 'speaker').map(e => e.data);
+  assert.equal(sp[0].ok, false);
+  assert.equal(sp[0].score, 0.31);
+  assert.equal(sp[0].verdict, 'guest');
+  assert.ok(!('text' in sp[0]));
+  assert.ok(!('verdict' in sp[1]));
+});
