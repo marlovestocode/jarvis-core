@@ -435,7 +435,7 @@ test('unsure window keeps the chat history; the unsure message is marked', async
   assert.equal(c.sessions.load(c.s.id).messages.at(-2).speaker, 'unsure');
 });
 
-function askSetup({ selectWithModel } = {}) {
+function askSetup({ resolveSelection } = {}) {
   const c = { fpTexts: [], picks: [] };
   c.sessions = createSessionStore(fs.mkdtempSync(path.join(os.tmpdir(), 'jc-speaker-ask-')));
   const groups = [{ id: 'core', label: 'Core', triggers: [], tools: [{ name: 'get_time', description: 't', params: {}, async run() { return 'NOON'; } }] },
@@ -448,9 +448,9 @@ function askSetup({ selectWithModel } = {}) {
   c.orc = createOrchestrator({
     bus: createBus(), sessions: c.sessions, providers, tools: c.tools, catalog: {},
     getConfig: () => ({ ...DEFAULTS, provider: c.fp.id }),
-    selectGroups: (text, o) => { c.picks.push({ text, lastGroups: o.lastGroups }); return /timer|minutes/.test(text) ? Object.assign(['core', 'timers'], { confidence: selectWithModel ? 'low' : 'high' }) : ['core']; },
+    selectGroups: (text, o) => { c.picks.push({ text, lastGroups: o.lastGroups }); return /timer|minutes/.test(text) ? Object.assign(['core', 'timers'], { confidence: resolveSelection ? 'low' : 'high' }) : ['core']; },
     fastPath: async text => { c.fpTexts.push(text); return text === 'set a timer' ? { reply: 'For how long?', ask: true } : null; },
-    ...(selectWithModel ? { selectWithModel } : {}),
+    ...(resolveSelection ? { resolveSelection } : {}),
   });
   c.s = c.sessions.create();
   c.sessions.save(c.s);
@@ -464,7 +464,7 @@ test('pendingAsk: a guest turn neither consumes the owner\'s question nor leaves
   await c.orc.send(c.s.id, '10 minutes', { source: 'text' });
   assert.equal(c.fpTexts.at(-1), 'set a timer 10 minutes', 'the owner\'s question survived the guest turn');
 
-  const d = askSetup({ selectWithModel: async () => ({ action: 'ask', question: 'For how long?' }) });
+  const d = askSetup({ resolveSelection: async () => ({ action: 'ask', ask: 'For how long?', source: 'rule', decision: { gated: true } }) });
   const g = await d.orc.send(d.s.id, 'start a timer for the oven', { source: 'voice', speaker: 'guest' });
   assert.equal(g.reply, 'For how long?');
   await d.orc.send(d.s.id, '10 minutes', { source: 'text' });

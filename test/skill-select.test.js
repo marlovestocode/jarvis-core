@@ -112,8 +112,8 @@ test('orchestrator: a low-confidence turn is decided by the model (act narrows t
   assert.equal(res.reply, 'ok');
 });
 
-test('orchestrator: model ask answers with a fixed question and no chat call', async () => {
-  const p = createFakeProvider([{ type: 'token', text: 'SHOULD NOT RUN' }, { type: 'done' }], { constrain: async () => ({ choice: 'ask' }) });
+test('orchestrator: model ask answers with its question and no chat call', async () => {
+  const p = createFakeProvider([{ type: 'token', text: 'SHOULD NOT RUN' }, { type: 'done' }], { constrain: async () => ({ kind: 'new', groups: [], confidence: 0.2, ask: 'Which thing should I start?' }) });
   const { orc, s } = orcSetup(p);
   const res = await orc.send(s.id, LOW, { source: 'text' });
   assert.equal(p.calls.length, 0);

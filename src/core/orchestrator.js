@@ -56,6 +56,17 @@ const { resolveFollowUp } = require('./livestate/followup');
 const { liveContext } = require('./livestate/context');
 const { plan } = require('./brain/plan');
 const { instant } = require('./brain/instant');
+const { resolveSelection: resolveSelectionDefault } = require('./skills/discover');
+
+// A model-written question or decline is spoken as it is: one line, no control characters, capped (discover.js already
+// cleans it; this is the last fence before speech). It is never passed to a tool.
+const SPOKEN_MAX = 200;
+const spoken = v => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, SPOKEN_MAX).trim() : '');
+// The owner's recent chat the interpreter reads ("do that again" needs the turn before); guest-marked turns and tool chatter stay out.
+const HISTORY_TURNS = 4;
+const historyTail = (messages, end) => messages.slice(0, end)
+  .filter(m => (m.role === 'user' && !m.speaker) || (m.role === 'assistant' && !m.toolCalls && !m.silent && String(m.content || '').trim()))
+  .slice(-HISTORY_TURNS).map(m => ({ role: m.role, content: String(m.content) }));
 
 // speaker (speaker recognition): absent or 'owner' = the owner; 'unsure' and 'guest' taint the turn (no confirm tools, no memory or
 // clipboard writes, no memory recall, no shortcut that acts); 'guest' also loses the owner's personal context in the prompt.
@@ -90,7 +101,7 @@ const nudgeGround = figs => `Your reply gave figures that appear in no tool resu
 const NUDGE_CAP = 'You have used all the tool rounds you are allowed. Answer the user now with what the tool results above gave you, and say plainly what you could not get.';
 const NUDGE_PLAIN ="Reply to the user's last message in one or two sentences.";
 
-function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, rankTools = null, learnTool = null, onQuestionLost = () => {}, memoryBlock = null, context: assembler = null, live = null, catalog = null, selectWithModel = require('./skills/select').selectWithModel }) {
+function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, rankTools = null, learnTool = null, onQuestionLost = () => {}, memoryBlock = null, context: assembler = null, live = null, catalog = null, resolveSelection = resolveSelectionDefault, embed = null }) {
   let current = null; // AbortController of the running turn
   const lastGroupsAt = new Map(); // session id → when lastGroups was last set
   // the areas the last turn used, only while that turn is recent: "make it 10" an hour later does not mean the timer from back then
@@ -258,20 +269,43 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
         if (tools?.turn && fu?.kind === 'continue' && fu.groups?.length && !picked?.some(id => id !== 'core')) picked = fu.groups;
         if (fu?.kind === 'continue' && hints?.tools === false) hints = { ...hints, tier: 'deep', tools: true, think: false, reason: 'follow-up' };
       }
-      // nothing matched but the turn looks like a command: one short constrained call decides the group, or asks / declines (any failure keeps the rule result)
-      if (picked?.confidence === 'low' && catalog && hints?.tools !== false && p.constrain && tools?.turn && !ac.signal.aborted) {
+      // the cross-system assembler runs at most once per turn: selection may read its hint first, memory recall reuses it below
+      let ctxP = null;
+      const turnContext = () => ctxP || (ctxP = (async () => {
+        if (!assembler) return '';
+        try {
+          const pkg = await assembler.assemble({ text: String(text), speaker, brief: false, sessionId: s.id, snap });
+          if (pkg) bus.emit('ctxpkg', { items: pkg.items?.length || 0, dropped: pkg.dropped?.length || 0, errors: pkg.errors?.length || 0, ms: Number(pkg.ms) || 0 });   // counts only, never text
+          return typeof pkg?.hint === 'string' ? pkg.hint : '';
+        } catch { return ''; }
+      })());
+      // intent (ADR A-002): discover.js decides whether the turn needs the interpreter at all (owner only, unsure or risky
+      // matches; simple read-only commands never wait on a model) and may act, ask or decline. It only RECOMMENDS groups:
+      // risk:'confirm', taint and GUEST_TOOLS still decide what runs. Any failure keeps the rule result.
+      let decision = null;
+      if (picked && catalog && hints?.tools !== false && tools?.turn && !ac.signal.aborted) {
         let d = null;
-        try { d = await selectWithModel(routeText, { provider: p, catalog, picked, signal: ac.signal, hints }); } catch { d = null; }
+        try {
+          const lastG = fu?.kind === 'continue' ? fu.groups : recentGroups(s.id);
+          // the hint is only worth its cost when recall would build it anyway (owner turn with a memory block)
+          const hint = owner && memoryBlock ? await turnContext() : '';
+          let liveText = '';
+          if (owner) { try { liveText = liveContext(snap); } catch { liveText = ''; } }
+          d = await resolveSelection({ text: routeText, rule: picked, history: owner ? historyTail(s.messages, turnStart) : [], lastGroups: lastG, hint, live: liveText, catalog, provider: p, embed, owner, signal: ac.signal, hints });
+        } catch { d = null; }
+        // the record rides on the 'route' event only when the gate opened: a plain command's route event stays as it was
+        if (d?.decision && d.decision.gated === false) decision = { ...d.decision, action: d.action, source: d.source };
+        const say = d?.action === 'ask' ? spoken(d.ask) : d?.action === 'decline' ? spoken(d.decline) : '';
         if (d?.action === 'act' && Array.isArray(d.groups) && !ac.signal.aborted) picked = d.groups;
-        else if ((d?.action === 'ask' || d?.action === 'decline') && d.question && !ac.signal.aborted) {
-          bus.emit('route', { tier: 'skill', think: false, reason: 'skill', model: null });
-          bus.emit('clarify', { kind: d.action, reason: 'model' });
-          bus.emit('token', { text: d.question });
-          s.messages.push({ role: 'assistant', content: d.question });
+        else if (say && !ac.signal.aborted) {
+          bus.emit('route', { tier: 'skill', think: false, reason: 'skill', model: null, ...(decision ? { decision } : {}) });
+          bus.emit('clarify', { kind: d.action, reason: d.source === 'rule' ? 'rule' : 'model' });
+          bus.emit('token', { text: say });
+          s.messages.push({ role: 'assistant', content: say });
           if (d.action === 'ask' && owner) pendingAsk.set(s.id, routeText);
           sessions.save(s);
           if (source !== 'voice') bus.emit('state', { state: 'idle' });
-          return { reply: d.question, stopped: false, sessionId: s.id, skill: true };
+          return { reply: say, stopped: false, sessionId: s.id, skill: true };
         }
       }
       // a short command ("take a screenshot") can look like chat to the router while a skill group clearly matches:
@@ -300,7 +334,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       let loadedKey = scope ? scope.loaded().join() : '';
       let model = null;
       try { model = p.resolveModel ? p.resolveModel(hints || {}) : null; } catch { model = null; }
-      if (hints) bus.emit('route', { tier: hints.tier, think: !!hints.think, reason: notes.length ? [...new Set([hints.reason, ...notes].filter(Boolean))].join('; ') : hints.reason, model });
+      if (hints) bus.emit('route', { tier: hints.tier, think: !!hints.think, reason: notes.length ? [...new Set([hints.reason, ...notes].filter(Boolean))].join('; ') : hints.reason, model, ...(decision ? { decision } : {}) });
       let sys = null;
       let info = {};
       const turnNow = new Date();
@@ -318,13 +352,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           let context = '';
           if (hints?.tools !== false) {
             // the cross-system assembler (owner, not brief) gives the hint; live state alone is the fallback if it fails or has nothing
-            if (assembler) {
-              try {
-                const pkg = await assembler.assemble({ text: String(text), speaker, brief: false, sessionId: s.id, snap });
-                if (pkg) bus.emit('ctxpkg', { items: pkg.items?.length || 0, dropped: pkg.dropped?.length || 0, errors: pkg.errors?.length || 0, ms: Number(pkg.ms) || 0 });   // counts only, never text
-                if (typeof pkg?.hint === 'string') context = pkg.hint;
-              } catch { context = ''; }
-            }
+            context = await turnContext();
             if (!context) context = liveContext(snap);
           }
           const r = await memoryBlock.forTurn({ text: String(text), previousUserText: prev ? String(prev.content) : '', brief: hints?.tools === false, profileIds: info.memoryIds || [], sessionId: s.id, ...(context ? { context } : {}) });
