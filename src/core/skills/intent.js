@@ -35,6 +35,12 @@ function clean(v, max) {
   return v.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max).trim();
 }
 
+const RISKY = ['write', 'external'];
+// side effects for a fallback card; anything unreadable counts as 'write' (the cautious end)
+function safeEffects(g) {
+  try { return require('./capability').groupSideEffects(g); } catch { return 'write'; }
+}
+
 const empty = status => ({ status, kind: 'new', objective: '', groups: [], confidence: 0, missing: [], ask: null, decline: null, reasoning: '' });
 
 // The ids a recommendation may use: catalog groups minus core (always loaded, never chosen).
@@ -43,7 +49,8 @@ function choosable(catalog) {
   return ids.filter(id => typeof id === 'string' && id !== 'core');
 }
 
-// raw (model output) -> intent record. cards (optional) carry availability; without them a group counts as available.
+// raw (model output) -> intent record. cards (optional) carry availability: no card for a group = available;
+// available:false = dropped (+ honest decline when all are down); available:null = unknown, dropped if write/external.
 function validateIntent(raw, catalog, cards = []) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return empty('invalid');
   if (typeof raw.kind !== 'string' && !Array.isArray(raw.groups)) return empty('invalid');
@@ -61,7 +68,10 @@ function validateIntent(raw, catalog, cards = []) {
   const byId = new Map((cards || []).map(cd => [cd.id, cd]));
   const asked = [...new Set((Array.isArray(raw.groups) ? raw.groups : []).filter(id => typeof id === 'string' && ids.has(id)))];
   const down = asked.filter(id => byId.get(id)?.available === false);
-  out.groups = asked.filter(id => !down.includes(id)).slice(0, MAX_GROUPS);
+  // availability unknown (status threw, or no cards at all) + a group that changes things: fail closed, silently
+  // (no decline: nothing says it is down; the rule result still decides). Unknown read-only groups stay.
+  const unsure = asked.filter(id => byId.get(id)?.available === null && RISKY.includes(byId.get(id).sideEffects));
+  out.groups = asked.filter(id => !down.includes(id) && !unsure.includes(id)).slice(0, MAX_GROUPS);
   // every capability the model wanted is down: say so plainly, from the card's own reason, not from model text
   if (down.length && !out.groups.length) {
     out.decline = clean(`I can't do that right now: ${down.map(id => `${byId.get(id).label} is unavailable (${byId.get(id).missingReason || 'not available'})`).join('; ')}.`, CAP.field);
@@ -107,15 +117,16 @@ function buildMessages({ text, history, lastGroups, hint, live, cards }) {
 
 // One provider.constrain call under a budget, shared with selectWithModel. -> { status:'ok', out } | { status:'timeout' } | { status:'unavailable' }
 // The budget timer is always cleared and the provider call aborted when it fires or the caller's signal aborts.
-async function callConstrain(provider, req, { budgetMs = BUDGET_MS, signal, before } = {}) {
+async function callConstrain(provider, req, { budgetMs = BUDGET_MS, signal } = {}) {
   if (!provider || typeof provider.constrain !== 'function' || signal?.aborted) return { status: 'unavailable' };
   const ac = new AbortController();
-  const onAbort = () => ac.abort();
-  signal?.addEventListener('abort', onAbort, { once: true });
-  let timer;
   const OVER = Symbol('over');
+  let timer, stop;
+  // a caller abort (barge-in) ends the race at once, even when the provider ignores its signal
+  const onAbort = () => { ac.abort(); stop?.(OVER); };
+  signal?.addEventListener('abort', onAbort, { once: true });
   try {
-    const over = new Promise(res => { timer = setTimeout(() => { ac.abort(); res(OVER); }, budgetMs); });
+    const over = new Promise(res => { stop = res; timer = setTimeout(() => { ac.abort(); res(OVER); }, budgetMs); });
     const work = (async () => {
       const r = typeof req === 'function' ? await req() : req;   // building the request (e.g. awaiting statuses) counts toward the budget
       if (ac.signal.aborted) return OVER;
@@ -123,7 +134,8 @@ async function callConstrain(provider, req, { budgetMs = BUDGET_MS, signal, befo
     })();
     work.catch(() => {});   // a late rejection after the budget won must not surface as unhandled
     const out = await Promise.race([work, over]);
-    if (out === OVER) return { status: signal?.aborted ? 'unavailable' : 'timeout' };
+    if (signal?.aborted) return { status: 'unavailable' };   // a stale answer after the caller gave up is never used
+    if (out === OVER) return { status: 'timeout' };
     return { status: 'ok', out };
   } catch { return { status: 'unavailable' }; }
   finally { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); }
@@ -139,7 +151,9 @@ async function interpret({ text, history, lastGroups, hint, live, catalog, provi
     let cards = [];
     const call = await callConstrain(provider, async () => {
       try { cards = typeof catalog.cardsNow === 'function' ? await catalog.cardsNow() : []; } catch { cards = []; }
-      if (!cards.length) cards = catalog.groups.map(g => ({ id: g.id, label: g.label, summary: g.label, examples: [], sideEffects: 'write', available: null, missingReason: null }));
+      // no cards: availability is unknown (available:null) for every group, with the real side effects so
+      // validateIntent can keep unknown write/external groups out (fail closed; the rule result still decides)
+      if (!Array.isArray(cards) || !cards.length) cards = catalog.groups.map(g => ({ id: g.id, label: g.label, summary: g.label, examples: [], sideEffects: safeEffects(g), available: null, missingReason: null }));
       return { messages: buildMessages({ text, history, lastGroups, hint, live, cards }), schema: schemaFor(ids), hints };
     }, { budgetMs, signal });
     if (call.status !== 'ok') return done(empty(call.status));
