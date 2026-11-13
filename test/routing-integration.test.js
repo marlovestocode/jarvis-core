@@ -14,6 +14,7 @@ const { createToolRunner } = require('../src/core/tools/registry');
 const { buildCatalog } = require('../src/core/skills');
 const { DEFAULTS } = require('../src/core/config');
 const { createOrchestrator } = require('../src/core/orchestrator');
+const { createLiveState } = require('../src/core/livestate');
 const { createFakeProvider } = require('./helpers/fake-provider');
 
 const call = (id, name, args = {}) => [{ type: 'tool_call', id, name, args }, { type: 'done' }];
@@ -22,18 +23,24 @@ const chatRoute = () => ({ tier: 'fast', think: false, tools: false, reason: 'ch
 const toolRoute = () => ({ tier: 'deep', think: false, tools: true, reason: 'tools', depth: 1, steps: 1 });
 const P = { type: 'object', properties: {} };
 
-function groups(ran) {
+function groups(ran, extra) {
   const tool = name => ({ name, description: `The ${name} tool.`, params: P, async run() { ran.push(name); return `${name} result`; } });
-  return [
+  const gs = [
     { id: 'core', label: 'Core', triggers: [], tools: [tool('now_time')] },
     { id: 'web', label: 'Web', triggers: [], tools: [tool('web_search'), tool('read_page')] },
     { id: 'solo', label: 'Solo', triggers: [], tools: [tool('only_tool')] },
   ];
+  if (extra) gs.push({ id: 'extra', label: 'Extra', triggers: [], tools: [
+    { name: 'needs_q', description: 'Needs a q.', params: { type: 'object', properties: { q: { type: 'string' } }, required: ['q'] }, async run() { ran.push('needs_q'); return 'needs_q result'; } },
+    { name: 'flaky', description: 'Always fails.', params: P, async run() { ran.push('flaky'); throw new Error('flaky broke'); } },
+  ] });
+  return gs;
 }
 
-function setup(script, { live, route = toolRoute, selectGroups = () => ['core', 'web'], catalog, resolveModel, timeoutMs } = {}) {
+// live: a stub object, or a function (bus) => live state, so a test can wire the real LiveState to the same bus
+function setup(script, { live, route = toolRoute, selectGroups = () => ['core', 'web'], catalog, resolveModel, timeoutMs, extra } = {}) {
   const ran = [];
-  const gs = groups(ran);
+  const gs = groups(ran, extra);
   const runner = createToolRunner(gs.flatMap(g => g.tools), { groups: gs });
   const fp = createFakeProvider(script);
   if (resolveModel) fp.resolveModel = resolveModel;
@@ -47,6 +54,7 @@ function setup(script, { live, route = toolRoute, selectGroups = () => ['core', 
   providers.add(fp);
   const turned = [];
   const tools = Object.assign(Object.create(runner), { turn: g => { turned.push(g); return runner.turn(g); } });
+  if (typeof live === 'function') live = live(bus);
   const orc = createOrchestrator({
     bus, sessions, providers, tools, getConfig: () => ({ ...DEFAULTS, provider: fp.id }),
     route, selectGroups, live, catalog: catalog === undefined ? buildCatalog(gs) : catalog, ...(timeoutMs ? { timeoutMs } : {}),
@@ -131,6 +139,59 @@ test('routing: a stop or a timeout is not a model failure', async () => {
   const rb = await b.orc.send(b.s.id, 'search the web for cats');
   assert.equal(rb.error, 'Model timed out');
   assert.ok(!b.events.some(e => e.type === 'modelfail'));
+});
+
+test('routing: a daemon outage or config error is not a model failure; a genuine call failure still is', async () => {
+  const resolveModel = () => 'main-model';
+  const live = { snapshot: () => ({ t: Date.now(), tools: [], models: [] }) };
+  for (const message of ['Ollama is not running', 'The model must be local', 'Provider not allowed']) {
+    const a = setup([[{ type: 'throw', message }]], { live, resolveModel });
+    const r = await a.orc.send(a.s.id, 'search the web for cats');
+    assert.equal(r.error, message);
+    assert.ok(!a.events.some(e => e.type === 'modelfail'), message);
+  }
+  const b = setup([[{ type: 'throw', message: 'socket hang up' }], say('Recovered.')], { live, resolveModel });
+  await b.orc.send(b.s.id, 'search the web for cats');
+  assert.equal(b.events.filter(e => e.type === 'modelfail').length, 1);
+  const c = setup([[{ type: 'throw', message: 'model "x" is not in Ollama' }]], { live, resolveModel });
+  await c.orc.send(c.s.id, 'search the web for cats');
+  assert.equal(c.events.filter(e => e.type === 'modelfail').length, 1);
+});
+
+test('routing: schema-rejected calls do not cool a tool (real LiveState)', async () => {
+  const script = [
+    [{ type: 'tool_call', id: 'c1', name: 'needs_q', args: {} }, { type: 'tool_call', id: 'c2', name: 'needs_q', args: { other: 'x' } }, { type: 'done' }],
+    say('Done.'),
+    say('Okay.'),
+  ];
+  let ls;
+  const { fp, events, orc, s, ran } = setup(script, { extra: true, selectGroups: () => ['core', 'extra'], live: bus => (ls = createLiveState({ bus })) });
+  await orc.send(s.id, 'use needs q');
+  assert.equal(events.filter(e => e.type === 'tool' && e.phase === 'end' && e.badArgs).length, 2);
+  assert.deepEqual(ran, []);
+  assert.deepEqual(ls.snapshot().tools, []);
+  await orc.send(s.id, 'use needs q again');
+  assert.ok(specNames(fp.calls.at(-1)).includes('needs_q'));
+  assert.ok(!routeEvents(events).at(-1).reason.includes('cooldown'));
+  ls.close();
+});
+
+test('routing: a repeated call\'s synthetic result is marked skipped and does not count toward cooldown (real LiveState)', async () => {
+  const script = [
+    [{ type: 'tool_call', id: 'c1', name: 'flaky', args: {} }, { type: 'tool_call', id: 'c2', name: 'flaky', args: {} }, { type: 'done' }],
+    say('It failed.'),
+    say('Okay.'),
+  ];
+  let ls;
+  const { fp, events, orc, s, ran } = setup(script, { extra: true, selectGroups: () => ['core', 'extra'], live: bus => (ls = createLiveState({ bus })) });
+  await orc.send(s.id, 'use flaky');
+  assert.deepEqual(ran, ['flaky']);
+  const ends = events.filter(e => e.type === 'tool' && e.phase === 'end');
+  assert.deepEqual(ends.map(e => [e.ok, e.skipped]), [[false, undefined], [false, true]]);
+  assert.deepEqual(ls.snapshot().tools.map(({ name, ok }) => [name, ok]), [['flaky', false]]);
+  await orc.send(s.id, 'use flaky again');
+  assert.ok(specNames(fp.calls.at(-1)).includes('flaky'));
+  ls.close();
 });
 
 test('routing: a pending confirm turns a chat-like message into a tools turn with its group', async () => {

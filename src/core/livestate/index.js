@@ -4,7 +4,8 @@
 //  - Fed by the bus (voice state, route, finished tools, last turn timing)
 //    and by pull sources registered with register(name, fn).
 //  - Holds only metadata. Tool args and output text are never stored: a tool
-//    entry is { name, ok, soft, t } and nothing else. A model-failure entry
+//    entry is { name, ok, soft, t } and nothing else; tool end events with
+//    badArgs or skipped set are not stored. A model-failure entry
 //    is { name, t } and nothing else.
 //  - Tool ring is bounded (MAX_TOOLS) and entries expire after TOOL_TTL_MS.
 //  - snapshot() is synchronous, returns a fresh plain object each call and
@@ -47,6 +48,8 @@ function createLiveState({ bus, now = Date.now, log = () => {} } = {}) {
         break;
       case 'tool': {
         if (ev.phase !== 'end') break;
+        // a schema-rejected call or a synthetic result (the tool never ran) is the model's mistake, not the tool's health
+        if (ev.badArgs || ev.skipped) break;
         const t = now();
         tools.push({ name: typeof ev.name === 'string' ? ev.name : '', ok: ev.ok === true, soft: ev.soft === true, t });
         prune(t);

@@ -9,6 +9,7 @@ const FAIL_LIMIT = 2;           // a tool (or tool action) that failed this many
 const ASK_ANSWER_WORDS = 6;     // an answer to JARVIS's own question is at most this long to be read together with the question
 const ASK_DROPPED = /\b(?:never ?mind|forget it|cancel|nothing|no thanks?|stop)\b/i;
 const NO_RETRY = /not running|not in Ollama|not allowed|must be local|timed out|aborted/i;   // errors a second try cannot fix
+const NOT_MODEL = /not running|must be local|not allowed/i;   // errors that are not the model's fault (daemon down, config): no modelfail
 const GROUPS_TTL_MS = 15 * 60 * 1000;   // how long the last turn's skill areas count for follow-ups
 const LAST_GROUPS_MAX = 64;     // sessions whose last skill groups are remembered (follow-up bonus only)
 
@@ -342,8 +343,9 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
         try {
           round = await streamRound(p, window, useTools, ac, t => { if (!firstTokenAt) firstTokenAt = Date.now(); reply += t; }, hints);
         } catch (err) {
-          // a genuine call failure (not a stop or a timeout: both abort the signal) is noted in live state, so later turns can avoid the model
-          if (live && model && !ac.signal.aborted) { try { bus.emit('modelfail', { model }); } catch { /* observers only */ } }
+          // a genuine call failure (not a stop or a timeout: both abort the signal) is noted in live state, so later turns can avoid the model;
+          // a daemon that is down or a config error (NOT_MODEL) says nothing about the model, so it is not noted
+          if (live && model && !ac.signal.aborted && !NOT_MODEL.test(err?.message || '')) { try { bus.emit('modelfail', { model }); } catch { /* observers only */ } }
           // a model call that failed before saying anything (a crash, an HTTP 500, an out-of-memory load) is tried once more, on another
           // installed model when there is one; a timeout, a stop or a missing Ollama is not retried
           if (!ac.signal.aborted && !retriedModel && !reply && !NO_RETRY.test(err?.message || '')) {
@@ -450,11 +452,14 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
           bus.emit('tool', { id: call.id, name: call.name, label, phase: 'start' });
           inTool = true;
           let res;
+          let skipped = false;   // a synthetic result (the tool did not run): says nothing about the tool's health, so live state skips it
           // the model re-sent a call it already made this turn: do not run it again, tell it to answer
           const sig = `${call.name}:${JSON.stringify(call.args ?? {})}`;
           if (blocked(failKey(call)) || blocked(call.name)) {
+            skipped = true;
             res = { ok: false, text: `Error: ${failKey(call)} already failed ${FAIL_LIMIT} times this turn. Do not call it again: use a different tool, or tell the user what failed.` };
           } else if (seenCalls.has(sig)) {
+            skipped = true;
             res = { ok: false, text: 'Error: you already made this exact call this turn and got its result. Do not repeat it; answer the user with what you have, or say what failed.' };
           } else {
             seenCalls.add(sig);
@@ -463,7 +468,7 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
           }
           inTool = false;
           if (!res.ok && !res.badArgs) failed.set(failKey(call), (failed.get(failKey(call)) || 0) + 1);
-          bus.emit('tool', { id: call.id, name: call.name, phase: 'end', ok: res.ok, soft: res.ok && softFail(res.text) || undefined, badArgs: res.badArgs || undefined });
+          bus.emit('tool', { id: call.id, name: call.name, phase: 'end', ok: res.ok, soft: res.ok && softFail(res.text) || undefined, badArgs: res.badArgs || undefined, skipped: skipped || undefined });
           if (res.untrusted) turn.tainted = true;
           if (res.ok && String(res.text).startsWith(NEEDS_OK)) question = String(res.text).slice(NEEDS_OK.length);
           else if (res.ok && !/^error/i.test(String(res.text)) && !softFail(res.text) && !res.untrusted && call.name !== 'more_skills') okTools++;   // loading a skill is not an action

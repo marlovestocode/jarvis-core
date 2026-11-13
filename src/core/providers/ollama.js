@@ -126,7 +126,7 @@ function createOllamaProvider({ getConfig, fetch: fetchImpl, statusTimeoutMs = 4
   function resolveModel(hints = {}) {
     const main = model();
     const avoid = hints.avoid || null;
-    // plan() asks for the fast model when the main one is cooling down or slow: honored only when the fast model can serve the turn
+    // plan() asks for the fast model (prefer: 'fast') only for single-step voice turns: honored only when the fast model can serve the turn
     if (hints.prefer === 'fast' && auto() && fastModel() && fastModel() !== main && fastModel() !== avoid
       && (!lastTags || lastTags.has(fastModel())) && (!lastModels || lastModels.find(m => m.name === fastModel())?.caps.includes('tools'))) return fastModel();
     if (auto() && hints.tier === 'fast' && fastModel() && fastModel() !== main && fastModel() !== avoid) {
