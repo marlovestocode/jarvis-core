@@ -120,7 +120,7 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
       examples: ['is it raining outside','how hot cold is it temperature','do I need an umbrella or a jacket','will it snow this weekend forecast'],   // wording the ranker matches requests against (skills/rank.js)
       hint: 'get_weather: current weather and forecast; omit place for home. Use for rain tomorrow, temperatures, wind and air quality.',
       description: 'Live weather: current conditions and up to a 7-day forecast (highs, lows, rain chance, wind, UV, air quality). Default place is the user\'s home.',
-      params: obj({ place: { type: 'string', description: 'City, e.g. "Dallas" or "Springfield, IL". Omit for home.' }, days: { type: 'integer', minimum: 1, maximum: 7 }, hourly: { type: 'boolean', description: 'Include the next 12 hours.' } }),
+      params: obj({ place: { type: 'string', description: 'City, e.g. "Dallas" or "Springfield, IL". Omit for home.' }, days: { description: 'forecast days, 1 to 7 (default 2)', type: 'integer', minimum: 1, maximum: 7 }, hourly: { type: 'boolean', description: 'Include the next 12 hours.' } }),
       timeoutMs: 20000,
       run: guard(async args => {
         const p = await place(args);
@@ -133,7 +133,7 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
       name: 'weather_alerts', untrusted: true,
       hint: 'weather_alerts: active US weather watches and warnings; omit place for home.',
       description: 'Active US National Weather Service watches, warnings and advisories for a place (default home).',
-      params: obj({ place: { type: 'string' } }),
+      params: obj({ place: { description: 'US city, e.g. "Dallas"; omit for home', type: 'string' } }),
       timeoutMs: 20000,
       run: guard(async args => {
         const p = await place(args);
@@ -149,7 +149,7 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
       examples: ['what is in the news','latest headlines today'],   // wording the ranker matches requests against (skills/rank.js)
       hint: 'news_headlines: current news; optionally topic and count.',
       description: 'Latest news headlines from the user\'s news feeds, optionally about a topic.',
-      params: obj({ topic: { type: 'string' }, count: { type: 'integer', minimum: 1, maximum: 20 } }),
+      params: obj({ topic: { description: 'only headlines about this topic; omit for all', type: 'string' }, count: { description: 'how many headlines, 1 to 20 (default 8)', type: 'integer', minimum: 1, maximum: 20 } }),
       timeoutMs: 20000,
       run: guard(async args => {
         const h = await getHeadlines(fetcher, { topic: args.topic, count: args.count || 8, feeds: getConfig().news?.feeds || [] });
@@ -162,7 +162,7 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
       examples: ['did the team win','game score last night','who won the match'],   // wording the ranker matches requests against (skills/rank.js)
       hint: 'sports_scores: live/final scores and next game; specify team and league, e.g. Cowboys/nfl.',
       description: 'Live and final scores, and the next game, from ESPN. Leagues: nfl, nba, mlb, nhl, cfb, mls, epl. With no team or league: the user\'s followed teams.',
-      params: obj({ team: { type: 'string', description: 'Team name, city or abbreviation, e.g. "Cowboys".' }, league: { type: 'string', enum: ['nfl', 'nba', 'mlb', 'nhl', 'cfb', 'mls', 'epl'] } }),
+      params: obj({ team: { type: 'string', description: 'Team name, city or abbreviation, e.g. "Cowboys".' }, league: { description: 'nfl, nba, mlb, nhl, cfb, mls or epl; omit to search the followed leagues', type: 'string', enum: ['nfl', 'nba', 'mlb', 'nhl', 'cfb', 'mls', 'epl'] } }),
       timeoutMs: 20000,
       run: guard(async args => {
         const s = await getScores(fetcher, { team: args.team, league: args.league }, getConfig());
@@ -182,7 +182,7 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
       name: 'read_article', untrusted: true,
       hint: 'read_article: follow-ups on an article title, optionally a section.',
       description: 'Read a longer extract of one Wikipedia article, optionally one section, for follow-up questions.',
-      params: obj({ title: { type: 'string' }, section: { type: 'string' } }, ['title']),
+      params: obj({ title: { description: 'Wikipedia article title', type: 'string' }, section: { description: 'section heading within the article, optional', type: 'string' } }, ['title']),
       timeoutMs: 30000,
       run: guard(readArticle),
     },

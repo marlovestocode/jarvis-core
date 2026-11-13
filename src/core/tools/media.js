@@ -38,7 +38,7 @@ function createMediaTool({ fetch = globalThis.fetch, timeoutMs = 3000, service }
       hint: MEDIA_CONTROL_HINT,
       mistakes: MEDIA_MISTAKES,
       description: 'Control media playback on this PC with media keys: play/pause, next, previous, stop, mute, volume up/down.',
-      params: { type: 'object', properties: { action: { type: 'string', enum: ACTIONS } }, required: ['action'], additionalProperties: false },
+      params: { type: 'object', properties: { action: { description: 'media key to press', type: 'string', enum: ACTIONS } }, required: ['action'], additionalProperties: false },
       run: (args = {}) => pressKey(fetch, args.action, timeoutMs),
     };
   }
@@ -50,13 +50,13 @@ function createMediaTool({ fetch = globalThis.fetch, timeoutMs = 3000, service }
     params: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: [...CONTROLS, ...ACTIONS.filter(a => !CONTROLS.includes(a))] },
+        action: { description: 'what to do; seek needs to or by, volume needs set or by, shuffle takes on, repeat takes mode', type: 'string', enum: [...CONTROLS, ...ACTIONS.filter(a => !CONTROLS.includes(a))] },
         app: { type: 'string', description: 'player to control; omit for the one playing' },
         to: { type: 'number', description: 'seek: absolute position in seconds' },
         by: { type: 'number', description: 'seek: relative seconds (negative = back); volume: percent points' },
         set: { type: 'number', description: 'volume: 0-100 percent' },
         on: { type: 'boolean', description: 'shuffle on/off' },
-        mode: { type: 'string', enum: ['none', 'track', 'list'] },
+        mode: { description: 'repeat: none, track (repeat one song) or list (repeat the queue); default track', type: 'string', enum: ['none', 'track', 'list'] },
       },
       required: ['action'],
       additionalProperties: false,
@@ -119,7 +119,7 @@ function createYtMusicTool({ ytm }) {
     params: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['play', 'play_next', 'add_to_queue', 'up_next', 'clear_queue', 'like', 'dislike', 'play_secret', 'reveal_secret', 'queue_random', 'play_random'] },
+        action: { description: 'what to do; play, play_next and add_to_queue need query', type: 'string', enum: ['play', 'play_next', 'add_to_queue', 'up_next', 'clear_queue', 'like', 'dislike', 'play_secret', 'reveal_secret', 'queue_random', 'play_random'] },
         query: { type: 'string', description: 'for play / play_next / add_to_queue' },
         secret: { type: 'boolean', description: 'true to hide the title from the result and remember it as a secret pick' },
         index: { type: 'number', description: 'for play_secret: which secret pick, 1 is the first' },

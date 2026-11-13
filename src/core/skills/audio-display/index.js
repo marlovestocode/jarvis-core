@@ -23,7 +23,7 @@ function createAudioDisplayTools({ host }) {
     name: 'audio_output_set', risk: 'safe',
     hint: 'audio_output_set: see audio_devices.',
     description: 'Switch the default sound output device by name, e.g. "headphones" or "speakers".',
-    params: obj({ name: { type: 'string' } }, ['name']),
+    params: obj({ name: { description: 'device name or a word from it, e.g. "headphones"', type: 'string' } }, ['name']),
     async run({ name } = {}) {
       const q = String(name || '').trim();
       if (!q) throw new Error('Which output device?');
@@ -44,7 +44,7 @@ function createAudioDisplayTools({ host }) {
     name: 'brightness_set', risk: 'safe',
     hint: 'brightness_set: see audio_devices.',
     description: 'Set the laptop screen brightness: percent (0-100) or by (a change such as -10). Built-in panels only.',
-    params: obj({ percent: { type: 'number' }, by: { type: 'number' } }),
+    params: obj({ percent: { description: 'brightness to set, 0 to 100', type: 'number' }, by: { description: 'change in percent points, e.g. -10; use this or percent', type: 'number' } }),
     async run({ percent, by } = {}) {
       if (!Number.isFinite(percent) && !Number.isFinite(by)) throw new Error('Say a percent, or by how much to change it');
       const cur = await host.brightness();
@@ -73,7 +73,7 @@ function createAudioDisplayTools({ host }) {
     name: 'night_light', risk: 'safe',
     hint: 'night_light: see audio_devices.',
     description: 'Turn the Windows night light (blue light filter) on or off.',
-    params: obj({ on: { type: 'boolean' } }, ['on']),
+    params: obj({ on: { description: 'true for on, false for off', type: 'boolean' } }, ['on']),
     async run({ on } = {}) {
       if (typeof on !== 'boolean') throw new Error('Say on or off');
       const set = await host.nightLight(on);

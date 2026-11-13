@@ -17,11 +17,11 @@ function createMonitorTools({ getConfig, applySettings }) {
     params: {
       type: 'object',
       properties: {
-        monitor: { type: 'string', enum: ['timers', 'system'] },
-        enabled: { type: 'boolean' },
-        metric: { type: 'string', enum: ['cpu', 'ram', 'disk', 'temp'] },
-        limit: { type: 'number' },
-        leadMin: { type: 'number' },
+        monitor: { description: 'timers: heads-up before a timer ends; system: CPU, RAM, disk or temperature warnings', type: 'string', enum: ['timers', 'system'] },
+        enabled: { description: 'true to turn this warning on, false to turn it off', type: 'boolean' },
+        metric: { description: 'system only: cpu, ram, disk or temp; goes with limit', type: 'string', enum: ['cpu', 'ram', 'disk', 'temp'] },
+        limit: { description: 'system only: warn above this level, a percent (degrees for temp); needs metric', type: 'number' },
+        leadMin: { description: 'timers only: how many minutes before a timer ends to warn', type: 'number' },
       },
       required: ['monitor'],
       additionalProperties: false,

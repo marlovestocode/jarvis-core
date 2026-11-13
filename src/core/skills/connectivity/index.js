@@ -42,7 +42,7 @@ function createConnectivityTools({ host, confirm }) {
     name: 'wifi_set', risk: 'confirm',
     hint: 'wifi_set: see connectivity_status.',
     description: 'Turn Wi-Fi on or off. Asks the user first (turning it off can cut the connection JARVIS uses).',
-    params: obj({ on: { type: 'boolean' } }, ['on']),
+    params: obj({ on: { description: 'true for on, false for off', type: 'boolean' } }, ['on']),
     async run({ on } = {}) {
       if (typeof on !== 'boolean') throw new Error('Say on or off');
       return confirm.propose({
@@ -61,7 +61,7 @@ function createConnectivityTools({ host, confirm }) {
     name: 'bluetooth_set', risk: 'safe',
     hint: 'bluetooth_set: see connectivity_status.',
     description: 'Turn Bluetooth on or off.',
-    params: obj({ on: { type: 'boolean' } }, ['on']),
+    params: obj({ on: { description: 'true for on, false for off', type: 'boolean' } }, ['on']),
     async run({ on } = {}) {
       if (typeof on !== 'boolean') throw new Error('Say on or off');
       await host.setBluetooth(on);
@@ -75,7 +75,7 @@ function createConnectivityTools({ host, confirm }) {
     name: 'power_plan_set', risk: 'confirm',
     hint: 'power_plan_set: see connectivity_status.',
     description: 'Switch the Windows power plan by name, e.g. "power saver" or "high performance". Asks the user first.',
-    params: obj({ name: { type: 'string' } }, ['name']),
+    params: obj({ name: { description: 'plan name, e.g. "power saver", "balanced" or "high performance"', type: 'string' } }, ['name']),
     async run({ name } = {}) {
       const q = String(name || '').trim();
       if (!q) throw new Error('Which power plan?');
@@ -99,7 +99,7 @@ function createConnectivityTools({ host, confirm }) {
     name: 'focus_assist', risk: 'safe',
     hint: 'focus_assist: see connectivity_status.',
     description: 'Turn focus assist (do not disturb) on or off.',
-    params: obj({ on: { type: 'boolean' } }, ['on']),
+    params: obj({ on: { description: 'true for on, false for off', type: 'boolean' } }, ['on']),
     async run({ on } = {}) {
       if (typeof on !== 'boolean') throw new Error('Say on or off');
       const set = await host.focusAssist(on);

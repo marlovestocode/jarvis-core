@@ -25,12 +25,15 @@
       "type": "object",
       "properties": {
         "id": {
+          "description": "the timer id",
           "type": "string"
         },
         "label": {
+          "description": "the label or name of the timer, alarm or reminder to cancel",
           "type": "string"
         },
         "all": {
+          "description": "true to cancel every timer, alarm and reminder",
           "type": "boolean"
         }
       },
@@ -46,6 +49,7 @@
       "type": "object",
       "properties": {
         "name": {
+          "description": "app name as the user says it, e.g. \"Spotify\"",
           "type": "string"
         }
       },
@@ -118,6 +122,7 @@
       "type": "object",
       "properties": {
         "paths": {
+          "description": "file or folder path, or a list of them",
           "anyOf": [
             {
               "type": "string"
@@ -158,6 +163,7 @@
           "description": "point"
         },
         "order": {
+          "description": "1 for the first derivative (default), 2 for the second",
           "type": "integer",
           "enum": [
             1,
@@ -181,9 +187,11 @@
       "type": "object",
       "properties": {
         "query": {
+          "description": "name words (all must match) or a pattern like \"*.pdf\"",
           "type": "string"
         },
         "folder": {
+          "description": "only look inside this folder, optional",
           "type": "string"
         }
       },
@@ -202,9 +210,11 @@
       "type": "object",
       "properties": {
         "title": {
+          "description": "words from the window title",
           "type": "string"
         },
         "app": {
+          "description": "app name; use this or title",
           "type": "string"
         }
       },
@@ -265,6 +275,7 @@
           "description": "City, e.g. \"Dallas\" or \"Springfield, IL\". Omit for home."
         },
         "days": {
+          "description": "forecast days, 1 to 7 (default 2)",
           "type": "integer",
           "minimum": 1,
           "maximum": 7
@@ -383,6 +394,7 @@
       "type": "object",
       "properties": {
         "action": {
+          "description": "what to do; seek needs to or by, volume needs set or by, shuffle takes on, repeat takes mode",
           "type": "string",
           "enum": [
             "play",
@@ -424,6 +436,7 @@
           "description": "shuffle on/off"
         },
         "mode": {
+          "description": "repeat: none, track (repeat one song) or list (repeat the queue); default track",
           "type": "string",
           "enum": [
             "none",
@@ -458,6 +471,7 @@
       "type": "object",
       "properties": {
         "from": {
+          "description": "file path, pattern like \"Downloads/*.pdf\", or a list of them",
           "anyOf": [
             {
               "type": "string"
@@ -471,6 +485,7 @@
           ]
         },
         "to": {
+          "description": "destination folder",
           "type": "string"
         }
       },
@@ -541,9 +556,11 @@
       "type": "object",
       "properties": {
         "topic": {
+          "description": "only headlines about this topic; omit for all",
           "type": "string"
         },
         "count": {
+          "description": "how many headlines, 1 to 20 (default 8)",
           "type": "integer",
           "minimum": 1,
           "maximum": 20
@@ -561,6 +578,7 @@
       "type": "object",
       "properties": {
         "name": {
+          "description": "app name as the user says it, e.g. \"Spotify\"",
           "type": "string"
         }
       },
@@ -579,6 +597,7 @@
       "type": "object",
       "properties": {
         "path": {
+          "description": "file or folder path, e.g. \"Documents/report.pdf\"",
           "type": "string"
         }
       },
@@ -616,6 +635,7 @@
       "type": "object",
       "properties": {
         "mode": {
+          "description": "shutdown, restart or sleep",
           "type": "string",
           "enum": [
             "shutdown",
@@ -639,9 +659,11 @@
       "type": "object",
       "properties": {
         "title": {
+          "description": "Wikipedia article title",
           "type": "string"
         },
         "section": {
+          "description": "section heading within the article, optional",
           "type": "string"
         }
       },
@@ -679,9 +701,11 @@
       "type": "object",
       "properties": {
         "at": {
+          "description": "clock time, e.g. \"7:30 am\" or \"tomorrow at 9\"",
           "type": "string"
         },
         "label": {
+          "description": "what the alarm is for, optional",
           "type": "string"
         }
       },
@@ -700,12 +724,15 @@
       "type": "object",
       "properties": {
         "text": {
+          "description": "what to remind the user of, without \"remind me to\"",
           "type": "string"
         },
         "at": {
+          "description": "clock time to remind, e.g. \"5pm\" or \"tomorrow at 9\"; or give in instead",
           "type": "string"
         },
         "in": {
+          "description": "delay before reminding, e.g. \"20 minutes\"; or give at instead",
           "type": "string"
         }
       },
@@ -724,6 +751,7 @@
       "type": "object",
       "properties": {
         "percent": {
+          "description": "volume, 0 to 100",
           "type": "number"
         }
       },
@@ -742,12 +770,15 @@
       "type": "object",
       "properties": {
         "seconds": {
+          "description": "countdown length in seconds; or give duration_text instead",
           "type": "number"
         },
         "duration_text": {
+          "description": "countdown length in words, e.g. \"10 minutes\" or \"1 hour 30 minutes\"",
           "type": "string"
         },
         "label": {
+          "description": "what the timer is for, optional",
           "type": "string"
         }
       },
@@ -798,6 +829,7 @@
           "description": "Team name, city or abbreviation, e.g. \"Cowboys\"."
         },
         "league": {
+          "description": "nfl, nba, mlb, nhl, cfb, mls or epl; omit to search the followed leagues",
           "type": "string",
           "enum": [
             "nfl",
@@ -822,12 +854,14 @@
       "type": "object",
       "properties": {
         "values": {
+          "description": "the numbers to describe",
           "type": "array",
           "items": {
             "type": "number"
           }
         },
         "y": {
+          "description": "optional second list, same length as values, for a least-squares line of y on values",
           "type": "array",
           "items": {
             "type": "number"
@@ -860,6 +894,7 @@
       "type": "object",
       "properties": {
         "place": {
+          "description": "US city, e.g. \"Dallas\"; omit for home",
           "type": "string"
         }
       },
@@ -875,6 +910,7 @@
       "type": "object",
       "properties": {
         "action": {
+          "description": "what to do; play, play_next and add_to_queue need query",
           "type": "string",
           "enum": [
             "play",
@@ -989,6 +1025,7 @@
       "type": "object",
       "properties": {
         "op": {
+          "description": "add: put songs in; add_current: add the playing song; undo: reverse the last add",
           "type": "string",
           "enum": [
             "add",

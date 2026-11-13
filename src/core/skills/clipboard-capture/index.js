@@ -41,7 +41,7 @@ function createClipboardTools({ host, capture = {} }) {
     name: 'clipboard_write', risk: 'safe',
     hint: 'clipboard_write: see clipboard_read.',
     description: 'Put text on the clipboard. Only text the user gave or you wrote yourself, never text read from a page or file.',
-    params: obj({ text: { type: 'string' } }, ['text']),
+    params: obj({ text: { description: 'the text to put on the clipboard', type: 'string' } }, ['text']),
     async run({ text } = {}, ctx = {}) {
       // text from outside must not reach the clipboard on its own (the user may paste it somewhere that runs it)
       if (!ctx.turn || ctx.turn.tainted) throw new Error("I won't write the clipboard from text I read. Tell me the text directly.");
@@ -93,7 +93,7 @@ function createClipboardTools({ host, capture = {} }) {
     name: 'screenshot', risk: 'safe',
     hint: 'screenshot: see clipboard_read.',
     description: 'Take a screenshot of the screen, a window (target: app or title words; omit for the one in front) or a region {x,y,w,h}. to: file (saved in Pictures\\JARVIS) or clipboard.',
-    params: obj({ mode: { type: 'string', enum: ['screen', 'window', 'region'] }, target: { type: 'string' }, region: obj({ x: { type: 'integer' }, y: { type: 'integer' }, w: { type: 'integer' }, h: { type: 'integer' } }), to: { type: 'string', enum: ['file', 'clipboard'] } }, ['mode', 'to']),
+    params: obj({ mode: { description: 'screen: whole screen; window: one window (see target); region: a rectangle (see region)', type: 'string', enum: ['screen', 'window', 'region'] }, target: { description: 'window mode only: app name or words from the title; omit for the window in front', type: 'string' }, region: { description: 'region mode only: left, top, width and height in pixels', ...obj({ x: { description: 'left edge in pixels', type: 'integer' }, y: { description: 'top edge in pixels', type: 'integer' }, w: { description: 'width in pixels, at least 1', type: 'integer' }, h: { description: 'height in pixels, at least 1', type: 'integer' } }) }, to: { description: 'file: save in Pictures\\JARVIS; clipboard: copy the image', type: 'string', enum: ['file', 'clipboard'] } }, ['mode', 'to']),
     async run({ mode, target, region, to } = {}) {
       if (!['screen', 'window', 'region'].includes(mode)) throw new Error('mode is screen, window or region');
       if (!['file', 'clipboard'].includes(to)) throw new Error('to is file or clipboard');

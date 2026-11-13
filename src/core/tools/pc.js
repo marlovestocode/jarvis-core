@@ -68,7 +68,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
     name: 'open_app', risk: 'safe',
     hint: 'open_app: open an installed app by name. close_app: close one (asks first). focus_window / list_windows: switch to or list open windows.',
     description: 'Open an installed app by name, e.g. "Spotify" or "Visual Studio Code". Only Start menu apps and apps listed in settings.',
-    params: obj({ name: { type: 'string' } }, ['name']),
+    params: obj({ name: { description: 'app name as the user says it, e.g. "Spotify"', type: 'string' } }, ['name']),
     async run({ name } = {}) {
       const e = await appEntry(String(name || ''));
       const before = new Set((await host.windows()).map(w => w.hwnd));
@@ -83,7 +83,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
     name: 'close_app', risk: 'confirm',
     hint: 'close_app: see open_app.',
     description: 'Close an app by name. Asks the user first; a force close needs a second yes.',
-    params: obj({ name: { type: 'string' } }, ['name']),
+    params: obj({ name: { description: 'app name as the user says it, e.g. "Spotify"', type: 'string' } }, ['name']),
     async run({ name } = {}) {
       name = String(name || '').trim();
       if (!name) throw new Error('Which app should I close?');
@@ -115,7 +115,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
     name: 'focus_window', risk: 'safe',
     hint: 'focus_window: see open_app.',
     description: 'Bring an open window to the front, by app name or by words in its title.',
-    params: obj({ title: { type: 'string' }, app: { type: 'string' } }),
+    params: obj({ title: { description: 'words from the window title', type: 'string' }, app: { description: 'app name; use this or title', type: 'string' } }),
     async run({ title, app } = {}) {
       const q = String(title || app || '').trim();
       if (!q) throw new Error('Say which window: an app name or words from its title');
@@ -142,7 +142,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
     name: 'find_files', risk: 'safe', untrusted: true,
     hint: 'find_files: find files by name in Desktop, Documents, Downloads, Projects (read-only). open_path: open one of those files or folders.',
     description: `Find files by name words or a pattern like "*.pdf" in ${where}. folder narrows it. Read-only, at most 10 results.`,
-    params: obj({ query: { type: 'string' }, folder: { type: 'string' } }, ['query']),
+    params: obj({ query: { description: 'name words (all must match) or a pattern like "*.pdf"', type: 'string' }, folder: { description: 'only look inside this folder, optional', type: 'string' } }, ['query']),
     async run({ query, folder } = {}) {
       const q = String(query || '').trim();
       if (!q) throw new Error('What should I look for?');
@@ -173,7 +173,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
     name: 'open_path', risk: 'safe',
     hint: 'open_path: see find_files.',
     description: `Open a file or folder in ${where} with its usual app. Programs are not opened this way.`,
-    params: obj({ path: { type: 'string' } }, ['path']),
+    params: obj({ path: { description: 'file or folder path, e.g. "Documents/report.pdf"', type: 'string' } }, ['path']),
     async run({ path: raw } = {}) {
       const p = safe(raw);
       let st;
@@ -214,7 +214,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
     name: 'move_files', risk: 'confirm',
     hint: 'move_files: move files between those folders (asks first). delete_to_recycle_bin: send files to the Recycle Bin (asks first). undo_last: move the last moved files back (asks first).',
     description: `Move files within ${where}. from: paths or a pattern like "Downloads/*.pdf"; to: a folder. Asks the user first.`,
-    params: obj({ from: { anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] }, to: { type: 'string' } }, ['from', 'to']),
+    params: obj({ from: { description: 'file path, pattern like "Downloads/*.pdf", or a list of them', anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] }, to: { description: 'destination folder', type: 'string' } }, ['from', 'to']),
     async run({ from, to } = {}) {
       const dest = safe(to);
       if (exists(dest) && !fs.statSync(dest).isDirectory()) throw new Error(`${disp(dest)} is a file, not a folder`);
@@ -251,7 +251,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
     name: 'delete_to_recycle_bin', risk: 'confirm',
     hint: 'delete_to_recycle_bin: see move_files.',
     description: `Send files or folders in ${where} to the Recycle Bin (they can be restored). Asks the user first.`,
-    params: obj({ paths: { anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] } }, ['paths']),
+    params: obj({ paths: { description: 'file or folder path, or a list of them', anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] } }, ['paths']),
     async run({ paths } = {}) {
       const list = [...new Set([].concat(paths || []).map(p => {
         const r = safe(p);
@@ -346,7 +346,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
     name: 'set_system_volume', risk: 'safe',
     hint: 'set_system_volume: Windows volume in percent. lock_screen: lock the PC. power: shutdown, restart or sleep (asks first).',
     description: 'Set the Windows system volume to a percent, 0 to 100.',
-    params: obj({ percent: { type: 'number' } }, ['percent']),
+    params: obj({ percent: { description: 'volume, 0 to 100', type: 'number' } }, ['percent']),
     async run({ percent } = {}) {
       if (!Number.isFinite(percent) || percent < 0 || percent > 100) throw new Error('Volume is 0 to 100 percent');
       if (!media) throw new Error('Volume control is not available right now');
@@ -373,7 +373,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
     name: 'power', risk: 'confirm',
     hint: 'power: see set_system_volume.',
     description: 'Shut down, restart or sleep the PC. Asks the user first.',
-    params: obj({ mode: { type: 'string', enum: ['shutdown', 'restart', 'sleep'] } }, ['mode']),
+    params: obj({ mode: { description: 'shutdown, restart or sleep', type: 'string', enum: ['shutdown', 'restart', 'sleep'] } }, ['mode']),
     async run({ mode } = {}) {
       if (!POWER_ASK[mode]) throw new Error('Say shutdown, restart or sleep');
       return confirm.propose({

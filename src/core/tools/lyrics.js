@@ -10,7 +10,7 @@ function createLyricsTools({ lyrics }) {
       name: 'get_lyrics',
       hint: 'get_lyrics: lyrics of a song (title, artist; none = the song playing). To answer what a song says. NEVER write out or recite lyrics yourself, from memory or otherwise: the user gets the real, full text on screen by saying "lyrics for <song> by <artist>" (or "lyrics for this"), so tell them that.',
       description: 'The lyrics of a song, from LRCLIB. No arguments = the song playing now. For "show me the lyrics" the user can say "lyrics for <song> by <artist>" and they are put on screen in full; use this tool to answer questions about what a song says.',
-      params: { type: 'object', properties: { title: { type: 'string', description: 'Song title. Leave out for the song playing now.' }, artist: { type: 'string' } }, additionalProperties: false },
+      params: { type: 'object', properties: { title: { type: 'string', description: 'Song title. Leave out for the song playing now.' }, artist: { description: 'artist name, to pick the right song; only with title', type: 'string' } }, additionalProperties: false },
       async run(args = {}) {
         const r = await lyrics.get(args.title ? { title: String(args.title), artist: args.artist ? String(args.artist) : '' } : { current: true });
         if (!r.ok) return r.reason === 'nothing-playing' ? 'Nothing is playing. Ask the user which song.' : r.reason === 'instrumental' ? `${named(r.rec)} is an instrumental: no lyrics.` : r.reason === 'not-found' ? `No lyrics found for ${named(r.want)}. Say so; do not recite them from memory.` : `The lyrics service did not answer (${r.message || 'error'}).`;

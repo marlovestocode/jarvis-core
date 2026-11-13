@@ -141,7 +141,7 @@ function createYtEditTool({ playlists }) {
     params: {
       type: 'object',
       properties: {
-        op: { type: 'string', enum: ['add', 'add_current', 'undo'] },
+        op: { description: 'add: put songs in; add_current: add the playing song; undo: reverse the last add', type: 'string', enum: ['add', 'add_current', 'undo'] },
         playlist: { type: 'string', description: 'playlist name or id (not for undo)' },
         songs: { type: 'array', items: { type: 'string' }, description: 'for add: songs as the user said them, e.g. "stronger by kanye west"' },
         allowDuplicate: { type: 'boolean', description: 'only when the user asks for a second copy' },

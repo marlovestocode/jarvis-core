@@ -53,7 +53,7 @@ function createWindowsTools({ host, confirm, actionLog, waitMs = 5000, pollMs = 
     name: 'window_arrange', risk: 'safe',
     hint: 'window_arrange: snap, maximize, minimize, restore or center a window. window_to_monitor: move it to another monitor. desktop_switch / window_to_desktop: virtual desktops. end_unresponsive_app: end a hung app (asks first). Say it is done only when the result says so.',
     description: `Snap, maximize, minimize, restore or center a window. layout: ${LAYOUTS.join(', ')}. target: app or title words; omit for the window in front.`,
-    params: obj({ target: { type: 'string' }, layout: { type: 'string', enum: LAYOUTS } }, ['layout']),
+    params: obj({ target: { description: 'app name or words from the title; omit for the window in front', type: 'string' }, layout: { description: 'where to put the window or which state to give it', type: 'string', enum: LAYOUTS } }, ['layout']),
     async run({ target, layout } = {}) {
       if (!LAYOUTS.includes(layout)) throw new Error(`Unknown layout "${layout}". Layouts: ${LAYOUTS.join(', ')}.`);
       const w = await pick(target);
@@ -81,7 +81,7 @@ function createWindowsTools({ host, confirm, actionLog, waitMs = 5000, pollMs = 
     name: 'window_to_monitor', risk: 'safe',
     hint: 'window_to_monitor: see window_arrange.',
     description: 'Move a window to monitor number N, or to the "next" monitor. target: app or title words; omit for the window in front.',
-    params: obj({ target: { type: 'string' }, monitor: { anyOf: [{ type: 'integer', minimum: 1 }, { type: 'string', enum: ['next'] }] } }, ['monitor']),
+    params: obj({ target: { description: 'app name or words from the title; omit for the window in front', type: 'string' }, monitor: { description: 'monitor number from 1, or "next"', anyOf: [{ type: 'integer', minimum: 1 }, { type: 'string', enum: ['next'] }] } }, ['monitor']),
     async run({ target, monitor } = {}) {
       const ms = await host.monitors();
       if (!ms.length) throw new Error('I cannot read the monitors');
@@ -105,7 +105,7 @@ function createWindowsTools({ host, confirm, actionLog, waitMs = 5000, pollMs = 
     name: 'desktop_switch', risk: 'safe',
     hint: 'desktop_switch: see window_arrange.',
     description: 'Switch virtual desktop: "next" or "previous". A number is only possible where Windows allows it; the result says so.',
-    params: obj({ to: { anyOf: [{ type: 'string', enum: ['next', 'previous'] }, { type: 'integer', minimum: 1 }] } }, ['to']),
+    params: obj({ to: { description: '"next", "previous", or a desktop number from 1', anyOf: [{ type: 'string', enum: ['next', 'previous'] }, { type: 'integer', minimum: 1 }] } }, ['to']),
     async run({ to } = {}) {
       if (to !== 'next' && to !== 'previous' && !(Number.isInteger(to) && to >= 1 && to <= 20)) throw new Error('Say next, previous, or a desktop number from 1 to 20');
       if (!(await host.desktopSwitch(to))) throw new Error(`Windows stayed on the same desktop; there may be no ${typeof to === 'number' ? `desktop ${to}` : `${to} desktop`}`);
@@ -117,7 +117,7 @@ function createWindowsTools({ host, confirm, actionLog, waitMs = 5000, pollMs = 
     name: 'window_to_desktop', risk: 'safe',
     hint: 'window_to_desktop: see window_arrange.',
     description: 'Move a window to virtual desktop number N, where Windows allows it; the result says if not. target: app or title words; omit for the window in front.',
-    params: obj({ target: { type: 'string' }, desktop: { type: 'integer', minimum: 1 } }, ['desktop']),
+    params: obj({ target: { description: 'app name or words from the title; omit for the window in front', type: 'string' }, desktop: { description: 'virtual desktop number, from 1', type: 'integer', minimum: 1 } }, ['desktop']),
     async run({ target, desktop } = {}) {
       if (!(Number.isInteger(desktop) && desktop >= 1 && desktop <= 20)) throw new Error('Say a desktop number from 1 to 20');
       const w = await pick(target);
@@ -130,7 +130,7 @@ function createWindowsTools({ host, confirm, actionLog, waitMs = 5000, pollMs = 
     name: 'end_unresponsive_app', risk: 'confirm',
     hint: 'end_unresponsive_app: see window_arrange.',
     description: 'End an app Windows reports as not responding. Only for hung windows. Asks the user first; unsaved work is lost.',
-    params: obj({ name: { type: 'string' } }, ['name']),
+    params: obj({ name: { description: 'name of the app that is not responding', type: 'string' } }, ['name']),
     async run({ name } = {}) {
       name = String(name || '').trim();
       if (!name) throw new Error('Which app is frozen?');

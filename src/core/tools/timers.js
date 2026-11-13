@@ -29,7 +29,7 @@ function createTimerTools({ scheduler, now = Date.now }) {
     direct: true,   // its result is already a sentence: it is the reply, no second model call
     hint: 'set_timer: a countdown ("10 minutes"). set_alarm: a clock time. set_reminder: text plus at or in. list_timers / cancel_timer: see or cancel them. Read back the time the tool gives.',
     description: 'Start a countdown timer. Give seconds, or duration_text like "10 minutes"; label is optional.',
-    params: { type: 'object', properties: { seconds: { type: 'number' }, duration_text: { type: 'string' }, label: { type: 'string' } }, additionalProperties: false },
+    params: { type: 'object', properties: { seconds: { description: 'countdown length in seconds; or give duration_text instead', type: 'number' }, duration_text: { description: 'countdown length in words, e.g. "10 minutes" or "1 hour 30 minutes"', type: 'string' }, label: { description: 'what the timer is for, optional', type: 'string' } }, additionalProperties: false },
     async run({ seconds, duration_text: text, label = '' } = {}) {
       let ms = null;
       if (Number.isFinite(seconds) && seconds > 0) ms = seconds * 1000;
@@ -47,7 +47,7 @@ function createTimerTools({ scheduler, now = Date.now }) {
     direct: true,   // its result is already a sentence: it is the reply, no second model call
     hint: 'set_alarm: see set_timer.',
     description: 'Set an alarm for a clock time, e.g. at "7:30 am" or "tomorrow at 9". label is optional.',
-    params: { type: 'object', properties: { at: { type: 'string' }, label: { type: 'string' } }, required: ['at'], additionalProperties: false },
+    params: { type: 'object', properties: { at: { description: 'clock time, e.g. "7:30 am" or "tomorrow at 9"', type: 'string' }, label: { description: 'what the alarm is for, optional', type: 'string' } }, required: ['at'], additionalProperties: false },
     async run({ at, label = '' } = {}) {
       if (!at) throw new Error('What time should the alarm go off?');
       const t = scheduler.add({ kind: 'alarm', label, due: when(at) });
@@ -60,7 +60,7 @@ function createTimerTools({ scheduler, now = Date.now }) {
     direct: true,   // its result is already a sentence: it is the reply, no second model call
     hint: 'set_reminder: see set_timer.',
     description: 'Remind the user of something. text is what to remind; give at (a clock time) or in (a delay like "20 minutes").',
-    params: { type: 'object', properties: { text: { type: 'string' }, at: { type: 'string' }, in: { type: 'string' } }, required: ['text'], additionalProperties: false },
+    params: { type: 'object', properties: { text: { description: 'what to remind the user of, without "remind me to"', type: 'string' }, at: { description: 'clock time to remind, e.g. "5pm" or "tomorrow at 9"; or give in instead', type: 'string' }, in: { description: 'delay before reminding, e.g. "20 minutes"; or give at instead', type: 'string' } }, required: ['text'], additionalProperties: false },
     async run({ text, at, in: delay } = {}) {
       const what = String(text || '').trim().replace(/^to\s+/i, '');
       if (!what) throw new Error('What should I remind you about?');
@@ -93,7 +93,7 @@ function createTimerTools({ scheduler, now = Date.now }) {
     direct: true,   // its result is already a sentence: it is the reply, no second model call
     hint: 'cancel_timer: see set_timer.',
     description: 'Cancel a timer, alarm or reminder by label or id, or all of them with all: true.',
-    params: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' }, all: { type: 'boolean' } }, additionalProperties: false },
+    params: { type: 'object', properties: { id: { description: 'the timer id', type: 'string' }, label: { description: 'the label or name of the timer, alarm or reminder to cancel', type: 'string' }, all: { description: 'true to cancel every timer, alarm and reminder', type: 'boolean' } }, additionalProperties: false },
     async run({ id, label, all } = {}) {
       if (!all && !id && !label) {
         const list = scheduler.list();

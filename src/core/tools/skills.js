@@ -52,7 +52,7 @@ const integrateTool = {
 const diffTool = {
   name: 'differentiate',
   description: 'Numerical derivative (order 1 or 2) of an expression at a point.',
-  params: obj({ expression: str('e.g. "x^3*sin(x)"'), variable: str('default x'), at: num('point'), order: { type: 'integer', enum: [1, 2] } }, ['expression', 'at']),
+  params: obj({ expression: str('e.g. "x^3*sin(x)"'), variable: str('default x'), at: num('point'), order: { description: '1 for the first derivative (default), 2 for the second', type: 'integer', enum: [1, 2] } }, ['expression', 'at']),
   async run(a) {
     const r = differentiate(a.expression, { ...a, order: a.order || 1 });
     return `d${r.order === 2 ? '²' : ''}/d${r.variable}${r.order === 2 ? '²' : ''} of ${a.expression} at ${r.variable} = ${a.at} is ${f(r.value)}`;
@@ -63,7 +63,7 @@ const statsTool = {
   name: 'statistics',
   hint: 'statistics: mean, stdev, median, regression of data.',
   description: 'Statistics of a list of numbers: count, sum, mean, median, mode, min, max, quartiles, sample and population variance/stdev. Give y too for a least-squares line (slope, intercept, r²).',
-  params: obj({ values: { type: 'array', items: { type: 'number' } }, y: { type: 'array', items: { type: 'number' } } }, ['values']),
+  params: obj({ values: { description: 'the numbers to describe', type: 'array', items: { type: 'number' } }, y: { description: 'optional second list, same length as values, for a least-squares line of y on values', type: 'array', items: { type: 'number' } } }, ['values']),
   async run({ values, y }) {
     if (y) {
       const r = regression(values, y);
