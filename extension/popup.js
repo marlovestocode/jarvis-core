@@ -26,9 +26,29 @@ $('retry').addEventListener('click', () => {
 });
 refresh();
 
+// ---- keeping the music playing: one switch, read by keepalive.js in the music tab ----
+chrome.storage.local.get('autoConfirm').then(v => { $('autoconfirm').checked = v.autoConfirm !== false; }, () => {});
+$('autoconfirm').addEventListener('change', e => { chrome.storage.local.set({ autoConfirm: e.target.checked }); });
+
+// ---- everything JARVIS and the extension did, newest first ----
+function drawLog(list) {
+  const ul = $('log');
+  ul.textContent = '';
+  for (const e of [...(list || [])].reverse().slice(0, 40)) {
+    const li = document.createElement('li');
+    if (!e.ok) li.className = 'bad';
+    const t = document.createElement('time');
+    t.textContent = new Date(e.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    li.append(t, document.createTextNode(e.text));
+    ul.append(li);
+  }
+  if (!ul.children.length) ul.textContent = 'Nothing yet.';
+}
+chrome.runtime.sendMessage({ type: 'activity' }, drawLog);
+
 // ---- Browser control: optional permissions, requested from a click (Chrome requires a user gesture) ----
 const PERMS = [
-  { id: 'tabs-note', label: 'Tabs (always on)', fixed: true },
+  { id: 'tabs', label: 'Tab titles and addresses', req: { permissions: ['tabs'] } },
   { id: 'history', label: 'Browsing history', req: { permissions: ['history'] } },
   { id: 'bookmarks', label: 'Bookmarks', req: { permissions: ['bookmarks'] } },
   { id: 'downloads', label: 'Downloads list', req: { permissions: ['downloads'] } },

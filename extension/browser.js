@@ -48,6 +48,7 @@ export async function browserCommand(cmd, args, chromeApi) {
   const a = args && typeof args === 'object' ? args : {};
   switch (cmd) {
     case 'browser_tabs': {
+      await need(chromeApi, 'tabs', 'tab titles and addresses');   // without it Chrome hides every tab's title and address
       const tabs = await chromeApi.tabs.query({});
       return tabs.slice(0, MAX_TABS).map(cleanTab);
     }

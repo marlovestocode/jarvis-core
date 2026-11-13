@@ -36,6 +36,24 @@ Sign in to YouTube Music in Chrome as usual. Likes need a signed-in account.
 - JARVIS skips songs already in the playlist, asks when a song name fits two songs, and only says it's done after reading the playlist back. Needs extension version 1.2.0 (reload it).
 - Removing, moving and renaming come next.
 
+## Keeping the music playing (version 1.6.0)
+
+- YouTube Music sometimes stops a playlist with **"Video paused. Continue watching?"** or a **content notice**. The extension clicks the button that
+  confirms it, so the music goes on. It looks when the page changes (a MutationObserver), when the player pauses, and every 10 seconds as a backup.
+- It only confirms what your signed-in account is already allowed to accept ("Yes", "Continue watching", "I understand and wish to proceed").
+  It never signs in, never verifies an age with an ID or card, never enters a birth date, and leaves any dialog that says the video is unavailable for
+  your account alone. It stops after 4 confirmations in a minute, in case a page keeps asking.
+- Every confirmation, and every dialog it left alone, is in **Recent actions** in the popup and in JARVIS's log (`youtube prompt: …`).
+- Turn it off with the checkbox in the popup. It runs only on `music.youtube.com`.
+- Not tested against the live site: the dialog text and element names were written from how YouTube Music has looked, and checked against a mock page. If a
+  prompt is missed, the activity list will not show it; tell me what the dialog says and the match words in `extension/prompts.js` can be extended.
+
+## What the extension does is visible (version 1.6.0)
+
+- **Recent actions** in the popup lists every command JARVIS ran through the extension (what, how long, whether it worked), connection changes, and every prompt above. The toolbar icon shows a dot (green: worked, red: failed) for a few seconds after each one.
+- Permissions: `scripting`, `alarms`, `storage` and `music.youtube.com`. Everything else is optional and asked for in the popup, one at a time: tab titles and addresses (`tabs`, new in this version, was always on), history, bookmarks, downloads, searches, and reading page text on all sites.
+- Reconnecting: it retries with growing, jittered delays (2 s up to 30 s), tries the three ports at once, drops a link that has said nothing for 50 seconds, and keeps plays heard while JARVIS was away until it is back.
+
 ## Good to know
 
 - One tab: JARVIS uses your open YouTube Music tab. It opens one in the background only if none is open.

@@ -42,9 +42,10 @@ test('browser: unknown command is refused', async () => {
   await assert.rejects(browserCommand('constructor', {}, fakeChrome()), /Unknown browser command/);
 });
 
-test('browser_tabs: only the listed fields, no permission needed', async () => {
+test('browser_tabs: needs the optional tabs permission, then only the listed fields', async () => {
   const { browserCommand } = await load();
-  const r = await browserCommand('browser_tabs', {}, fakeChrome());
+  await assert.rejects(browserCommand('browser_tabs', {}, fakeChrome()), /permission not granted: tab titles and addresses/);
+  const r = await browserCommand('browser_tabs', {}, fakeChrome({ granted: ['tabs'] }));
   assert.deepEqual(r, [
     { id: 1, windowId: 7, title: 'Docs', url: 'https://docs.example.com/', active: true, pinned: false, audible: false },
     { id: 2, windowId: 7, title: 'YouTube', url: 'https://www.youtube.com/watch?v=1', active: false, pinned: true, audible: true },
@@ -179,9 +180,9 @@ test('browser: no command evaluates a string from JARVIS', () => {
 
 test('extension: manifest only asks for the browser permissions as optional, and the worker routes browser_ commands', () => {
   const m = JSON.parse(fs.readFileSync(path.join(__dirname, '../extension/manifest.json'), 'utf8'));
-  assert.deepEqual([...m.optional_permissions].sort(), ['bookmarks', 'downloads', 'history', 'search']);
+  assert.deepEqual([...m.optional_permissions].sort(), ['bookmarks', 'downloads', 'history', 'search', 'tabs']);
   assert.deepEqual(m.optional_host_permissions, ['<all_urls>']);
-  for (const p of ['history', 'bookmarks', 'downloads', 'search']) assert.ok(!m.permissions.includes(p), `${p} must not be a required permission`);
+  for (const p of ['history', 'bookmarks', 'downloads', 'search', 'tabs']) assert.ok(!m.permissions.includes(p), `${p} must not be a required permission`);
   assert.deepEqual(m.host_permissions, ['https://music.youtube.com/*']);
   assert.ok(Number(m.version.split('.')[1]) >= 4, `version ${m.version} was not bumped`);
   const bg = fs.readFileSync(path.join(__dirname, '../extension/background.js'), 'utf8');

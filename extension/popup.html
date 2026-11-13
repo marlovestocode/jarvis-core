@@ -14,6 +14,10 @@
   h2 { font-size: 12px; letter-spacing: .12em; margin: 16px 0 4px; color: #3fd7ff; }
   .perm { display: flex; justify-content: space-between; align-items: center; margin: 4px 0; }
   .perm button { width: auto; margin: 0; padding: 3px 8px; }
+  .opt { display: flex; gap: 8px; align-items: flex-start; margin: 12px 0 0; color: #cfe9f5; }
+  .opt input { width: auto; margin: 3px 0 0; }
+  #log { margin: 4px 0 0; padding: 0; list-style: none; max-height: 150px; overflow-y: auto; font-size: 11px; }
+  #log li { margin: 2px 0; color: #9fb7c4; } #log li.bad { color: #ff9a9a; } #log time { color: #5f7a89; margin-right: 6px; }
 </style>
 </head>
 <body>
@@ -25,6 +29,9 @@
   <input id="key" type="password" placeholder="Link key (JARVIS tray menu → Copy extension link key)" autocomplete="off">
   <button id="savekey">Save key and connect</button>
   <button id="retry">Reconnect</button>
+  <label class="opt"><input type="checkbox" id="autoconfirm"><span>Keep music playing: confirm "Still listening?" and content notices your account may accept. Never signs in or verifies age.</span></label>
+  <h2>Recent actions</h2>
+  <ul id="log"></ul>
   <h2>Browser control</h2>
   <div class="muted" style="margin-top:0">Off until you allow it, one permission at a time. Also needs the switch in JARVIS settings.</div>
   <div id="perms"></div>
