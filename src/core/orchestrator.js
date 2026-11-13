@@ -182,7 +182,8 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
     try {
       let s = sessionId ? sessions.load(sessionId) : null;
       if (!s) s = sessions.create();
-      s.messages.push({ role: 'user', content: String(text), at: Date.now() });
+      // a non-owner message is marked, so later owner turns never read it as their own (recall, follow-ups) and a guest window can leave out the rest
+      s.messages.push(owner ? { role: 'user', content: String(text), at: Date.now() } : { role: 'user', content: String(text), at: Date.now(), speaker });
       const turnStart = s.messages.length - 1;   // tool results before this message are old
       sessions.save(s);
       if (memoryBlock && !owner) lastRecall = null;   // not the owner: no correction of the owner's recall, nothing learned
@@ -193,8 +194,9 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       bus.emit('state', { state: 'thinking' });
 
       // a short answer to JARVIS's own question ("10 minutes") is routed and matched together with the request it answers
-      const asked0 = pendingAsk.get(s.id);
-      pendingAsk.delete(s.id);
+      // only the owner's turns read, clear or set it: a guest's request never merges into the owner's next answer, and the reverse
+      const asked0 = owner ? pendingAsk.get(s.id) : undefined;
+      if (owner) pendingAsk.delete(s.id);
       const routeText = asked0 && String(text).trim().split(/\s+/).length <= ASK_ANSWER_WORDS && !ASK_DROPPED.test(String(text)) ? `${asked0} ${String(text).trim()}` : String(text);
 
       // live state: resolve short follow-ups ("do it again", "pause") once; any failure leaves the turn unchanged
@@ -203,7 +205,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       if (live) {
         try {
           snap = live.snapshot();
-          fu = resolveFollowUp(String(text), snap) || null;
+          fu = owner ? resolveFollowUp(String(text), snap) || null : null;   // "again", "undo that": only the owner continues the owner's actions
           if (fu) bus.emit('followup', { kind: fu.kind });
         } catch (err) { fu = null; bus.emit('log', { level: 'warn', text: `Live state failed, continuing without it: ${err?.message || err}` }); }
       }
@@ -225,7 +227,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           const msg = { role: 'assistant', content: String(fp.record ?? reply) };
           if (fp.tool) msg.skill = String(fp.tool);   // the chat lists the skill above the reply, like a tool call
           if (!reply) msg.silent = true;
-          if (fp.ask) pendingAsk.set(s.id, routeText);
+          if (fp.ask && owner) pendingAsk.set(s.id, routeText);
           s.messages.push(msg);
           sessions.save(s);
           if (source !== 'voice') bus.emit('state', { state: 'idle' });
@@ -265,7 +267,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           bus.emit('clarify', { kind: d.action, reason: 'model' });
           bus.emit('token', { text: d.question });
           s.messages.push({ role: 'assistant', content: d.question });
-          if (d.action === 'ask') pendingAsk.set(s.id, routeText);
+          if (d.action === 'ask' && owner) pendingAsk.set(s.id, routeText);
           sessions.save(s);
           if (source !== 'voice') bus.emit('state', { state: 'idle' });
           return { reply: d.question, stopped: false, sessionId: s.id, skill: true };
@@ -309,7 +311,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       // the memory block is computed once and saved on the user message, so later turns send the same text (E6)
       let recalled = [];
       if (memoryBlock && owner) {
-        const prev = s.messages.slice(0, turnStart).reverse().find(m => m.role === 'user');
+        const prev = s.messages.slice(0, turnStart).reverse().find(m => m.role === 'user' && !m.speaker);
         try {
           const r = await memoryBlock.forTurn({ text: String(text), previousUserText: prev ? String(prev.content) : '', brief: hints?.tools === false, profileIds: info.memoryIds || [] });
           if (r?.memo) { s.messages[turnStart].memo = String(r.memo); s.messages[turnStart].memoIds = [...(r.ids || [])]; recalled = r.ids || []; sessions.save(s); }
@@ -358,7 +360,9 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           }
         }
         const toolChars = useTools ? Math.ceil(JSON.stringify(useTools).length * TOOL_CHAR_WEIGHT) : 0;
-        let window = fitWindow(s.messages.map((m, i) => (m.role === 'tool' ? { ...m, content: capText(m.content, i < turnStart ? TOOL_CHARS_OLD : TOOL_CHARS_NOW) }
+        // a guest sees this turn only: the owner's earlier chat stays in the saved session but is never sent
+        const base = speaker === 'guest' ? turnStart : 0;
+        let window = fitWindow(s.messages.slice(base).map((m, j) => (m.role === 'tool' ? { ...m, content: capText(m.content, base + j < turnStart ? TOOL_CHARS_OLD : TOOL_CHARS_NOW) }
           : m.role === 'user' && m.memo && speaker !== 'guest' ? { ...m, content: `${m.content}
 
 ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min(REPLY_CHARS, Math.floor((st.contextMax || 0) * CHARS_PER_TOKEN * REPLY_SHARE)), stamp ? stamp(turnNow).length + 2 : 0).map(m => {
@@ -531,7 +535,7 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
         try { memoryBlock.afterTurn({ ids: recalled, tainted: turn.tainted }); } catch { /* best effort */ }
         lastRecall = { sessionId: s.id, ids: recalled, tainted: turn.tainted };
       }
-      if (scope && !error && !stopped) {
+      if (scope && !error && !stopped && owner) {   // a non-owner turn never becomes what the owner's follow-up continues
         lastGroups.delete(s.id);   // newest last
         lastGroups.set(s.id, scope.loaded().filter(id => id !== 'core'));
         lastGroupsAt.set(s.id, Date.now());

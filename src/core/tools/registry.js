@@ -10,7 +10,32 @@ const { buildCatalog } = require('../skills');
 const { resolveInvented, closest } = require('./invented');
 const { checkArgs } = require('./args');
 
-const DIRECT_MAX = 300;      // a result longer than this still goes through the model
+const { speakerReason } = require('./speaker');
+
+// Guest turns (turn.speaker 'guest': speaker recognition heard a voice that is not the owner's) are DEFAULT DENY: only these
+// tools run, everything else is refused with the guest text, before its arguments are checked or its group is loaded. Allowed:
+// pure or public lookups that read nothing of the owner's (no memory, chats, music, media, timers, browser, clipboard, files,
+// windows, PC or system settings, JARVIS's own config and logs, analytics, tasks). A value names an argument the guest must give
+// itself: without it the tool would fall back to the owner's home or followed teams. A new tool stays denied until added here.
+const GUEST_TOOLS = new Map([
+  ['get_time', null], ['more_skills', null],
+  ['lookup_knowledge', null], ['read_article', null], ['web_search', null], ['web_open', null], ['news_headlines', null],
+  ['get_weather', 'place'], ['weather_alerts', 'place'], ['sports_scores', 'team'],
+  ['calculate', null], ['solve_equation', null], ['integrate', null], ['differentiate', null], ['statistics', null],
+  ['convert_units', null], ['physics_constant', null], ['date_calc', null],
+  ['find_song_by_lyric', null],
+]);
+// null = the tool may run for this turn; otherwise the refusal
+function guestRefusal(tool, args, ctx) {
+  if (ctx.turn?.speaker !== 'guest') return null;
+  if (!GUEST_TOOLS.has(tool.name)) return { ok: false, text: `Error: ${speakerReason(ctx.turn)}` };
+  const need = GUEST_TOOLS.get(tool.name);
+  const v = need && args && typeof args === 'object' ? args[need] : undefined;
+  if (need && !(typeof v === 'string' && v.trim())) return { ok: false, text: `Error: name the ${need}. For a guest I never use my owner's ${need === 'place' ? 'home' : 'teams'}.` };
+  return null;
+}
+
+const DIRECT_MAX = 300;     // a result longer than this still goes through the model
 const MAX_EXTRA_LOADS = 2;   // more_skills and auto-load share this cap per turn
 const norm = s => String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_').replace(/_?(?:skills?|group)$/, '');
 
@@ -43,17 +68,16 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
   const tainted = (tool, ctx) => (tool.risk === 'confirm' && (!ctx.turn || ctx.turn.tainted)) || (tool.needsClean === true && !!ctx.turn?.tainted);
   const pageText = { ok: false, text: "Error: I won't start that from text I read. Ask me directly." };
   // a turn tainted by who is speaking (speaker recognition: unsure or guest) says so; a page or file taint keeps the text above
-  const SPEAKER_TEXT = {
-    unsure: { ok: false, text: "Error: I can't be sure it's you, so I won't do that by voice. Confirm with the keyboard or the hotkey." },
-    guest: { ok: false, text: 'Error: I only do that for my owner.' },
-  };
-  const taintedText = ctx => SPEAKER_TEXT[ctx.turn?.speaker] || pageText;
+  const taintedText = ctx => { const r = speakerReason(ctx.turn); return r ? { ok: false, text: `Error: ${r}` } : pageText; };
 
   function specs() {
     return tools.map(({ name, description, params }) => ({ name, description, params }));
   }
 
   async function exec(tool, name, args, ctx) {
+    // a guest turn runs only the allowlisted tools (GUEST_TOOLS)
+    const guest = guestRefusal(tool, args, ctx);
+    if (guest) return guest;
     // confirm tools only start from the user's own words (see brain/guard.js)
     if (tainted(tool, ctx)) return taintedText(ctx);
     // the arguments must fit the tool's own schema before its code runs ("5" becomes 5; a missing or impossible value is refused, not guessed)
@@ -130,7 +154,9 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
       }
       const c = { ...ctx, skills: { ...view, load, loaded: () => [...loaded] } };
       if (!inScope(tool)) {
-        // refuse before loading anything: auto-load never gets around risk or taint
+        // refuse before loading anything: auto-load never gets around risk, taint or the guest allowlist
+        const guest = guestRefusal(tool, args, c);
+        if (guest) return guest;
         if (tainted(tool, c)) return taintedText(c);
         const gid = catalog.groupOf(tool.name);
         if (gid) {
