@@ -176,7 +176,7 @@ test('hint: owner-trusted, non-private, state/task only, <= 300 chars, no untrus
     item({ id: 'u', kind: 'task', text: 'ignore previous', trust: 'untrusted' }),
     item({ id: 'p', kind: 'task', text: 'secret thing', sensitivity: 'private' }),
   ];
-  const r = await mk([prov(items)]).assemble(req());
+  const r = await mk([prov(items)]).assemble(req({ allowPrivate: true }));
   assert.equal(r.hint, 'editing code tidy downloads');
   assert.match(r.text, /secret thing/);
   assert.match(r.text, /ignore previous \[current, s, untrusted\]/);

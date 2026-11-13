@@ -92,7 +92,7 @@ test('through the real assembler: nothing invalid, title never reaches hint', as
     taskProvider({ tasks: { active: () => ({ id: 't', title: 'Plan', status: 'running', done: 0, total: 2 }) }, now }),
     memoryProvider({ block: block('H\n- likes tea [fact · 2d]', ['a']) }),
   ] });
-  const r = await asm.assemble({ text: 'hello' });
+  const r = await asm.assemble({ text: 'hello', allowPrivate: true });
   assert.deepEqual(r.errors, []);
   assert.equal(r.dropped.filter((d) => d.reason === 'invalid').length, 0);
   assert.deepEqual(r.items.map((i) => i.id).sort(), ['live:media', 'live:timers', 'live:title', 'live:window', 'mem:a', 'task:t']);

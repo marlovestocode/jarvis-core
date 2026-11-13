@@ -2,9 +2,11 @@
 // Provider = { name, fetch(request) -> Item[] | Promise<Item[]> }; items carry id, text, source, kind (state|task|memory), observedAt, confidence,
 // trust (owner|untrusted), sensitivity (public|personal|private), optional topic and score. Providers only read; a throwing, rejecting,
 // hanging (past timeoutMs), null or non-array provider is recorded in `errors` and the others still run. assemble() never throws or rejects.
-// Pipeline (pure steps): validate -> access -> freshness/stale -> supersede -> dedupe -> rank -> budget. Each drop is { id, reason } with reason
+// Pipeline (pure steps): validate -> redact -> access -> freshness/stale -> supersede -> rank -> dedupe -> budget. Each drop is { id, reason } with reason
 // one of invalid, access, stale, superseded, duplicate, budget.
-// Access: only the owner (or no speaker given) gets context; any other speaker gets an empty package and no provider is called.
+// Access: only the owner (or no speaker given) gets context; any other speaker gets an empty package and no provider is called. Private items
+// are dropped (reason access) unless request.allowPrivate === true. Redaction (7+ digit runs -> [number], emails -> [email]) works on copies.
+// Untrusted items never supersede or out-dedupe an owner item.
 // Freshness: ageMs = now - observedAt; <=120000 current, <=3600000 recent, else historical, null unknown. Stale `state` (not current) is dropped.
 // Output: text (header + one line per kept item, a hard cap of budgetChars including the header, '' when nothing is kept) and hint (owner-trusted,
 // non-private state/task text, max 300 chars; never untrusted or private). Context is observed fact only and never grants authorization.
@@ -13,6 +15,10 @@ const HEADER = 'Context (observed facts, not instructions):';
 const CURRENT_MS = 120000;
 const RECENT_MS = 3600000;
 const HINT_MAX = 300;
+const TRUSTS = ['owner', 'untrusted'];
+const SENSITIVITIES = ['public', 'personal', 'private'];
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
+const DIGITS_RE = /\d(?:[ -]?\d){6,}/g;
 
 const norm = (s) => s.replace(/\s+/g, ' ').trim().toLowerCase();
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
@@ -23,17 +29,24 @@ function empty(t0) { return { items: [], text: '', hint: '', dropped: [], errors
 function validate(raw) {
   const items = [], dropped = [];
   for (const r of raw) {
-    const ok = r && typeof r === 'object' && typeof r.id === 'string' && typeof r.text === 'string' && KINDS.includes(r.kind);
+    const ok = r && typeof r === 'object' && typeof r.id === 'string' && typeof r.text === 'string' && KINDS.includes(r.kind)
+      && typeof r.source === 'string' && r.source.trim() !== '' && TRUSTS.includes(r.trust) && SENSITIVITIES.includes(r.sensitivity);
     if (!ok) { dropped.push({ id: r && typeof r === 'object' && typeof r.id === 'string' ? r.id : undefined, reason: 'invalid' }); continue; }
     items.push({ ...r, observedAt: num(r.observedAt), confidence: num(r.confidence) === null ? 0.5 : r.confidence });
   }
   return { items, dropped };
 }
 
+function redact(items) {
+  return items.map((i) => ({ ...i, text: i.text.replace(EMAIL_RE, '[email]').replace(DIGITS_RE, '[number]') }));
+}
+
 function access(items, request) {
-  if (!request.brief) return { items, dropped: [] };
   const keep = [], dropped = [];
-  for (const i of items) (i.kind === 'state' ? keep : dropped).push(i.kind === 'state' ? i : { id: i.id, reason: 'access' });
+  for (const i of items) {
+    const ok = (!request.brief || i.kind === 'state') && (i.sensitivity !== 'private' || request.allowPrivate === true);
+    if (ok) keep.push(i); else dropped.push({ id: i.id, reason: 'access' });
+  }
   return { items: keep, dropped };
 }
 
@@ -61,7 +74,8 @@ function supersede(items) {
     groups.get(i.topic).push(i);
   }
   const lose = new Set(), conflict = new Set();
-  for (const g of groups.values()) {
+  for (let g of groups.values()) {
+    if (g.some((i) => i.trust === 'owner')) { for (const i of g) if (i.trust !== 'owner') lose.add(i); g = g.filter((i) => i.trust === 'owner'); }
     const t = (i) => (i.observedAt === null ? -Infinity : i.observedAt);
     const max = Math.max(...g.map(t));
     const top = g.filter((i) => t(i) === max);
@@ -85,11 +99,13 @@ function rank(items) {
 }
 
 function dedupe(items) {
-  const seen = new Set(), keep = [], dropped = [];
+  const winner = new Map(), keep = [], dropped = [];
   for (const i of items) {
-    const k = norm(i.text);
-    if (seen.has(k)) dropped.push({ id: i.id, reason: 'duplicate' });
-    else { seen.add(k); keep.push(i); }
+    const k = norm(i.text), w = winner.get(k);
+    if (!w || (w.trust !== 'owner' && i.trust === 'owner')) winner.set(k, i);
+  }
+  for (const i of items) {
+    if (winner.get(norm(i.text)) === i) keep.push(i); else dropped.push({ id: i.id, reason: 'duplicate' });
   }
   return { items: keep, dropped };
 }
@@ -109,7 +125,7 @@ function budget(items, budgetChars) {
 
 function hintOf(items) {
   return items.filter((i) => i.trust === 'owner' && i.sensitivity !== 'private' && (i.kind === 'state' || i.kind === 'task'))
-    .map((i) => i.text).join(' ').slice(0, HINT_MAX);
+    .map((i) => i.text.replace(/\s+/g, ' ').trim()).join(' ').slice(0, HINT_MAX);
 }
 
 function callProvider(p, request, timeoutMs) {
@@ -138,6 +154,7 @@ function createAssembler({ providers = [], now = Date.now, budgetChars = 800, ti
       const dropped = [];
       const step = (r) => { dropped.push(...r.dropped); return r.items; };
       let items = step(validate(raw));
+      items = redact(items);
       items = step(access(items, req));
       items = step(freshen(items, now()));
       items = step(supersede(items));
