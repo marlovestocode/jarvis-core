@@ -321,7 +321,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
             if (assembler) {
               try {
                 const pkg = await assembler.assemble({ text: String(text), speaker, brief: false, sessionId: s.id });
-                if (pkg) bus.emit('context', { items: pkg.items?.length || 0, dropped: pkg.dropped?.length || 0, errors: pkg.errors?.length || 0, ms: Number(pkg.ms) || 0 });   // counts only, never text
+                if (pkg) bus.emit('ctxpkg', { items: pkg.items?.length || 0, dropped: pkg.dropped?.length || 0, errors: pkg.errors?.length || 0, ms: Number(pkg.ms) || 0 });   // counts only, never text
                 if (typeof pkg?.hint === 'string') context = pkg.hint;
               } catch { context = ''; }
             }
