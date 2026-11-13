@@ -16,9 +16,11 @@ const moreSkills = {
   },
 };
 
-function createGroup({ getStatus } = {}) {
+// tasks: the task_run and task_control tools (tools/tasks.js), when the app keeps a task runner
+function createGroup({ getStatus, tasks } = {}) {
   const tools = [own(timeTool, ['time'])];
   if (getStatus) tools.push(own(createStatusTool({ getStatus })));
+  if (Array.isArray(tasks)) for (const t of tasks) tools.push(own(t));
   tools.push(own(moreSkills));
   return { id: 'core', label: 'Time and JARVIS status', triggers: [], tools };
 }

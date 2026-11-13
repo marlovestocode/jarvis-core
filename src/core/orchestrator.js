@@ -168,7 +168,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
 
       if (fastPath) {
         let fp = null;
-        try { fp = await fastPath(String(text), { source }); } catch (err) { bus.emit('log', { level: 'warn', text: `Skill failed, asking the model: ${err?.message || err}` }); }
+        try { fp = await fastPath(String(text), { source, signal: ac.signal }); } catch (err) { bus.emit('log', { level: 'warn', text: `Skill failed, asking the model: ${err?.message || err}` }); }
         if (fp && !ac.signal.aborted) {
           const id = `skill${Date.now()}`;
           bus.emit('route', { tier: 'skill', think: false, reason: 'skill', model: null });

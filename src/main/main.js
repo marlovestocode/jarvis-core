@@ -36,6 +36,10 @@ const { createPcHost, SCRIPT: PC_HOST_SCRIPT } = require('../core/pc/host');
 const { buildAllowlist } = require('../core/pc/apps');
 const { createConfirm } = require('../core/pc/confirm');
 const { createActionLog } = require('../core/pc/actions-log');
+const { createTaskStore } = require('../core/tasks/store');
+const { createTaskRunner } = require('../core/tasks/runner');
+const { createTasksSkill } = require('../core/tasks/skill');
+const { createTaskTools } = require('../core/tools/tasks');
 const { createOrchestrator } = require('../core/orchestrator');
 const { createPolicy } = require('../core/net/policy');
 const { createFetcher } = require('../core/net/fetcher');
@@ -231,15 +235,32 @@ ctx.pcAllowlist = pcAllowlist;
 // the user's own folders, where Windows really keeps them (Documents may live in OneDrive)
 ctx.pcRoots = [app.getPath('desktop'), app.getPath('documents'), app.getPath('downloads'), path.join(app.getPath('home'), 'Projects')];
 ctx.actionLog = createActionLog({ file: path.join(DATA_DIR, 'actions.log'), log: ctx.log });
-ctx.confirm = createConfirm({ actionLog: ctx.actionLog });
+ctx.confirm = createConfirm({ actionLog: ctx.actionLog, onResolved: r => ctx.tasks?.onConfirmResolved(r), onReasked: r => ctx.tasks?.onConfirmReasked(r) });   // a task step waiting on this yes/no hears the outcome
 ctx.timerStore = createTimerStore({ file: path.join(DATA_DIR, 'timers.json'), log: ctx.log });
 ctx.scheduler = createScheduler({ store: ctx.timerStore, bus: ctx.bus, log: ctx.log });
+// Saved multi-step tasks (src/core/tasks): steps run through ctx.tools, which is built after the catalog, so it is read lazily.
+// Any failure here leaves JARVIS without task tools, as before.
+try {
+  ctx.taskStore = createTaskStore({ dir: path.join(DATA_DIR, 'tasks'), log: ctx.log });
+  ctx.taskStore.sweep();   // a task left running by a crash or quit is marked interrupted
+  ctx.tasks = createTaskRunner({
+    store: ctx.taskStore, bus: ctx.bus, log: ctx.log,
+    tools: { run: (...a) => ctx.tools.run(...a), resolves: n => ctx.tools.resolves(n) },
+    riskOf: n => ctx.toolList?.find(t => t.name === n || t.aliases?.includes(n))?.risk,
+    confirmPending: () => ctx.confirm.pending(),
+    onCancel: () => ctx.confirm.clear(),   // a cancelled task's question must not stay answerable
+  });
+  ctx.tasksSkill = createTasksSkill({ runner: ctx.tasks });
+  ctx.taskTools = createTaskTools({ runner: ctx.tasks });
+} catch (err) { ctx.log('tasks unavailable:', err?.message || err); ctx.tasks = null; ctx.tasksSkill = null; ctx.taskTools = null; }
 // JARVIS's own introspection tools: the checks read ctx live each time they run (src/main/checks.js)
 const self = { getChecks: () => selfChecks(ctx), about: () => ({ version, electron: process.versions.electron, node: process.versions.node, startedAt: ctx.startedAt, dataDir: DATA_DIR }), logFile: LOG_FILE, dataDir: DATA_DIR };
-ctx.catalog = brain.defaultCatalog({ self, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog } });
+ctx.catalog = brain.defaultCatalog({ self, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog }, ...(ctx.taskTools ? { tasks: ctx.taskTools } : {}) });
 ctx.toolList = ctx.catalog.tools;
 for (const m of ctx.catalog.missing) if (m.error) ctx.log(`skill group ${m.id} failed to load: ${m.error}`);
 ctx.tools = createToolRunner(ctx.toolList, { groups: ctx.catalog.groups });
+// "task status", "pause the task"...: a failing task skill falls through to the rest of the chain
+const tasksFast = async (text, o) => { if (!ctx.tasksSkill) return null; try { return await ctx.tasksSkill.handle(text, o); } catch (err) { ctx.log('task skill failed:', err?.message || err); return null; } };
 ctx.orchestrator = createOrchestrator({
   bus: ctx.bus, sessions: ctx.sessions, providers: ctx.providers, tools: ctx.tools, getConfig: ctx.getConfig,
   systemPrompt: brain.systemPrompt, stamp: brain.nowLine, route: brain.route,
@@ -254,7 +275,7 @@ ctx.orchestrator = createOrchestrator({
     return { hardware: ctx.hardware.cached() || undefined, media, library: ctx.ytPlaylists.digest() || undefined, memory: profile.text || undefined, memoryIds: profile.ids, user: userInfo(), caps: capsLine(), hotkeys: ctx.config.hotkeys };
   },
   // a pending PC action reads the user's own reply first (yes / no); nothing else can confirm it
-  fastPath: async (text, o) => (await ctx.confirm.handle(text, o)) || (await ctx.memorySkill.handle(text, o)) || ctx.mediaSkill.handle(text, o),
+  fastPath: async (text, o) => (await ctx.confirm.handle(text, o)) || (await ctx.memorySkill.handle(text, o)) || (await tasksFast(text, o)) || ctx.mediaSkill.handle(text, o),
   onQuestionLost: () => ctx.confirm.clear(),
   memoryBlock: ctx.memorySystem.block,
   timeoutMs: 120000, // a cold model load plus thinking can be slow on the first turn

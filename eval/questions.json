@@ -60,5 +60,13 @@
   { "id": "t-skills", "group": "tools", "q": "List your skills.", "pick": "skills_list" },
   { "id": "t-recall-chats", "group": "tools", "q": "What did we talk about last week about my dog's vet visit?", "pick": "recall_chats" },
   { "id": "t-recall-chats2", "group": "tools", "q": "Did we discuss my vacation plans in an earlier chat?", "pick": "recall_chats" },
-  { "id": "t-memory-about", "group": "tools", "q": "Tell me everything you have saved about Rex.", "pick": "memory_about" }
+  { "id": "t-memory-about", "group": "tools", "q": "Tell me everything you have saved about Rex.", "pick": "memory_about" },
+  { "id": "m-play-timer", "group": "tools", "q": "Play something, then set a timer for 10 minutes.", "pick": "set_timer" },
+  { "id": "m-bigfiles", "group": "tools", "q": "Find my biggest files and tell me how big they are.", "pick": "big_files" },
+  { "id": "m-find-size", "group": "tools", "q": "Find the file called budget.xlsx and then tell me how big it is.", "pick": "find_files" },
+  { "id": "m-weather-timer", "group": "tools", "q": "Check the weather, then set a timer for 20 minutes so I leave on time.", "pick": "get_weather" },
+  { "id": "m-news-timer", "group": "tools", "q": "Read me the news headlines and after that set a timer for 5 minutes.", "pick": "news_headlines" },
+  { "id": "m-ram-remember", "group": "tools", "q": "Check how much RAM I am using and remember that number for later.", "pick": "get_system_stats" },
+  { "id": "m-search-remember", "group": "tools", "q": "Search the web for when the next Rust edition comes out, then remember the date.", "pick": "web_search" },
+  { "id": "m-convert-timer", "group": "tools", "q": "Convert 1.5 hours to minutes, then set a timer for that many minutes.", "pick": "set_timer" }
 ]
