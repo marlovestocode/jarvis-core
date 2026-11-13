@@ -82,7 +82,7 @@
   - Rule 2 (confirm): pending confirm and `fu.kind !== 'confirm'` turns a `tools === false` route into `{ tier:'deep', tools:true, think:false, reason:'confirm pending' }` and adds `snap.confirm.group` to `picked` only when `catalog.ids` knows it; with `fu.kind === 'confirm'`, or no `snap.confirm`, nothing changes; note `confirm pending` present only when it fired.
   - Rule 3 (voice): `hints.prefer === 'fast'` only when every voice condition holds; negatives, one each: source `text`, `depth` 2 or `think` true, `steps` 2, two non-core groups picked, confirm pending, route not deep.
   - Rule 4 (cooldown): a tool with two `ok:false` runs inside 2 min appears in `avoid.tools`; `avoid.models` and `hints.avoid` is the most recent cooling model; notes `cooldown: <name>`; nothing cooling → empty and no `hints.avoid`.
-  - Throwing `route()` or `selectGroups()` or `cooling`: `plan` rethrows nothing it cannot recover? No: `plan()` itself may throw; the caller (Task 5) catches. Test instead that `plan` does not mutate `snap` and returns fresh `avoid` sets each call.
+  - `plan()` does not mutate `snap` or the object `route()` returned, and returns fresh `avoid` sets each call. A throwing `route()`/`selectGroups()` propagates out of `plan()` (the orchestrator in Task 5 catches and falls back); malformed cooldown input yields empty `avoid` sets, not a throw.
 - [ ] **Step 2: Run** `node --test test/plan.test.js` → FAIL.
 - [ ] **Step 3: Implement** `plan` applying the rules in the spec's order (continue, confirm, voice, cooldown, notes) on top of the unchanged `route()`/`selectGroups()` outputs; `hints` is a copy when modified, never mutate the object `route()` returned.
 - [ ] **Step 4: Run** the same command → PASS.
