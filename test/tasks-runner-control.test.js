@@ -266,6 +266,25 @@ test('cancel of an awaiting_confirm task', async () => {
   assert.equal(store.get(r.task.id).status, 'cancelled');
 });
 
+test('cancel of an awaiting_confirm task calls onCancel once; other cancels do not', async () => {
+  const seen = [];
+  const { runner, store } = setup(name => (name === 'del' ? { ok: true, text: ASK } : ok(name)), { onCancel: t => seen.push(t.id) });
+  const r = await runner.start({ title: 'T', steps: [{ tool: 'del' }], turn: 1 });
+  assert.equal(runner.cancel(r.task.id).ok, true);
+  assert.deepEqual(seen, [r.task.id]);
+  const other = seed(store, [step('s1', 'a', 'pending')]);
+  runner.cancel(other);
+  assert.deepEqual(seen, [r.task.id]);
+});
+
+test('a throwing onCancel does not stop the cancel', async () => {
+  const { runner, store } = setup(name => (name === 'del' ? { ok: true, text: ASK } : ok(name)), { onCancel: () => { throw new Error('boom'); } });
+  const r = await runner.start({ title: 'T', steps: [{ tool: 'del' }], turn: 1 });
+  const c = runner.cancel(r.task.id);
+  assert.equal(c.ok, true);
+  assert.equal(store.get(r.task.id).status, 'cancelled');
+});
+
 test('confirm: a failed action marks the step and the task failed', async () => {
   const { runner, store } = setup(name => (name === 'del' ? { ok: true, text: ASK } : ok(name)));
   const r = await runner.start({ title: 'T', steps: [{ tool: 'del' }, { tool: 'c' }], turn: 1 });

@@ -51,7 +51,7 @@ function reportFailed(task, step, why) {
   return `${head}\n${lines}\nUse task_control with action replan to fix the remaining steps, or cancel to drop the task.`;
 }
 
-function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirmPending = () => null, now = Date.now, log = () => {}, retryDelayMs = 0 }) {
+function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirmPending = () => null, onCancel = null, now = Date.now, log = () => {}, retryDelayMs = 0 }) {
   const emit = (type, payload) => { try { bus?.emit(type, payload); } catch { /* observers must not break a run */ } };
   const toolId = (task, step) => `${task.id}:${step.id}`;
 
@@ -243,9 +243,12 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
       return { ok: true, text: `Task ${id} will be ${to} after its current step.` };
     }
     if (to === 'paused' && task.status === 'paused') return { ok: true, text: `Task ${id} is already paused.` };
+    const wasAwaiting = task.status === 'awaiting_confirm';
     task.status = to;
     const err = persist(task);
     if (!err) emit('task', { id, step: null, status: to });
+    // A cancelled task's question must not stay answerable: a later yes would run the dropped action.
+    if (to === 'cancelled' && wasAwaiting && onCancel) { try { onCancel(task); } catch (e) { log(`task ${id} onCancel failed: ${e?.message || e}`); } }
     return { ok: !err, text: err || `Task ${id} "${task.title}" ${to}.` };
   }
 
