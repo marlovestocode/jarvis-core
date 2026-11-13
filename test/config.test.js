@@ -104,7 +104,7 @@ test('config: endSilenceMs (700 = old) is clamped to 300..1500; continuationGuar
 test('config: memory and cortex defaults (W1 E9) and bad values fall back', () => {
   const { DEFAULTS, loadConfig } = require('../src/core/config');
   assert.deepEqual({ ...DEFAULTS.memory }, { autoCapture: true, usePastChats: true });
-  assert.deepEqual({ ...DEFAULTS.cortex }, { embedModel: 'nomic-embed-text' });
+  assert.deepEqual({ ...DEFAULTS.cortex }, { embedModel: 'nomic-embed-text', wallpaperLabels: true });
   const dir = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'jcfgm-'));
   require('node:fs').writeFileSync(require('node:path').join(dir, 'config.json'), JSON.stringify({ memory: { autoCapture: 'yes', usePastChats: false }, cortex: { embedModel: 'bad model; rm -rf' } }));
   const c = loadConfig(dir);

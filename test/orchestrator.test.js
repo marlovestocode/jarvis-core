@@ -108,13 +108,14 @@ test('a repeated identical tool call is not run again and the model is told to a
   assert.match(tool[1].content, /already made this exact call/);
 });
 
-test('tool loop capped at 5 rounds → error Too many tool rounds', async () => {
+test('tool loop capped at 5 rounds; a model that still asks for tools after the last-chance round → error Too many tool rounds', async () => {
   const fp = createFakeProvider(Array.from({ length: 7 }, (_, i) => [{ type: 'tool_call', id: `c${i}`, name: 'get_time', args: { n: i } }, { type: 'done' }]));
   const { events, orc, s, ran, sessions } = setup(fp);
   const res = await orc.send(s.id, 'loop', { source: 'text' });
   assert.equal(res.error, 'Too many tool rounds');
   assert.equal(ran.length, 5);
-  assert.equal(fp.calls.length, 6);
+  assert.equal(fp.calls.length, 7, 'five rounds, the sixth ask, and one last round with no tools');
+  assert.equal(fp.calls[6].tools, undefined, 'the last-chance round offers no tools');
   assert.deepEqual(states(events).slice(-2), ['error', 'idle']);
   assert.equal(sessions.load(s.id).messages.at(-1).error, 'Too many tool rounds');
 });
@@ -235,7 +236,7 @@ test('unknown session id creates a new chat', async () => {
 // ---- brain hooks: system prompt, routing, turn stats ----
 function setupBrain(provider, extra = {}) {
   return setup(provider, { orc: {
-    systemPrompt: ctx => `SYS source=${ctx.source} tools=${ctx.tools.join(',')} model=${ctx.model}`,
+    systemPrompt: ctx => `SYS source=${ctx.source} tools=${ctx.tools.map(t => t.name).join(',')} model=${ctx.model}`,
     route: (text, ctx) => ({ tier: /hard/.test(text) ? 'deep' : 'fast', think: /hard/.test(text), reason: 'test', source: ctx.source }),
     ...extra,
   } });

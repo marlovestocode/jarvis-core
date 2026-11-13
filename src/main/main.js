@@ -19,7 +19,9 @@ const DEV_RUN = !!(process.env.JARVIS_DATA_DIR || process.env.JARVIS_SELFTEST);
 
 const { createBus } = require('../core/bus');
 const { createMemWatch } = require('../core/memwatch');
+const { createMetrics } = require('../core/metrics/collector');
 const { loadConfig, saveConfig } = require('../core/config');
+const { applyPatch } = require('../core/settings');
 const { createSessionStore } = require('../core/session');
 const { createRegistry } = require('../core/providers/provider');
 const { NullProvider } = require('../core/providers/null-provider');
@@ -28,10 +30,16 @@ const { createToolRunner } = require('../core/tools/registry');
 const brain = require('../core/brain');
 const skills = require('../core/skills');
 const { createHardwareProbe } = require('../core/brain/hardware');
+const { createRanker } = require('../core/skills/rank');
+const { instant } = require('../core/brain/instant');
+const { liveIntent, liveReply } = require('../core/brain/instant-live');   // the time, the date and plain arithmetic: answered with no model call
 const { runBoot } = require('../core/boot');
 const { createTimerStore } = require('../core/timers/store');
 const { createScheduler } = require('../core/timers/scheduler');
 const { createProactiveEngine } = require('../core/proactive/engine');
+const { createMonitors } = require('../core/proactive/monitors');
+const timersSoon = require('../core/proactive/monitors/timers-soon');
+const { createSysmonMonitor, createSysmonStats } = require('../core/proactive/monitors/sysmon-threshold');
 const { createPcHost, SCRIPT: PC_HOST_SCRIPT } = require('../core/pc/host');
 const { buildAllowlist } = require('../core/pc/apps');
 const { createConfirm } = require('../core/pc/confirm');
@@ -41,6 +49,8 @@ const { createTaskRunner } = require('../core/tasks/runner');
 const { createTasksSkill } = require('../core/tasks/skill');
 const { createTaskTools } = require('../core/tools/tasks');
 const { createOrchestrator } = require('../core/orchestrator');
+const { createLiveState, liveLine } = require('../core/livestate');
+const { timersSource } = require('../core/livestate/sources');
 const { createPolicy } = require('../core/net/policy');
 const { createFetcher } = require('../core/net/fetcher');
 const { createPublicFetch } = require('../core/net/public-fetch');
@@ -60,6 +70,9 @@ const { createSileroProvider } = require('../core/voice/silero-provider');
 const { chime } = require('../core/voice/chime');
 const { createMediaService } = require('../core/media/service');
 const { createMediaSkill } = require('../core/media/skill');
+const { createLyrics } = require('../core/lyrics/service');
+const { createLyricsSkill } = require('../core/lyrics/skill');
+const { loadToken: loadGeniusToken } = require('../core/lyrics/genius');
 const { promptLine: mediaPromptLine } = require('../core/media/say');
 const { pressKey } = require('../core/tools/media');
 const { startYtMusicLink } = require('../core/media/ytmusic-link');
@@ -72,6 +85,8 @@ const { createPlayLog } = require('../core/music/log');
 const { createMemorySystem } = require('../core/memory/system');
 const { UNTRUSTED_TOOLS } = require('../core/brain/guard');
 const { createMemorySkill } = require('../core/memory/skill');
+const { clarify } = require('../core/skills/clarify');
+const { resolve: resolveDialect } = require('../core/voice/dialect');
 const os = require('node:os');
 const { registerHotkeys } = require('./hotkeys');
 const { createMic } = require('./mic');
@@ -81,7 +96,7 @@ const { createWindows } = require('./windows');
 const { createTray } = require('./tray');
 const { registerIpc } = require('./ipc');
 const { selfChecks } = require('./checks');
-const { SYSMON } = require('../core/tools/sysmon');
+const { sysmonUp } = require('../core/net/services');
 
 const version = require('../../package.json').version;
 const LOG_FILE = path.join(DATA_DIR, 'jarvis.log');
@@ -112,11 +127,39 @@ const ctx = {
 };
 
 ctx.bus = createBus({ onError: err => ctx.log('listener error:', err?.message) });
+// JARVIS's own numbers (turns, skill calls, errors, memory, connections), kept as small facts in <data>/metrics. Local only; read by the
+// analytics dashboard (core/bridge.js serves it) and by the analytics_summary tool. No conversation text is stored.
+const seenUp = {};   // a connection that never came up (no extension, no wallpaper) is "not in use", not "down": it is sampled only after its first time up
+const upSample = (name, up) => { if (up === null || up === undefined) return undefined; if (up) seenUp[name] = true; return seenUp[name] ? !!up : undefined; };
+function metricsSample() {
+  const out = {};
+  try { const c = ctx.cortex?.stats?.(); if (c) { out.cortexNodes = c.nodes; out.cortexBytes = c.bytes; } } catch { /* the store may be closed */ }
+  try { out.plays = ctx.playLog?.count?.(); } catch { /* not ready */ }
+  const svc = {
+    ollama: upSample('ollama', ctx.providers.get('ollama')?.health?.().ok),
+    ytmusic: upSample('ytmusic', ctx.ytmLink?.connected),
+    wallpaper: upSample('wallpaper', ctx.bridge ? ctx.bridge.clients() > 0 : null),
+    speechHost: ctx.speechHost ? !ctx.speechHost.health().gaveUp : undefined,
+    mediaHost: ctx.mediaHost ? !ctx.mediaHost.health().gaveUp : undefined,
+    pcHost: ctx.pcHostProc ? !ctx.pcHostProc.health().gaveUp : undefined,
+  };
+  for (const [k, v] of Object.entries(svc)) if (v !== undefined) (out.svc ||= {})[k] = v;
+  return out;
+}
+ctx.metrics = createMetrics({ dir: path.join(DATA_DIR, 'metrics'), bus: ctx.bus, log: ctx.log, groupOf: name => ctx.catalog?.groupOf?.(name) ?? null, sample: metricsSample });
+const DASH = path.join(__dirname, '../ui/dashboard');
+const readDash = f => { try { return fs.readFileSync(path.join(DASH, f)); } catch { return Buffer.from(''); } };
+ctx.openDashboard = async ({ range = 'day' } = {}) => {
+  if (!ctx.bridge) return null;
+  const url = `http://127.0.0.1:${ctx.bridge.port}/ai/dashboard?range=${encodeURIComponent(range)}`;
+  await shell.openExternal(url);
+  return url;
+};
 // deleting a chat (or the prune of the oldest files) also removes its summary from the cortex
 ctx.sessions = createSessionStore(DATA_DIR, { onRemove: id => ctx.memorySystem?.onChatRemoved(id) });
 ctx.providers = createRegistry();
 ctx.providers.add(NullProvider);
-ctx.providers.add(createOllamaProvider({ getConfig: () => ctx.config }));
+ctx.providers.add(createOllamaProvider({ getConfig: () => ctx.config, log: ctx.log }));
 ctx.hardware = createHardwareProbe();
 ctx.getConfig = () => ctx.config;
 ctx.saveConfig = next => { saveConfig(DATA_DIR, next); ctx.config = loadConfig(DATA_DIR); return ctx.config; };
@@ -128,7 +171,7 @@ async function jarvisStatus() {
   let model = p.label;
   if (c.provider === 'ollama') model = `${c.ollama.model}${c.ollama.auto ? ` (quick chat: ${c.ollama.fastModel})` : ''} via Ollama`;
   let sysmon = 'not running';
-  try { sysmon = (await fetch(`${SYSMON}/health`, { signal: AbortSignal.timeout(800) })).ok ? 'running' : 'not running'; } catch { /* down */ }
+  sysmon = (await sysmonUp(fetch, 800)) ? 'running' : 'not running';
   return {
     ...(await ctx.hardware.get()),
     model,
@@ -159,10 +202,16 @@ ctx.notify = (title, body) => {
   if (Notification.isSupported()) new Notification({ title, body, silent: true }).show();
 };
 ctx.linkKey = loadOrCreateLinkKey(path.join(DATA_DIR, 'link.key'), { log: ctx.log });
-ctx.ytmLink = startYtMusicLink({ log: ctx.log, secret: ctx.linkKey, onReject: r => ctx.notify?.('YouTube Music extension is not connected', r.legacy ? 'It is an old version. Reload it in chrome://extensions, then paste the link key from the JARVIS tray menu into its popup.' : 'Its link key does not match. Copy it again from the JARVIS tray menu into the extension popup.'), onChange: connected => ctx.ytPlaylists?.onLink(connected), onPlay: e => ctx.playLog.add(e) });
-ctx.ytm = createYtMusic({ link: ctx.ytmLink });
+ctx.ytmLink = startYtMusicLink({ log: ctx.log, secret: ctx.linkKey, onReject: r => ctx.notify?.('YouTube Music extension is not connected', r.legacy ? 'It is an old version. Reload it in chrome://extensions, then paste the link key from the JARVIS tray menu into its popup.' : 'Its link key does not match. Copy it again from the JARVIS tray menu into the extension popup.'), onChange: connected => { ctx.ytPlaylists?.onLink(connected); ctx.metrics?.add({ k: 'conn', service: 'ytmusic', up: !!connected }); }, onPlay: e => ctx.playLog.add(e),
+  // the extension kept the music going (or left a notice alone): written to the log and put on the bus for the metrics
+  onPrompt: p => { ctx.log(`youtube prompt: ${p.confirmed ? 'confirmed' : 'left alone'} ${p.kind}${p.label ? ` ("${p.label}")` : ''}${p.reason ? ` - ${p.reason}` : ''}`); ctx.bus.emit('ytprompt', p); } });
+// Chrome blocks the page's own play() until the tab has had a click; the Windows media "play" counts as a user action
+ctx.ytm = createYtMusic({ link: ctx.ytmLink, resume: async () => { const r = await ctx.media.act({ action: 'play', app: 'youtube' }); return !!r?.ok && r.verified !== false; } });
 // the user's own playlists, read live through the extension (library hint kept on disk for the prompt)
 ctx.ytPlaylists = createYtPlaylists({ link: ctx.ytmLink, ytm: ctx.ytm, getConfig: ctx.getConfig, file: path.join(DATA_DIR, 'cache', 'ytm-library.json'), journalFile: path.join(DATA_DIR, 'ytm-undo.json'), log: ctx.log });
+// Lyrics: LRCLIB for the text, Genius (token in <data>/genius.token) only to name a song from a remembered line
+ctx.lyrics = createLyrics({ fetcher: ctx.fetcher, ytm: ctx.ytm, media: ctx.media, getToken: () => loadGeniusToken(DATA_DIR), log: ctx.log });
+ctx.lyricsSkill = createLyricsSkill({ lyrics: ctx.lyrics, ytm: ctx.ytm, getConfig: ctx.getConfig });
 ctx.mediaSkill = createMediaSkill({ service: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists });
 if (!DEV_RUN) ctx.media.state().catch(err => ctx.log('media host:', err.message));   // warm up: the first read compiles Core Audio (~0.8 s)
 // Long-term memory on the cortex (<data>/cortex.db, cortex wave 1): facts and their review queue, people/pets/places,
@@ -207,7 +256,7 @@ function capsLine() {
     `wake word "Jarvis" is ${on(c.wakeEnabled)} (also the voice hotkey ${c.hotkeys.voice})`,
     `recognises the owner's voice: ${ctx.speaker.enrolled() ? (c.speakerGate ? 'enrolled, only they can wake it' : 'enrolled, gate off') : 'not enrolled'}`,
     `YouTube Music extension: ${ctx.ytmLink.connected ? 'connected' : 'not connected'}`,
-    `listening log: ${c.music.logPlays ? `${ctx.playLog.count()} plays recorded${ctx.playLog.since() ? ` since ${new Date(ctx.playLog.since()).toLocaleDateString('en-US')}` : ''}` : 'off'} (music_stats tool)`,
+    `listening log: ${c.music.logPlays ? `${ctx.playLog.count()} plays recorded${ctx.playLog.since() ? ` since ${new Date(ctx.playLog.since()).toLocaleDateString(ctx.config.speech.dateOrder === 'dmy' ? 'en-GB' : 'en-US')}` : ''}` : 'off'} (music_stats tool)`,
     skills.capsLine(ctx.catalog, { browser: !c.browser.enabled ? 'off' : ctx.ytmLink.connected ? 'connected' : 'not connected' }),   // every skill group; risky PC actions ask the user first, timers are spoken when they fire
     `speech-to-text ${c.engines.stt}${c.sttGpu ? ' on GPU' : ''}, saved memory of the user`,
   ].join('; ') + '.';
@@ -255,27 +304,51 @@ try {
 } catch (err) { ctx.log('tasks unavailable:', err?.message || err); ctx.tasks = null; ctx.tasksSkill = null; ctx.taskTools = null; }
 // JARVIS's own introspection tools: the checks read ctx live each time they run (src/main/checks.js)
 const self = { getChecks: () => selfChecks(ctx), about: () => ({ version, electron: process.versions.electron, node: process.versions.node, startedAt: ctx.startedAt, dataDir: DATA_DIR }), logFile: LOG_FILE, dataDir: DATA_DIR };
-ctx.catalog = brain.defaultCatalog({ self, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, getConfig: ctx.getConfig, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog }, ...(ctx.taskTools ? { tasks: ctx.taskTools } : {}) });
+ctx.catalog = brain.defaultCatalog({ self, analytics: { metrics: ctx.metrics, openDashboard: ctx.openDashboard }, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, getConfig: ctx.getConfig, applySettings: patch => { const { config, errors } = applyPatch(ctx.config, patch, { providers: ctx.providers, engines: ctx.engines }); ctx.saveConfig(config); return errors; }, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, lyrics: ctx.lyrics, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog }, ...(ctx.taskTools ? { tasks: ctx.taskTools } : {}) });
 ctx.toolList = ctx.catalog.tools;
 for (const m of ctx.catalog.missing) if (m.error) ctx.log(`skill group ${m.id} failed to load: ${m.error}`);
 ctx.tools = createToolRunner(ctx.toolList, { groups: ctx.catalog.groups });
+// which tool a request is about, ranked from the tools' own text and from the requests that worked before (this run): the model sees the likeliest tools first
+const toolRanker = createRanker(ctx.toolList);
+// a request that names nothing to act on, or something JARVIS has no tool for, is answered here instead of guessed at by the model
+const askOrDecline = (text, o) => { const c = clarify(text, o); if (!c) return null; ctx.bus.emit('clarify', { kind: c.kind, reason: c.reason }); return { reply: c.reply, ok: true, ask: c.kind === 'ask' }; };
+// the timers that are set and the PC's load: the tool runs and its result is the answer; any failure leaves it to the model
+const liveInstant = async (text, o = {}) => {
+  const i = liveIntent(text);
+  if (!i) return null;
+  let r;
+  try { r = await ctx.tools.run(i.tool, {}, { turn: { source: o.source || 'text', tainted: false } }); } catch { return null; }
+  const reply = r?.ok ? liveReply(i, r.text) : null;
+  return reply ? { reply, tool: i.tool, ok: true } : null;
+};
 // "task status", "pause the task"...: a failing task skill falls through to the rest of the chain
 const tasksFast = async (text, o) => { if (!ctx.tasksSkill) return null; try { return await ctx.tasksSkill.handle(text, o); } catch (err) { ctx.log('task skill failed:', err?.message || err); return null; } };
+// LiveState: what is happening right now, for the prompt and for follow-ups ("again", "undo that"). A missing service just omits its source.
+let lastMedia = null;   // { st, at } from the media state promptInfo already fetches
+ctx.live = createLiveState({ bus: ctx.bus, log: ctx.log });
+ctx.live.register('media', () => (lastMedia && Date.now() - lastMedia.at <= 60000 && Array.isArray(lastMedia.st?.sessions) ? { playing: lastMedia.st.sessions.some(s => s.status === 'playing') } : null));
+ctx.live.register('timers', timersSource({ list: () => ctx.scheduler?.list?.() || [] }));
+ctx.live.register('confirm', () => { const a = ctx.confirm?.pending?.(); return a?.summary ? { summary: a.summary } : null; });   // pending() exposes no age, so no ageMs
+ctx.live.register('task', () => ctx.tasks?.active() ?? null);
+ctx.live.register('groups', () => { const list = ctx.orchestrator?.getLastGroups?.(); const at = ctx.orchestrator?.getLastGroupsAt?.(); return Array.isArray(list) ? { list, at: typeof at === 'number' ? at : 0 } : null; });
 ctx.orchestrator = createOrchestrator({
+  live: ctx.live,
   bus: ctx.bus, sessions: ctx.sessions, providers: ctx.providers, tools: ctx.tools, getConfig: ctx.getConfig,
   systemPrompt: brain.systemPrompt, stamp: brain.nowLine, route: brain.route,
   selectGroups: (text, o) => skills.selectGroups(text, o, ctx.catalog),
   // the model always sees what is playing, read fresh for the turn (skipped if Windows is slow)
   promptInfo: async ({ hints } = {}) => {
     let media;
-    try { media = mediaPromptLine(await Promise.race([ctx.media.state(), new Promise((_, rej) => setTimeout(() => rej(new Error('slow')), 600))])); } catch { media = undefined; }
+    try { const st = await Promise.race([ctx.media.state(), new Promise((_, rej) => setTimeout(() => rej(new Error('slow')), 600))]); lastMedia = { st, at: Date.now() }; media = mediaPromptLine(st); } catch { media = undefined; }
     // the profile (always-known facts) in the system prompt; the rest is recalled per turn by memoryBlock
     let profile = { text: '', ids: [] };
     try { profile = ctx.memorySystem.profile({ brief: hints?.tools === false }); } catch (err) { ctx.log('memory profile failed:', err.message); }
-    return { hardware: ctx.hardware.cached() || undefined, media, library: ctx.ytPlaylists.digest() || undefined, memory: profile.text || undefined, memoryIds: profile.ids, user: userInfo(), caps: capsLine(), hotkeys: ctx.config.hotkeys };
+    return { dialect: resolveDialect(ctx.config.speech), hardware: ctx.hardware.cached() || undefined, media, library: ctx.ytPlaylists.digest() || undefined, memory: profile.text || undefined, memoryIds: profile.ids, user: userInfo(), caps: capsLine(), hotkeys: ctx.config.hotkeys, live: (() => { try { return liveLine(ctx.live.snapshot()); } catch { return ''; } })() };
   },
   // a pending PC action reads the user's own reply first (yes / no); nothing else can confirm it
-  fastPath: async (text, o) => (await ctx.confirm.handle(text, o)) || (await ctx.memorySkill.handle(text, o)) || (await tasksFast(text, o)) || ctx.mediaSkill.handle(text, o),
+  fastPath: async (text, o) => (await ctx.confirm.handle(text, o)) || (await ctx.memorySkill.handle(text, o)) || (await ctx.lyricsSkill.handle(text, o)) || (await tasksFast(text, o)) || ctx.mediaSkill.handle(text, o) || askOrDecline(text, o) || instant(text, { now: new Date() }) || (await liveInstant(text, o)),
+  rankTools: (text, specs) => toolRanker.order(text, specs),
+  learnTool: (text, name) => toolRanker.learn(text, name),
   onQuestionLost: () => ctx.confirm.clear(),
   memoryBlock: ctx.memorySystem.block,
   timeoutMs: 120000, // a cold model load plus thinking can be slow on the first turn
@@ -370,6 +443,7 @@ ctx.startVoice = () => {
 // JARVIS speaks unasked (timers): waits while you talk, quiet hours / DND give a toast only
 ctx.proactive = createProactiveEngine({
   bus: ctx.bus, getConfig: ctx.getConfig, log: ctx.log,
+  isBusy: () => { const s = ctx.live.snapshot(); return !!s.confirm || ['listening', 'thinking', 'speaking'].includes(s.voice); },
   speak: text => ctx.voice.announce(text),
   chime: () => { ctx.mic?.play(chime(), 22050).catch(() => {}); },
   notify: (title, body) => {
@@ -383,6 +457,8 @@ ctx.proactive = createProactiveEngine({
     ctx.sessions.save(s);
   },
 });
+// monitors only produce text for the engine above; they never act
+ctx.monitors = createMonitors({ engine: ctx.proactive, live: ctx.live, getConfig: ctx.getConfig, log: ctx.log, monitors: [timersSoon, createSysmonMonitor({ getStats: createSysmonStats({ fetch }), log: ctx.log })] });
 // warnings keep their level in the log, and a failed tool or turn is written down too (self_log reads these)
 ctx.bus.on('log', ev => ctx.log(ev.level === 'warn' || ev.level === 'error' ? `${ev.level}: ${ev.text}` : ev.text));
 ctx.bus.on('tool', ev => {
@@ -416,7 +492,8 @@ ctx.memwatch = createMemWatch({
   },
 });
 ctx.memwatch.start();
-ctx.onQuit = [() => ctx.memwatch.stop(), () => ctx.proactive.stop(), () => ctx.scheduler.stop(), () => ctx.pcHostProc.close(), () => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close(), () => ctx.memorySystem.close()];
+ctx.metrics.start();
+ctx.onQuit = [() => ctx.memwatch.stop(), () => ctx.metrics.close(), () => ctx.monitors.stop(), () => ctx.proactive.stop(), () => ctx.scheduler.stop(), () => ctx.pcHostProc.close(), () => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close(), () => ctx.memorySystem.close(), () => ctx.live.close()];
 
 app.on('web-contents-created', (_e, wc) => guardWebContents(wc));
 app.on('second-instance', () => ctx.windows?.showChat());
@@ -432,6 +509,12 @@ app.whenReady().then(async () => {
   const ports = [0, 1, 2, 3, 4, 5].map(i => ctx.config.port + i);
   const bridgeStarting = startBridge({
     bus: ctx.bus, version, ports,
+    // the wallpaper's neural lattice IS the cortex: its shape and firing go out as ids only; labels (a few words per node)
+    // only on the bridge's strict route and only while cortex.wallpaperLabels is on
+    brain: { view: o => ctx.cortex.view(o), labels: ids => ctx.cortex.labels(ids), labelsOn: () => ctx.getConfig().cortex?.wallpaperLabels !== false,
+      // the skill groups (and their tool names) are neurons too: a tool call fires its group
+      skills: () => ctx.catalog.groups.map(g => ({ id: g.id, label: g.label, tools: g.tools.map(t => t.name) })) },
+    dashboard: { query: o => ctx.metrics.query(o), files: { html: readDash('index.html'), js: readDash('dashboard.js'), css: readDash('dashboard.css') } },
     onOpen: mode => { ctx.log(`open from wallpaper: ${mode}`); if (mode === 'voice') ctx.startVoice(); else ctx.windows?.showChat(); },
   });
   bridgeStarting.catch(() => {});
@@ -465,6 +548,7 @@ app.whenReady().then(async () => {
     talk: () => ctx.startVoice(),
     openSettings: () => ctx.windows.showSettings(),
     copyLinkKey: () => clipboard.writeText(ctx.linkKey),
+    openDashboard: () => { ctx.openDashboard({ range: 'day' }).catch(err => ctx.log('dashboard:', err.message)); },
     openWebLog: () => { try { if (!fs.existsSync(ctx.webAudit.file)) fs.writeFileSync(ctx.webAudit.file, ''); } catch { /* shown empty */ } shell.openPath(ctx.webAudit.file); },
     quit: () => app.quit(),
   });
@@ -510,10 +594,9 @@ app.whenReady().then(async () => {
       return c.level === 'bad' ? { ok: false, detail: c.detail } : `${ctx.memory.count()} facts, ${c.level === 'ok' ? 'meaning + keyword recall' : 'keyword recall'}`;
     } },
     { stage: 'pc', run: async () => `${(await pcAllowlist()).length} apps allowed` },
-    { stage: 'timers', run: async () => { const r = ctx.scheduler.start(); return `${r.armed} set${r.fired ? `, ${r.fired} missed while off` : ''}`; } },
+    { stage: 'timers', run: async () => { let r; try { r = ctx.scheduler.start(); } finally { ctx.monitors.start(); } return `${r.armed} set${r.fired ? `, ${r.fired} missed while off` : ''}`; } },
     { stage: 'sysmon', run: async () => {
-      const r = await fetch(`${SYSMON}/health`, { signal: AbortSignal.timeout(1000) }).catch(() => null);
-      return r?.ok ? 'linked' : { ok: false, detail: 'not running' };
+      return (await sysmonUp(fetch, 1000)) ? 'linked' : { ok: false, detail: 'not running' };
     } },
     { stage: 'voice', run: async () => {
       ctx.voice.applyWake();

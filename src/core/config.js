@@ -1,6 +1,7 @@
 // Settings in <dir>/config.json, merged per key against DEFAULTS by typeof.
 const fs = require('node:fs');
 const path = require('node:path');
+const { DEFAULT_MONITORS, cleanMonitors, clampNumber } = require('./proactive/monitor-config');
 
 const DEFAULTS = Object.freeze({
   provider: 'null',
@@ -27,9 +28,10 @@ const DEFAULTS = Object.freeze({
   micDeviceId: null,
   voiceRate: 1.0,
   hotkeys: Object.freeze({ chat: 'Control+Space', voice: 'Control+Shift+Space' }),
+  constrainTools: true,                // repair a tool call that names no tool or has bad arguments with a schema-constrained decode (tools/constrain.js)
   port: 47801,
   // knowledge & live data (spec 2026-11-10-knowledge §3): allowlisted lookups only
-  online: Object.freeze({ enabled: true, weather: true, news: true, sports: true, wiki: true, web: true }),
+  online: Object.freeze({ enabled: true, weather: true, news: true, sports: true, wiki: true, web: true, lyrics: true }),
   // who the user is: JARVIS addresses them by name and treats this as known (settings or "call me ...")
   user: Object.freeze({ name: '', about: '' }),
   location: Object.freeze({ city: 'Abilene, TX', lat: 32.4487, lon: -99.7331, country: 'US', units: 'F' }),
@@ -54,15 +56,18 @@ const DEFAULTS = Object.freeze({
   // browser skills (tabs, page text, history...) through the Chrome extension: off until the user turns it on in settings
   browser: Object.freeze({ enabled: false }),
   // JARVIS speaking unasked (timers): quiet hours and Do-not-disturb give a notification only
-  proactive: Object.freeze({ enabled: true, dnd: false, quietStart: '22:00', quietEnd: '07:00', minGapSec: 10, chime: true }),
+  proactive: Object.freeze({ enabled: true, dnd: false, quietStart: '22:00', quietEnd: '07:00', minGapSec: 10, chime: true, monitors: DEFAULT_MONITORS, cooldownMin: 15, maxPerHour: 6 }),
   // long-term memory (cortex wave 1): summarize finished chats into the review queue; recall past chats in answers
   memory: Object.freeze({ autoCapture: true, usePastChats: true }),
   // the cortex's embedding model in the local Ollama (only pulled after the user clicks Install and confirms)
-  cortex: Object.freeze({ embedModel: 'nomic-embed-text' }),
+  // wallpaperLabels: the wallpaper may ask for a few words per memory node it shows (strict local route, see core/bridge.js)
+  cortex: Object.freeze({ embedModel: 'nomic-embed-text', wallpaperLabels: true }),
+  // how he talks (core/voice/dialect.js): the dialect names his word choice and register, the rest tunes the spoken text
+  speech: Object.freeze({ dialect: 'british-formal', contractions: true, pauses: true, dateOrder: 'mdy' }),
 });
 
 const VADS = ['silero', 'energy'];
-const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive', 'pc', 'browser', 'memory', 'cortex'];
+const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive', 'pc', 'browser', 'memory', 'cortex', 'speech'];
 const MODEL_NAME = /^[\w.:-]{1,64}$/;   // an Ollama model tag, e.g. nomic-embed-text:latest
 const HHMM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;   // "22:00"
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -110,6 +115,9 @@ function merge(raw) {
       if (key === 'proactive') {
         for (const k of ['quietStart', 'quietEnd']) if (!HHMM.test(out[key][k])) out[key][k] = def[k];
         out[key].minGapSec = Math.round(Math.max(3, Math.min(120, out[key].minGapSec)));
+        out[key].monitors = cleanMonitors(isObj(v) ? v.monitors : undefined);
+        out[key].cooldownMin = clampNumber(out[key].cooldownMin, 1, 240);
+        out[key].maxPerHour = clampNumber(out[key].maxPerHour, 1, 60);
       }
       if (key === 'cortex' && !MODEL_NAME.test(out[key].embedModel)) out[key].embedModel = def.embedModel;
     } else {

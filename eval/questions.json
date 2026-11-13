@@ -30,6 +30,7 @@
   { "id": "t-web2", "group": "tools", "q": "Look it up online: who won the Cannes film festival this year?", "pick": "web_search" },
   { "id": "t-timer", "group": "tools", "q": "Set a timer for 10 minutes.", "pick": "set_timer" },
   { "id": "t-timers", "group": "tools", "q": "Which timers do I have running right now?", "pick": "list_timers" },
+  { "id": "t-warn", "group": "tools", "q": "Warn me if my memory use goes above 85 percent.", "pick": "monitor_set" },
   { "id": "t-media", "group": "tools", "q": "Pause the music.", "pick": "media_control" },
   { "id": "t-playlist", "group": "tools", "q": "Play my gym playlist.", "pick": "ytm_play_library" },
   { "id": "t-sysmon", "group": "tools", "q": "How much RAM am I using right now?", "pick": "get_system_stats" },
@@ -61,6 +62,8 @@
   { "id": "t-recall-chats", "group": "tools", "q": "What did we talk about last week about my dog's vet visit?", "pick": "recall_chats" },
   { "id": "t-recall-chats2", "group": "tools", "q": "Did we discuss my vacation plans in an earlier chat?", "pick": "recall_chats" },
   { "id": "t-memory-about", "group": "tools", "q": "Tell me everything you have saved about Rex.", "pick": "memory_about" },
+  { "id": "t-lyrics", "group": "tools", "q": "What does the second verse of Paranoid Android by Radiohead say about rain?", "pick": "get_lyrics" },
+  { "id": "t-lyrics2", "group": "tools", "q": "Which song has the line 'I wish I was special'?", "pick": "find_song_by_lyric" },
   { "id": "m-play-timer", "group": "tools", "q": "Play something, then set a timer for 10 minutes.", "pick": "set_timer" },
   { "id": "m-bigfiles", "group": "tools", "q": "Find my biggest files and tell me how big they are.", "pick": "big_files" },
   { "id": "m-find-size", "group": "tools", "q": "Find the file called budget.xlsx and then tell me how big it is.", "pick": "find_files" },
@@ -68,5 +71,15 @@
   { "id": "m-news-timer", "group": "tools", "q": "Read me the news headlines and after that set a timer for 5 minutes.", "pick": "news_headlines" },
   { "id": "m-ram-remember", "group": "tools", "q": "Check how much RAM I am using and remember that number for later.", "pick": "get_system_stats" },
   { "id": "m-search-remember", "group": "tools", "q": "Search the web for when the next Rust edition comes out, then remember the date.", "pick": "web_search" },
-  { "id": "m-convert-timer", "group": "tools", "q": "Convert 1.5 hours to minutes, then set a timer for that many minutes.", "pick": "set_timer" }
+  { "id": "m-convert-timer", "group": "tools", "q": "Convert 1.5 hours to minutes, then set a timer for that many minutes.", "pick": "set_timer" },
+  { "id": "f-pause", "group": "followup", "q": "Pause.", "pick": "media_control" },
+  { "id": "f-skip", "group": "followup", "q": "Skip it.", "pick": "media_control" },
+  { "id": "f-resume", "group": "followup", "q": "Okay, resume.", "pick": "media_control" },
+  { "id": "f-next", "group": "followup", "q": "Next one.", "pick": "media_control" },
+  { "id": "f-quieter", "group": "followup", "q": "A bit quieter please.", "pick": "media_control" },
+  { "id": "f-undo", "group": "followup", "q": "Undo that.", "pick": "undo_last" },
+  { "id": "f-undo2", "group": "followup", "q": "Put it back the way it was.", "pick": "undo_last" },
+  { "id": "f-cancel", "group": "followup", "q": "Cancel that timer.", "pick": "cancel_timer" },
+  { "id": "f-again", "group": "followup", "q": "Set another timer for 10 minutes, same as before.", "pick": "set_timer" },
+  { "id": "f-what", "group": "followup", "q": "What is this that is playing?", "pick": "media_status" }
 ]

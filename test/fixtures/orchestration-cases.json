@@ -1,0 +1,685 @@
+{
+  "route": [
+    {
+      "text": "hi",
+      "tier": "fast",
+      "tools": false,
+      "think": false
+    },
+    {
+      "text": "thanks, that's all",
+      "tier": "fast",
+      "tools": false,
+      "think": false
+    },
+    {
+      "text": "tell me a joke",
+      "tier": "fast",
+      "tools": false,
+      "think": false
+    },
+    {
+      "text": "I'm feeling pretty tired today",
+      "tier": "fast",
+      "tools": false,
+      "think": false
+    },
+    {
+      "text": "that's funny",
+      "tier": "fast",
+      "tools": false,
+      "think": false
+    },
+    {
+      "text": "lol",
+      "tier": "fast",
+      "tools": false,
+      "think": false
+    },
+    {
+      "text": "never mind",
+      "tier": "fast",
+      "tools": false,
+      "think": false
+    },
+    {
+      "text": "can you hear me?",
+      "tier": "fast",
+      "tools": false,
+      "think": false
+    },
+    {
+      "text": "can you help me with something?",
+      "tier": "fast",
+      "tools": false,
+      "think": false
+    },
+    {
+      "text": "Hey Jarvis, I was just wondering how your day is going, because I have been working all morning and I am feeling kind of tired and bored today",
+      "tier": "fast",
+      "tools": false,
+      "think": false
+    },
+    {
+      "text": "what's the weather like",
+      "tier": "deep",
+      "tools": true,
+      "think": false
+    },
+    {
+      "text": "remind me to call mom at 5",
+      "tier": "deep",
+      "tools": true,
+      "think": false
+    },
+    {
+      "text": "turn the volume down",
+      "tier": "deep",
+      "tools": true,
+      "think": false
+    },
+    {
+      "text": "what's 18% of 240",
+      "tier": "deep",
+      "tools": true,
+      "think": false
+    },
+    {
+      "text": "how many ounces are in a pound",
+      "tier": "deep",
+      "tools": true,
+      "think": false
+    },
+    {
+      "text": "who was the first president of France",
+      "tier": "deep",
+      "tools": true,
+      "think": false
+    },
+    {
+      "text": "why is the sky blue?",
+      "tier": "deep",
+      "tools": true,
+      "think": false
+    },
+    {
+      "text": "Solve x^2 - 5x + 6 = 0",
+      "tier": "deep",
+      "tools": true,
+      "think": false
+    },
+    {
+      "text": "What's the difference between a virus and a bacterium?",
+      "tier": "deep",
+      "tools": true,
+      "think": false
+    },
+    {
+      "text": "Is it going to rain tomorrow, and should I bring an umbrella?",
+      "tier": "deep",
+      "tools": true,
+      "think": false
+    },
+    {
+      "text": "what does this error mean: ECONNREFUSED 127.0.0.1:11434",
+      "tier": "deep",
+      "tools": true,
+      "think": false
+    },
+    {
+      "text": "Prove that there are infinitely many primes.",
+      "tier": "deep",
+      "tools": true,
+      "think": true
+    },
+    {
+      "text": "Walk me through, step by step, why the sky is blue.",
+      "tier": "deep",
+      "tools": true,
+      "think": true
+    },
+    {
+      "text": "Compare Rust and Go for a CLI tool, weigh the trade-offs, and recommend one.",
+      "tier": "deep",
+      "tools": true,
+      "think": true
+    },
+    {
+      "text": "think hard about whether I should learn Rust or Go",
+      "tier": "deep",
+      "tools": true,
+      "think": true
+    },
+    {
+      "text": "Prove that there are infinitely many primes.",
+      "source": "voice",
+      "tier": "deep",
+      "tools": true,
+      "think": false
+    }
+  ],
+  "instant": [
+    {
+      "text": "what time is it",
+      "instant": true
+    },
+    {
+      "text": "what's the time?",
+      "instant": true
+    },
+    {
+      "text": "what day is it today",
+      "instant": true
+    },
+    {
+      "text": "what's today's date",
+      "instant": true
+    },
+    {
+      "text": "what is 17 * 23",
+      "instant": true
+    },
+    {
+      "text": "what's 2^10?",
+      "instant": true
+    },
+    {
+      "text": "calculate 144 / 12",
+      "instant": true
+    },
+    {
+      "text": "what is 5 plus 7",
+      "instant": true
+    },
+    {
+      "text": "what time does the game start",
+      "instant": false
+    },
+    {
+      "text": "what is the time complexity of quicksort",
+      "instant": false
+    },
+    {
+      "text": "what day does the next episode come out",
+      "instant": false
+    },
+    {
+      "text": "what is 5 plus the speed of light in km/h",
+      "instant": false
+    },
+    {
+      "text": "set a timer for 10 minutes",
+      "instant": false
+    },
+    {
+      "text": "hi",
+      "instant": false
+    },
+    {
+      "text": "convert 65 mph to m/s",
+      "instant": true
+    },
+    {
+      "text": "how many feet in a mile",
+      "instant": true
+    },
+    {
+      "text": "5 miles in km",
+      "instant": true
+    },
+    {
+      "text": "what is 100 fahrenheit in celsius",
+      "instant": true
+    },
+    {
+      "text": "how many days until christmas",
+      "instant": true
+    },
+    {
+      "text": "how many days between march 3 2024 and november 9 2026",
+      "instant": true
+    },
+    {
+      "text": "what is the date in 90 days",
+      "instant": true
+    },
+    {
+      "text": "what is 5 in binary",
+      "instant": false
+    },
+    {
+      "text": "how many days until my birthday",
+      "instant": false
+    },
+    {
+      "text": "how many days until the game",
+      "instant": false
+    },
+    {
+      "text": "convert this file to pdf",
+      "instant": false
+    },
+    {
+      "text": "how many calories in a banana",
+      "instant": false
+    }
+  ],
+  "ask": [
+    {
+      "text": "set a timer",
+      "outcome": "ask"
+    },
+    {
+      "text": "set an alarm",
+      "outcome": "ask"
+    },
+    {
+      "text": "remind me",
+      "outcome": "ask"
+    },
+    {
+      "text": "remind me to call mom",
+      "outcome": "ask"
+    },
+    {
+      "text": "set the volume",
+      "outcome": "ask"
+    },
+    {
+      "text": "search for",
+      "outcome": "ask"
+    },
+    {
+      "text": "set a timer for 10 minutes",
+      "outcome": "go"
+    },
+    {
+      "text": "remind me to call mom at 5pm",
+      "outcome": "go"
+    },
+    {
+      "text": "set an alarm for 7am",
+      "outcome": "go"
+    },
+    {
+      "text": "set the volume to 30",
+      "outcome": "go"
+    },
+    {
+      "text": "what does a timer do",
+      "outcome": "go"
+    },
+    {
+      "text": "search for pasta recipes",
+      "outcome": "go"
+    }
+  ],
+  "context": [
+    {
+      "prev": "set a timer for 5 minutes",
+      "text": "actually make it 10",
+      "carry": true
+    },
+    {
+      "prev": "play some jazz",
+      "text": "a bit louder",
+      "carry": true
+    },
+    {
+      "prev": "what's my cpu usage",
+      "text": "and the gpu?",
+      "carry": true
+    },
+    {
+      "prev": "what's the weather in Dallas",
+      "text": "tell me a joke",
+      "carry": false
+    },
+    {
+      "prev": "play some jazz",
+      "text": "something more upbeat",
+      "carry": true
+    },
+    {
+      "prev": "set a timer for 5 minutes",
+      "text": "and cancel it",
+      "carry": true
+    },
+    {
+      "prev": "what's the weather in Dallas",
+      "text": "what's 5 times 7",
+      "carry": false
+    },
+    {
+      "prev": "set a timer for 5 minutes",
+      "text": "thanks",
+      "carry": false
+    }
+  ],
+  "models": {
+    "installed": [
+      {
+        "name": "nomic-embed-text:latest",
+        "size": "137M",
+        "caps": [
+          "embedding"
+        ]
+      },
+      {
+        "name": "jarvis-worker8:latest",
+        "size": "8.2B",
+        "caps": [
+          "completion",
+          "tools",
+          "thinking"
+        ]
+      },
+      {
+        "name": "qwen3:8b",
+        "size": "8.2B",
+        "caps": [
+          "completion",
+          "tools",
+          "thinking"
+        ]
+      },
+      {
+        "name": "jarvis-worker:latest",
+        "size": "4.2B",
+        "caps": [
+          "completion",
+          "vision",
+          "tools",
+          "thinking"
+        ]
+      },
+      {
+        "name": "jarvis-router:latest",
+        "size": "1.9B",
+        "caps": [
+          "completion",
+          "vision",
+          "tools",
+          "thinking"
+        ]
+      },
+      {
+        "name": "qwen2.5:7b-instruct",
+        "size": "7.6B",
+        "caps": [
+          "completion",
+          "tools"
+        ]
+      },
+      {
+        "name": "dolphin3:8b",
+        "size": "8.0B",
+        "caps": [
+          "completion"
+        ]
+      },
+      {
+        "name": "qwen2.5:3b",
+        "size": "3.1B",
+        "caps": [
+          "completion",
+          "tools"
+        ]
+      },
+      {
+        "name": "glm-5.3:cloud",
+        "size": "753B",
+        "caps": [
+          "completion",
+          "thinking",
+          "tools"
+        ],
+        "remote": true
+      }
+    ],
+    "cases": [
+      {
+        "id": "main ok",
+        "cfg": {
+          "model": "jarvis-worker:latest",
+          "fastModel": ""
+        },
+        "hints": {
+          "tier": "deep",
+          "think": true,
+          "tools": true
+        },
+        "want": [
+          "jarvis-worker:latest"
+        ]
+      },
+      {
+        "id": "fast model configured",
+        "cfg": {
+          "model": "jarvis-worker:latest",
+          "fastModel": "jarvis-router:latest"
+        },
+        "hints": {
+          "tier": "fast",
+          "think": false,
+          "tools": false
+        },
+        "want": [
+          "jarvis-router:latest"
+        ]
+      },
+      {
+        "id": "fast model gone -> main",
+        "cfg": {
+          "model": "jarvis-worker:latest",
+          "fastModel": "gone:1b"
+        },
+        "hints": {
+          "tier": "fast",
+          "think": false,
+          "tools": false
+        },
+        "want": [
+          "jarvis-worker:latest"
+        ]
+      },
+      {
+        "id": "think: swap to a thinking model that is already loaded",
+        "cfg": {
+          "model": "qwen2.5:7b-instruct",
+          "fastModel": ""
+        },
+        "hints": {
+          "tier": "deep",
+          "think": true,
+          "tools": true
+        },
+        "want": [
+          "qwen3:8b"
+        ],
+        "loaded": [
+          "qwen3:8b"
+        ]
+      },
+      {
+        "id": "think: nothing suitable loaded -> stay on main (no VRAM swap)",
+        "cfg": {
+          "model": "qwen2.5:7b-instruct",
+          "fastModel": ""
+        },
+        "hints": {
+          "tier": "deep",
+          "think": true,
+          "tools": true
+        },
+        "loaded": [
+          "qwen2.5:7b-instruct"
+        ],
+        "want": [
+          "qwen2.5:7b-instruct"
+        ]
+      },
+      {
+        "id": "think: loaded state unknown -> stay on main",
+        "cfg": {
+          "model": "qwen2.5:7b-instruct",
+          "fastModel": ""
+        },
+        "hints": {
+          "tier": "deep",
+          "think": true,
+          "tools": true
+        },
+        "want": [
+          "qwen2.5:7b-instruct"
+        ]
+      },
+      {
+        "id": "no think -> keep main",
+        "cfg": {
+          "model": "qwen2.5:7b-instruct",
+          "fastModel": ""
+        },
+        "hints": {
+          "tier": "deep",
+          "think": false,
+          "tools": true
+        },
+        "want": [
+          "qwen2.5:7b-instruct"
+        ]
+      },
+      {
+        "id": "tools need a tools model",
+        "cfg": {
+          "model": "dolphin3:8b",
+          "fastModel": ""
+        },
+        "hints": {
+          "tier": "deep",
+          "think": false,
+          "tools": true
+        },
+        "want": [
+          "qwen2.5:7b-instruct",
+          "qwen3:8b",
+          "jarvis-worker8:latest"
+        ]
+      },
+      {
+        "id": "chat only -> keep a no-tools main",
+        "cfg": {
+          "model": "dolphin3:8b",
+          "fastModel": ""
+        },
+        "hints": {
+          "tier": "fast",
+          "think": false,
+          "tools": false
+        },
+        "want": [
+          "dolphin3:8b"
+        ]
+      },
+      {
+        "id": "main uninstalled -> best installed",
+        "cfg": {
+          "model": "gone:latest",
+          "fastModel": ""
+        },
+        "hints": {
+          "tier": "deep",
+          "think": false,
+          "tools": true
+        },
+        "want": [
+          "jarvis-worker8:latest",
+          "qwen3:8b",
+          "qwen2.5:7b-instruct"
+        ]
+      },
+      {
+        "id": "never an embedding or cloud model",
+        "cfg": {
+          "model": "gone:latest",
+          "fastModel": ""
+        },
+        "hints": {
+          "tier": "fast",
+          "think": false,
+          "tools": false
+        },
+        "wantNot": [
+          "nomic-embed-text:latest",
+          "glm-5.3:cloud"
+        ]
+      }
+    ]
+  },
+  "live": [
+    {
+      "text": "what timers do I have",
+      "tool": "list_timers"
+    },
+    {
+      "text": "list my alarms",
+      "tool": "list_timers"
+    },
+    {
+      "text": "do I have any timers?",
+      "tool": "list_timers"
+    },
+    {
+      "text": "how much time is left on my timer",
+      "tool": "list_timers"
+    },
+    {
+      "text": "what alarms are set",
+      "tool": "list_timers"
+    },
+    {
+      "text": "how is my pc doing",
+      "tool": "get_system_stats"
+    },
+    {
+      "text": "cpu usage",
+      "tool": "get_system_stats"
+    },
+    {
+      "text": "how hot is my gpu",
+      "tool": "get_system_stats"
+    },
+    {
+      "text": "how much ram am I using",
+      "tool": "get_system_stats"
+    },
+    {
+      "text": "what is my graphics card temperature",
+      "tool": "get_system_stats"
+    },
+    {
+      "text": "set a timer for 5 minutes",
+      "tool": null
+    },
+    {
+      "text": "what timers should I use for pasta",
+      "tool": null
+    },
+    {
+      "text": "how hot is it outside",
+      "tool": null
+    },
+    {
+      "text": "what is the cpu of a raspberry pi",
+      "tool": null
+    },
+    {
+      "text": "what is my gpu",
+      "tool": null
+    },
+    {
+      "text": "cancel my timer",
+      "tool": null
+    }
+  ]
+}

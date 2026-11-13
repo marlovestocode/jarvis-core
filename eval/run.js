@@ -1,7 +1,8 @@
 // Live quality eval against local Ollama (not part of npm test).
 //   node eval/run.js raw  [model]   model alone: no system prompt, no tools
 //   node eval/run.js app            full jarvis-core brain: prompt, router, tools (skill groups when this branch has them)
-// Env: JARVIS_EVAL_GROUP=tools  only the tool-choice questions; JARVIS_EVAL_STUBS=1  fake PC host, timers, media... for every
+// Env: JARVIS_EVAL_CONSTRAIN=0  turn off the schema-constrained repair of tool calls (default on), to compare;
+//      JARVIS_EVAL_GROUP=tools  only the tool-choice questions; JARVIS_EVAL_STUBS=1  fake PC host, timers, media... for every
 //      tool (the eval never touches the real PC); JARVIS_EVAL_OUT=<file>  write the results there.
 // Writes eval/results-<mode>.json and prints a score.
 const fs = require('node:fs');
@@ -48,7 +49,9 @@ async function appAsk(make, q) {
   const tools = events.filter(e => e.type === 'tool' && e.phase === 'start').map(e => e.name);
   const route = events.find(e => e.type === 'route');
   const s = sessions.load(res.sessionId);
-  return { answer: res.reply || res.error || '', error: res.error, ms: Date.now() - t0, tools, route: route && `${route.model}${route.think ? '+think' : ''}`, steps: s.messages.length,
+  const repairs = events.filter(e => e.type === 'log' && /^Repaired tool call/.test(e.text || '')).map(e => e.text);
+  const unknown = s.messages.filter(m => m.role === 'tool' && /^Error: unknown tool/.test(String(m.content))).length;
+  return { answer: res.reply || res.error || '', error: res.error, ms: Date.now() - t0, tools, repairs, unknown, route: route && `${route.model}${route.think ? '+think' : ''}`, steps: s.messages.length,
     toolResults: events.filter(e => e.type === 'tool' && e.phase === 'end').map(e => ({ name: e.name, ok: e.ok })),
     sources: events.filter(e => e.type === 'net'), evidence: s.messages.filter(m => m.role === 'tool').map(m => ({ name: m.name, text: m.content })) };
 }
@@ -92,6 +95,7 @@ function appFactory({ before = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-eval-'));
   const config = loadConfig(process.env.JARVIS_DATA_DIR || path.join(os.homedir(), 'AppData', 'Roaming', 'jarvis-core'));
   config.provider = 'ollama';
+  config.constrainTools = process.env.JARVIS_EVAL_CONSTRAIN !== '0';
   const kiwix = createKiwix({ exe: path.join(__dirname, '../engines/kiwix/kiwix-serve.exe'), zimDir: 'C:\\JarvisData\\library' });
   const make = () => {
     const bus = createBus();
@@ -105,16 +109,39 @@ function appFactory({ before = false } = {}) {
     const deps = { ...stubs, getStatus: async () => ({ ...(await probe.get()), model: config.ollama.model }), ...(!before ? { fetcher, kiwix, getConfig: () => config, bus } : {}) };
     // this branch: skill groups, like the app; an older branch has only the flat list
     const grouped = !before && typeof brain.defaultCatalog === 'function';
-    let tools, selectGroups, caps;
+    let tools, selectGroups, caps, catalog;
     if (grouped) {
-      const catalog = brain.defaultCatalog(deps);
+      catalog = brain.defaultCatalog(deps);
       const skills = require('../src/core/skills');
       tools = createToolRunner(catalog.tools, { groups: catalog.groups });
       selectGroups = (text, o) => skills.selectGroups(text, o, catalog);
       caps = skills.capsLine(catalog, { browser: 'off' });
     } else tools = createToolRunner(brain.defaultTools(deps));
+    // the orchestration pass (docs/orchestration-pass-2026-11-12.md): tool ranking, ask-first, instant answers; JARVIS_EVAL_NEW=0 leaves them out to compare
+    let extra = {};
+    if (grouped && process.env.JARVIS_EVAL_NEW !== '0') {
+      const { createRanker } = require('../src/core/skills/rank');
+      const { clarify } = require('../src/core/skills/clarify');
+      const { instant } = require('../src/core/brain/instant');
+      const { liveIntent, liveReply } = require('../src/core/brain/instant-live');
+      const ranker = createRanker(catalog.tools);
+      extra = {
+        ...(process.env.JARVIS_EVAL_RANK === '0' ? {} : { rankTools: (text, specs) => ranker.order(text, specs) }), learnTool: (text, name) => ranker.learn(text, name),
+        fastPath: async (text, o) => {
+          const c = clarify(text, o);
+          if (c) return { reply: c.reply, ok: true, ask: c.kind === 'ask' };
+          const i = instant(text, { now: new Date() });
+          if (i) return i;
+          const l = liveIntent(text);
+          if (!l) return null;
+          const r = await tools.run(l.tool, {}, { turn: { source: 'text', tainted: false } });
+          const reply = r.ok ? liveReply(l, r.text) : null;
+          return reply ? { reply, tool: l.tool, ok: true } : null;
+        },
+      };
+    }
     const orc = createOrchestrator({
-      bus, sessions, providers, tools, getConfig: () => config, selectGroups,
+      bus, sessions, providers, tools, getConfig: () => config, selectGroups, ...extra,
       systemPrompt: brain.systemPrompt, stamp: brain.nowLine, route: brain.route, timeoutMs: 120000,
       promptInfo: () => ({ hardware: probe.cached(), ...(caps ? { caps } : {}) }),
     });
@@ -130,7 +157,9 @@ async function run() {
   if (!['app', 'before', 'raw'].includes(mode)) throw new Error('Mode must be app, before or raw');
   const make = mode === 'raw' ? null : appFactory({ before: mode === 'before' });
   const model = make?.model || process.argv[3] || 'jarvis-worker:latest';
-  const questions = process.env.JARVIS_EVAL_GROUP ? QUESTIONS.filter(q => q.group === process.env.JARVIS_EVAL_GROUP || (process.env.JARVIS_EVAL_GROUP === 'knowledge' && q.group)) : QUESTIONS;
+  const ids = process.env.JARVIS_EVAL_IDS ? process.env.JARVIS_EVAL_IDS.split(',') : null;   // only these question ids
+  const questions0 = process.env.JARVIS_EVAL_GROUP ? QUESTIONS.filter(q => q.group === process.env.JARVIS_EVAL_GROUP || (process.env.JARVIS_EVAL_GROUP === 'knowledge' && q.group)) : QUESTIONS;
+  const questions = ids ? questions0.filter(q => ids.includes(q.id)) : questions0;
   const rows = [];
   let pass = 0, totalMs = 0;
   try {
@@ -143,11 +172,12 @@ async function run() {
       console.log(`${ok ? 'PASS' : 'FAIL'} ${q.id.padEnd(12)} ${String(r.ms).padStart(6)} ms ${r.route ? '[' + r.route + '] ' : ''}${r.tools?.length ? '{' + r.tools.join(',') + '} ' : ''}${String(r.answer).replace(/\s+/g, ' ').slice(0, 110)}`);
     }
   } finally { make?.close(); }
-  const groups = Object.fromEntries(['brain', 'fact', 'live', 'tools'].map(group => {
+  const groups = Object.fromEntries(['brain', 'fact', 'live', 'tools', 'followup'].map(group => {
     const rs = rows.filter(r => r.group === group);
     return [group, { pass: rs.filter(r => r.ok).length, total: rs.length, offlineRetrieved: rs.filter(r => r.sources?.some(s => s.offline)).length }];
   }));
-  console.log(`\nSCORE ${mode}: ${pass}/${questions.length}, total ${(totalMs / 1000).toFixed(1)} s; ${JSON.stringify(groups)}`);
+  const rep = rows.reduce((n, r) => n + (r.repairs?.length || 0), 0), unk = rows.reduce((n, r) => n + (r.unknown || 0), 0);
+  console.log(`\nSCORE ${mode}: ${pass}/${questions.length}, total ${(totalMs / 1000).toFixed(1)} s; repaired calls ${rep}, unknown-tool errors ${unk}; ${JSON.stringify(groups)}`);
   const file = process.env.JARVIS_EVAL_OUT || path.join(__dirname, `results-${mode}.json`);
   if (!process.env.JARVIS_EVAL_OUT && fs.existsSync(file)) fs.copyFileSync(file, file.replace('.json', `-previous-${Date.now()}.json`));
   fs.writeFileSync(file, JSON.stringify({ mode, model, at: new Date().toISOString(), pass, total: questions.length, totalMs, groups, rows }, null, 2));
