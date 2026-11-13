@@ -75,4 +75,4 @@ const NO = new Set(['no', 'nope', 'cancel', 'stop', "don't", 'do not', 'never mi
 const isYes = t => YES.has(plain(t));
 const isNo = t => NO.has(plain(t));
 
-module.exports = { ungroundedFigures, softFail, unbackedClaim, stripClaims, UNBACKED_FIX, isYes, isNo, isUntrustedTool, NEEDS_OK };
+module.exports = { NOT_CLAIM, ungroundedFigures, softFail, unbackedClaim, stripClaims, UNBACKED_FIX, isYes, isNo, isUntrustedTool, NEEDS_OK };
