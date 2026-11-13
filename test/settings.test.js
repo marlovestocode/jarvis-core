@@ -114,3 +114,12 @@ test('applyPatch: vad accepts silero or energy, refuses anything else', () => {
   assert.equal(bad.config.vad, DEFAULTS.vad);
   assert.ok(bad.errors.some(e => /VAD/i.test(e)));
 });
+
+test('applyPatch: library.dir must be an absolute path', () => {
+  const providers = { get: () => null };
+  const ok = applyPatch(DEFAULTS, { library: { dir: 'D:\\Zims' } }, { providers, engines: {} });
+  assert.equal(ok.config.library.dir, 'D:\\Zims');
+  const bad = applyPatch(DEFAULTS, { library: { dir: 'zims' } }, { providers, engines: {} });
+  assert.equal(bad.config.library.dir, DEFAULTS.library.dir);
+  assert.ok(bad.errors.some(e => /library/i.test(e)));
+});

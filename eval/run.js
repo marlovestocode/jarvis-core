@@ -96,7 +96,7 @@ function appFactory({ before = false } = {}) {
   const config = loadConfig(process.env.JARVIS_DATA_DIR || path.join(os.homedir(), 'AppData', 'Roaming', 'jarvis-core'));
   config.provider = 'ollama';
   config.constrainTools = process.env.JARVIS_EVAL_CONSTRAIN !== '0';
-  const kiwix = createKiwix({ exe: path.join(__dirname, '../engines/kiwix/kiwix-serve.exe'), zimDir: 'C:\\JarvisData\\library' });
+  const kiwix = createKiwix({ exe: path.join(__dirname, '../engines/kiwix/kiwix-serve.exe'), zimDir: config.library.dir });
   const make = () => {
     const bus = createBus();
     const events = [];

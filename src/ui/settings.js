@@ -78,6 +78,7 @@
     $('locationDetail').textContent = `Home: ${c.location.city} (${c.location.lat.toFixed(4)}, ${c.location.lon.toFixed(4)})`;
     drawItems('feeds', c.news.feeds, x => x, i => save({ news: { feeds: c.news.feeds.filter((_, n) => n !== i) } }));
     drawItems('teams', c.sports.follow, x => `${x.league.toUpperCase()} · ${x.team}`, i => save({ sports: { follow: c.sports.follow.filter((_, n) => n !== i) } }));
+    if (document.activeElement !== $('libraryDir')) $('libraryDir').value = c.library.dir;
     const lib = d.library;
     $('libraryDetail').textContent = lib ? `${lib.installed ? 'Wikipedia installed' : 'Not installed — online fallback when enabled'}\n${lib.path}\n${(lib.sizeBytes / 1e9).toFixed(2)} GB · ${lib.articles == null ? 'Article count unavailable' : lib.articles.toLocaleString() + ' articles'} · ${lib.running ? 'Kiwix running' : 'Kiwix stopped'}` : 'Library status unavailable';
   }
@@ -182,6 +183,7 @@
   for (const k of ['stt', 'tts', 'wake']) $(k).addEventListener('change', e => save({ engines: { [k]: e.target.value } }));
   $('wakeEnabled').addEventListener('change', e => save({ wakeEnabled: e.target.checked }));
   $('userName').addEventListener('change', e => save({ user: { name: e.target.value } }));
+  $('libraryDir').addEventListener('change', e => save({ library: { dir: e.target.value } }));
   $('userAbout').addEventListener('change', e => save({ user: { about: e.target.value } }));
   $('speakerGate').addEventListener('change', e => save({ speakerGate: e.target.checked }));
   $('logPlays').addEventListener('change', e => save({ music: { logPlays: e.target.checked } }));

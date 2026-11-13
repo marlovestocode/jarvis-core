@@ -1,4 +1,4 @@
-// Offline Wikipedia: one kiwix-serve bound to 127.0.0.1 serves the ZIM in C:\JarvisData\library.
+// Offline Wikipedia: one kiwix-serve bound to 127.0.0.1 serves the ZIM in the library folder (config library.dir, default C:\JarvisData\library).
 // Local only (loopback), so it does not go through the internet gate. Missing library → available() false
 // and the app works without it. A crash restarts the server once.
 const fs = require('node:fs');
@@ -32,7 +32,8 @@ function createKiwix({
   if (address !== '127.0.0.1') throw new Error('kiwix-serve must bind 127.0.0.1');
   const base = `http://127.0.0.1:${port}`;
   let proc = null, starting = null, starts = 0, gaveUp = false;
-  const zim = () => pickZim(readdir(zimDir));
+  const dirOf = () => (typeof zimDir === 'function' ? zimDir() : zimDir);   // a function follows config changes
+  const zim = () => pickZim(readdir(dirOf()));
   const book = () => (zim() || '').replace(/\.zim$/, '');
   const available = () => !!exe && exists(exe) && !!zim();
 
@@ -52,7 +53,7 @@ function createKiwix({
     if (proc && !starting) return Promise.resolve();
     if (starting) return starting;
     starts++;
-    const kid = spawn(exe, ['--address', '127.0.0.1', '--port', String(port), path.join(zimDir, zim())], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const kid = spawn(exe, ['--address', '127.0.0.1', '--port', String(port), path.join(dirOf(), zim())], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     proc = kid;
     kid.stdout?.on?.('data', () => {});
     kid.stderr?.on?.('data', () => {});
@@ -88,8 +89,8 @@ function createKiwix({
 
   async function info() {
     const file = zim();
-    const out = { installed: available(), file, path: file ? path.join(zimDir, file) : zimDir, sizeBytes: 0, articles: null, running: !!proc && !starting };
-    if (file) { try { out.sizeBytes = stat(path.join(zimDir, file)).size; } catch { /* gone */ } }
+    const out = { installed: available(), file, path: file ? path.join(dirOf(), file) : dirOf(), sizeBytes: 0, articles: null, running: !!proc && !starting };
+    if (file) { try { out.sizeBytes = stat(path.join(dirOf(), file)).size; } catch { /* gone */ } }
     if (out.installed) {
       try { const x = await get('/catalog/v2/entries'); const m = x.match(/<articleCount>(\d+)<\/articleCount>/); if (m) out.articles = Number(m[1]); } catch { /* not running */ }
       out.running = !!proc && !starting;

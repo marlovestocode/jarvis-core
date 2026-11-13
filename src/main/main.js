@@ -188,7 +188,7 @@ ctx.fetcher = createFetcher({ policy: createPolicy(ctx.getConfig), bus: ctx.bus,
 ctx.webAudit = createWebAudit({ file: path.join(DATA_DIR, 'web-activity.jsonl'), bus: ctx.bus, log: ctx.log });
 ctx.web = createWeb({ publicFetch: createPublicFetch(), audit: ctx.webAudit, getConfig: ctx.getConfig });
 ctx.bus.on('web', e => { if (e.ok) ctx.bus.emit('net', { source: 'web', host: e.host || 'duckduckgo.com', ok: true, ms: e.ms || 0, cached: false, ageMs: 0 }); });
-ctx.kiwix = createKiwix({ exe: path.join(__dirname, '../../engines/kiwix/kiwix-serve.exe'), zimDir: 'C:\\JarvisData\\library', log: ctx.log });
+ctx.kiwix = createKiwix({ exe: path.join(__dirname, '../../engines/kiwix/kiwix-serve.exe'), zimDir: () => ctx.getConfig().library.dir, log: ctx.log });
 // Media: what is playing and its controls, read from Windows by one PowerShell host (src/core/media).
 // Media keys through sysmon remain the fallback when the host cannot run.
 ctx.mediaHost = createSpeechHost({ script: path.join(__dirname, '../core/media/media-host.ps1'), log: ctx.log, name: 'media host' });

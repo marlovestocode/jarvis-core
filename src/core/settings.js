@@ -1,4 +1,5 @@
 // Settings panel logic: validate a patch from the UI and describe what can be chosen.
+const path = require('node:path');
 const { feedUrl, SOURCES } = require('./net/policy');
 const { LEAGUES } = require('./knowledge/sports');
 const { HHMM } = require('./config');
@@ -7,7 +8,7 @@ const DIALECTS = require('./voice/dialect').list().map(d => d.id);
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 function applyPatch(current, patch = {}, { providers, engines }) {
-  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama }, online: { ...current.online }, location: { ...current.location }, news: { feeds: [...current.news.feeds] }, sports: { follow: current.sports.follow.map(x => ({ ...x })) }, music: { ...current.music, aliases: (current.music?.aliases || []).map(x => ({ ...x })) }, proactive: { ...current.proactive, monitors: cleanMonitors(current.proactive?.monitors) }, browser: { ...current.browser }, user: { ...current.user }, memory: { ...current.memory }, cortex: { ...current.cortex }, speech: { ...current.speech } };
+  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama }, online: { ...current.online }, location: { ...current.location }, news: { feeds: [...current.news.feeds] }, sports: { follow: current.sports.follow.map(x => ({ ...x })) }, music: { ...current.music, aliases: (current.music?.aliases || []).map(x => ({ ...x })) }, proactive: { ...current.proactive, monitors: cleanMonitors(current.proactive?.monitors) }, browser: { ...current.browser }, user: { ...current.user }, memory: { ...current.memory }, cortex: { ...current.cortex }, speech: { ...current.speech }, library: { ...current.library } };
   const errors = [];
   if (!isObj(patch)) return { config, errors: ['bad patch'] };
 
@@ -146,6 +147,11 @@ function applyPatch(current, patch = {}, { providers, engines }) {
     if ('dialect' in sp) { if (DIALECTS.includes(sp.dialect)) config.speech.dialect = sp.dialect; else errors.push(`Unknown dialect: ${String(sp.dialect).slice(0, 30)}`); }
     for (const k of ['contractions', 'pauses']) if (k in sp) { if (typeof sp[k] === 'boolean') config.speech[k] = sp[k]; else errors.push(`Bad speech switch: ${k}`); }
     if ('dateOrder' in sp) { if (sp.dateOrder === 'mdy' || sp.dateOrder === 'dmy') config.speech.dateOrder = sp.dateOrder; else errors.push('Date order must be mdy or dmy'); }
+  }
+  if (isObj(patch.library) && 'dir' in patch.library) {
+    const dir = typeof patch.library.dir === 'string' ? patch.library.dir.trim() : '';
+    if (dir && dir.length <= 260 && path.isAbsolute(dir)) config.library.dir = dir;
+    else errors.push('Library folder must be an absolute path (like C:\\JarvisData\\library)');
   }
   if (isObj(patch.hotkeys)) {
     const next = { ...config.hotkeys };

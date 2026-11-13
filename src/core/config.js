@@ -64,10 +64,12 @@ const DEFAULTS = Object.freeze({
   cortex: Object.freeze({ embedModel: 'nomic-embed-text', wallpaperLabels: true }),
   // how he talks (core/voice/dialect.js): the dialect names his word choice and register, the rest tunes the spoken text
   speech: Object.freeze({ dialect: 'british-formal', contractions: true, pauses: true, dateOrder: 'mdy' }),
+  // the offline library (Kiwix/ZIM store): an absolute folder, default where scripts/install-library.ps1 puts it
+  library: Object.freeze({ dir: 'C:\\JarvisData\\library' }),
 });
 
 const VADS = ['silero', 'energy'];
-const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive', 'pc', 'browser', 'memory', 'cortex', 'speech'];
+const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive', 'pc', 'browser', 'memory', 'cortex', 'speech', 'library'];
 const MODEL_NAME = /^[\w.:-]{1,64}$/;   // an Ollama model tag, e.g. nomic-embed-text:latest
 const HHMM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;   // "22:00"
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -119,6 +121,7 @@ function merge(raw) {
         out[key].cooldownMin = clampNumber(out[key].cooldownMin, 1, 240);
         out[key].maxPerHour = clampNumber(out[key].maxPerHour, 1, 60);
       }
+      if (key === 'library' && !path.isAbsolute(out[key].dir)) out[key].dir = def.dir;   // inspectConfig reports library.dir as ignored
       if (key === 'cortex' && !MODEL_NAME.test(out[key].embedModel)) out[key].embedModel = def.embedModel;
     } else {
       out[key] = v !== undefined && okValue(key, def, v) ? v : def;

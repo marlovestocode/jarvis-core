@@ -4,12 +4,13 @@
 # The ZIM is downloaded to <name>.zim.part with resume (curl -C -), its size is checked against the
 # server's Content-Length, and only then renamed to .zim, so JARVIS never opens a partial file.
 #   -Check   : print the latest ZIM name, URL and size; download nothing
+#   -Dir     : library folder (default C:\JarvisData\library; match Settings > Library folder)
 #   -Tools   : kiwix-tools only        -Zim : the ZIM only        (default: both)
-# Progress and results go to C:\JarvisData\library\install.log.
-param([switch]$Check, [switch]$Tools, [switch]$Zim)
+# Progress and results go to <Dir>\install.log.
+param([switch]$Check, [switch]$Tools, [switch]$Zim, [string]$Dir = 'C:\JarvisData\library')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-$lib = 'C:\JarvisData\library'
+$lib = $Dir
 $kiwixDir = Join-Path $root 'engines\kiwix'
 $toolsUrl = 'https://download.kiwix.org/release/kiwix-tools/kiwix-tools_win-x86_64-3.8.1.zip'
 $zimIndex = 'https://download.kiwix.org/zim/wikipedia/'
@@ -59,7 +60,7 @@ if ($Zim -or $both) {
   $final = Join-Path $lib $z.Name
   $part = "$final.part"
   if ((Test-Path $final) -and (Get-Item $final).Length -eq $z.Size) { Log "ZIM already complete: $final"; exit 0 }
-  $free = (Get-PSDrive C).Free
+  $free = (Get-PSDrive (Split-Path -Qualifier $lib).TrimEnd(':')).Free
   $have = if (Test-Path $part) { (Get-Item $part).Length } else { 0 }
   if ($free -lt ($z.Size - $have + 2GB)) { throw ("not enough space on C: ({0:N1} GB free, need {1:N1} GB)" -f ($free / 1e9), (($z.Size - $have) / 1e9)) }
   Log ("downloading {0} ({1:N1} GB) to {2}, resuming from {3:N1} GB" -f $z.Url, ($z.Size / 1e9), $part, ($have / 1e9))

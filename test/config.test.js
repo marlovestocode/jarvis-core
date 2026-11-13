@@ -125,3 +125,19 @@ test('settings: applyPatch takes the memory switches and refuses non-booleans', 
   assert.equal(bad.config.memory.autoCapture, true);
   assert.equal(bad.errors.length, 1);
 });
+
+test('library.dir defaults to C:\\JarvisData\\library', () => {
+  assert.equal(DEFAULTS.library.dir, 'C:\\JarvisData\\library');
+  assert.equal(loadConfig(tmp()).library.dir, 'C:\\JarvisData\\library');
+  const d = tmp();
+  fs.writeFileSync(path.join(d, 'config.json'), JSON.stringify({ library: { dir: 'D:\\Books\\zim' } }));
+  assert.equal(loadConfig(d).library.dir, 'D:\\Books\\zim');
+});
+
+test('relative library.dir is rejected with a reported key', () => {
+  const { inspectConfig } = require('../src/core/config');
+  const d = tmp();
+  fs.writeFileSync(path.join(d, 'config.json'), JSON.stringify({ library: { dir: 'library\\here' } }));
+  assert.equal(loadConfig(d).library.dir, 'C:\\JarvisData\\library');
+  assert.ok(inspectConfig(d).ignored.includes('library.dir'));
+});

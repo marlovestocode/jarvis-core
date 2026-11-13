@@ -112,3 +112,20 @@ test('kiwix: info reports file, size and article count; close kills', async () =
   k.close();
   assert.equal(spawn.kids[0].killed, true);
 });
+
+test('kiwix reads zim files from config library.dir', async () => {
+  const os = require('node:os'), fs = require('node:fs'), path = require('node:path');
+  const { loadConfig } = require('../src/core/config');
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'jc-kw-'));
+  fs.writeFileSync(path.join(d, 'config.json'), JSON.stringify({ library: { dir: 'E:\\Zims' } }));
+  const config = loadConfig(d);
+  const seen = [];
+  const spawn = fakeSpawn();
+  const k = createKiwix({ exe: 'C:/x/kiwix-serve.exe', zimDir: () => config.library.dir, spawn, fetch: fakeFetch(), exists: () => true, readdir: dir => { seen.push(dir); return [ZIM]; }, stat: () => ({ size: 1 }) });
+  assert.equal(k.available(), true);
+  assert.equal(seen.at(-1), 'E:\\Zims');
+  await k.search('x');
+  assert.equal(spawn.kids[0].args.at(-1), path.join('E:\\Zims', ZIM));
+  config.library.dir = 'F:\\Other';
+  assert.equal((await k.info()).path, path.join('F:\\Other', ZIM));
+});
