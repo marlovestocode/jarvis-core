@@ -4,6 +4,7 @@ const { softFail } = require('../brain/guard');
 
 const MAX_STEPS = 12;
 const EXPECT_KEYS = ['nonEmpty', 'contains', 'matches'];
+const TASK_TOOLS = new Set(['task_run', 'task_control']);   // a task cannot start or steer tasks
 
 const isRef = v => v && typeof v === 'object' && !Array.isArray(v) && typeof v.$ref === 'string';
 
@@ -27,6 +28,7 @@ function validatePlan(steps, { resolves, riskOf, tainted } = {}) {
     const id = `s${i + 1}`;
     const s = steps[i];
     if (!s || typeof s !== 'object' || typeof s.tool !== 'string' || !s.tool) return { ok: false, text: `Step ${id} needs a "tool" name.` };
+    if (TASK_TOOLS.has(s.tool)) return { ok: false, text: `Step ${id} uses "${s.tool}": a task cannot start or control another task. Put the steps in this plan instead.` };
     if (!resolves(s.tool)) return { ok: false, text: `Step ${id} uses unknown tool "${s.tool}". Use only tools you have.` };
     if (tainted && riskOf(s.tool) === 'confirm') return { ok: false, text: `Step ${id} uses "${s.tool}", which needs the user's OK, and this plan was influenced by untrusted content. Do that action directly with the user instead.` };
     if (s.args != null && (typeof s.args !== 'object' || Array.isArray(s.args))) return { ok: false, text: `Step ${id} args must be an object.` };

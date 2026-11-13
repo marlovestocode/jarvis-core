@@ -3,7 +3,7 @@
 // Every step is saved as `running` before its tool is called and as `done`/`failed` after (write-ahead),
 // so a crash leaves an accurate record. Report text is built only from stored step records.
 const { validatePlan, resolveRefs, check } = require('./plan');
-const { NEEDS_OK } = require('../brain/guard');
+const { NEEDS_OK, UNTRUSTED_TOOLS } = require('../brain/guard');
 const { isReadOnly } = require('./effects');
 
 const NO_RETRY = /not running|not in Ollama|not allowed|must be local|timed out|aborted/i;
@@ -104,6 +104,8 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
         if (!err) emit('task', { id: task.id, step: step.id, status: task.status });
         return { ok: false, text: err || `Task ${task.id} ${task.status} before ${step.id}. ${describe(task)}`, task };
       }
+      // Results read so far may carry untrusted text into this step's args: no confirm tool from them.
+      if (turn?.tainted && riskOf(step.tool) === 'confirm') return fail(task, step, `${step.tool} needs the user's OK, and this task read untrusted content. Do that action directly with the user instead`);
       const refs = resolveRefs(step.args, doneResults(task));
       if (!refs.ok) return fail(task, step, refs.text);
 
@@ -116,15 +118,25 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
       const result = await callWithRetry(step, refs.args, { signal, turn }, signal);
       const text = String(result.text ?? '');
       step.result = { ok: !!result.ok, text, t: now() };
+      if (result.untrusted || UNTRUSTED_TOOLS.has(step.tool)) {
+        // The orchestrator's turn is shared by reference: later steps and the rest of the turn see the taint.
+        if (turn && typeof turn === 'object') turn.tainted = true;
+        task.tainted = true;
+      }
       const awaiting = text.startsWith(NEEDS_OK);
       const verdict = awaiting ? { ok: false } : result.ok ? check(step.expect, result) : { ok: false, why: `the tool reported an error: ${clip(text, 200)}` };
       emit('tool', { id: toolId(task, step), name: step.tool, phase: 'end', ok: verdict.ok });
 
       delete step.asked;
+      delete step.askedFor;
+      delete step.maybeRan;
       if (awaiting || (!verdict.ok && signal?.aborted)) {
         // A confirm tool only proposed its action: nothing ran, the question goes to the user as is.
         step.status = 'pending';
-        if (awaiting) step.asked = true;
+        if (awaiting) {
+          step.asked = true;
+          step.askedFor = pendingAction()?.summary ?? null;   // which proposal this step waits on
+        } else if (mayAct(step)) step.maybeRan = true;   // cut off mid-call: it may have acted
         task.status = awaiting ? 'awaiting_confirm' : 'paused';
         const err = persist(task);
         if (!err) emit('task', { id: task.id, step: step.id, status: task.status });
@@ -143,16 +155,26 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
     return { ok: !err, text: err || reportDone(task), task };
   }
 
+  const pendingAction = () => { try { return confirmPending() || null; } catch { return null; } };
+  // A step that may change something: not read-only, and not a confirm tool (which only proposes).
+  const mayAct = step => !isReadOnly(step.tool) && riskOf(step.tool) !== 'confirm';
+  const sameProposal = (step, tool, summary) => !!step.asked && step.tool === tool && (step.askedFor ?? null) === (summary ?? null);
+  // A task that read untrusted content keeps that taint in every later turn that runs it.
+  function runTurn(turn, task) {
+    const t = turn && typeof turn === 'object' ? turn : {};
+    if (task.tainted) t.tainted = true;
+    return t;
+  }
+
   const validate = (steps, turn) => validatePlan(steps, { resolves: n => tools.resolves(n), riskOf, tainted: !!turn?.tainted });
 
   // An awaiting_confirm task stays so only while confirm still holds its step's action; otherwise
   // the question was answered elsewhere, timed out or dropped, and the task is paused.
   function reconcile(task) {
     if (task?.status !== 'awaiting_confirm') return task;
-    let p = null;
-    try { p = confirmPending(); } catch { /* treat as none */ }
+    const p = pendingAction();
     const asked = task.steps.find(s => s.asked);
-    if (asked && p && p.tool === asked.tool) return task;
+    if (asked && p && sameProposal(asked, p.tool, p.summary)) return task;
     task.status = 'paused';
     persist(task);
     return task;
@@ -178,7 +200,7 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
     if (busy) return { ok: false, text: busy };
     let task;
     try {
-      task = store.create({ title: String(title || 'Untitled task').slice(0, 120), steps: plan.steps, origin: { turn, sessionId } });
+      task = store.create({ title: String(title || 'Untitled task').slice(0, 120), steps: plan.steps, origin: { source: turn?.source ?? null, ...(sessionId ? { sessionId } : {}) } });
     } catch (err) {
       return { ok: false, text: String(err?.message || err) };
     }
@@ -200,14 +222,18 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
     const { task, refusal } = loadUnfinished(id);
     if (refusal) return { ok: false, text: refusal };
     if (task.status === 'failed') return { ok: false, text: `Task ${id} failed. Use task_control with action replan to fix the remaining steps, or cancel it.` };
-    if (turn?.tainted && task.steps.some(s => riskOf(s.tool) === 'confirm')) {
-      return { ok: false, text: `Task ${id} has a step that needs the user's OK, and this turn was influenced by untrusted content. Ask the user to resume it directly.` };
+    turn = runTurn(turn, task);
+    if (turn.tainted && task.steps.some(s => riskOf(s.tool) === 'confirm')) {
+      return { ok: false, text: `Task ${id} has a step that needs the user's OK, and this turn or task was influenced by untrusted content. Ask the user to resume it directly.` };
     }
-    const mid = task.steps.find(s => s.status === 'running');
-    // A confirm tool only proposes, so nothing can have run: it is re-proposed like a read-only step.
-    if (mid && !isReadOnly(mid.tool) && riskOf(mid.tool) !== 'confirm') {
-      // A write step was cut off mid-flight: it may have acted. Ask; a later resume is the yes.
+    // A step cut off mid-call (running after a restart, or flagged maybeRan) may have acted. The first
+    // resume asks; a resume after that question is the user's explicit go-ahead and runs it.
+    // Read-only and confirm steps (a confirm tool only proposes) are simply run again.
+    const mid = task.steps.find(s => s.status === 'running' || (s.status === 'pending' && s.maybeRan));
+    if (mid?.maybeRan === 'asked') delete mid.maybeRan;
+    else if (mid && mayAct(mid)) {
       mid.status = 'pending';
+      mid.maybeRan = 'asked';
       task.status = 'awaiting_confirm';
       const err = persist(task);
       if (err) return { ok: false, text: err };
@@ -225,6 +251,7 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
     if (task.status !== 'failed' || k < 0) return { ok: false, text: `Task ${id} has no failed step to replan (it is ${task.status}).` };
     if ((task.replans || 0) >= MAX_REPLANS) return { ok: false, text: `Task ${id} was already replanned ${MAX_REPLANS} times. Cancel it and start a new task.` };
     if (!Array.isArray(steps) || !steps.length) return { ok: false, text: 'Replan needs at least one step.' };
+    turn = runTurn(turn, task);
     const kept = task.steps.slice(0, k);
     const plan = validate([...kept.map(s => ({ tool: s.tool, args: s.args, expect: s.expect })), ...steps], turn);
     if (!plan.ok) return { ok: false, text: plan.text };
@@ -235,7 +262,7 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
 
   // Pause or cancel an unfinished task; one running in this process stops at its next step boundary.
   function control(id, to) {
-    const task = store.get(id);
+    const task = reconcile(store.get(id));   // a stale question is not this task's: cancelling must not clear another
     if (!task) return { ok: false, text: `No task ${id}.` };
     if (to === 'paused' ? isFinished(task) : isClosed(task)) return { ok: false, text: `Task ${id} is already ${task.status}; nothing to ${to === 'paused' ? 'pause' : 'cancel'}.` };
     if (inFlight.has(id)) {
@@ -263,15 +290,21 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
     return { ok: true, text: describe(reconcile(task)) };
   }
 
-  function onConfirmResolved({ tool, ok, text, declined } = {}) {
-    const task = tasksNewestFirst().find(t => t.status === 'awaiting_confirm' && t.steps.some(s => s.asked && s.tool === tool));
-    if (!task) return;
-    const step = task.steps.find(s => s.asked && s.tool === tool);
+  // Told by confirm once a proposal was answered. Matches the waiting step by tool and the proposal's
+  // summary, so another proposal never resolves a stale step. Returns a line for the user, or nothing.
+  function onConfirmResolved({ tool, summary, ok, text, declined } = {}) {
+    const task = tasksNewestFirst().find(t => t.status === 'awaiting_confirm' && t.steps.some(s => sameProposal(s, tool, summary)));
+    if (!task) return undefined;
+    const step = task.steps.find(s => sameProposal(s, tool, summary));
     delete step.asked;
+    delete step.askedFor;
     step.status = declined ? 'skipped' : ok ? 'done' : 'failed';
     if (!declined) step.result = { ok: !!ok, text: String(text ?? ''), t: now() };
-    task.status = step.status === 'failed' ? 'failed' : 'paused';
-    if (!persist(task)) emit('task', { id: task.id, step: step.id, status: step.status });
+    const next = task.steps.find(s => !settled(s));
+    task.status = step.status === 'failed' ? 'failed' : next ? 'paused' : 'done';
+    if (persist(task)) return undefined;
+    emit('task', { id: task.id, step: step.id, status: step.status });
+    return step.status === 'done' && next ? `Task ${task.id} paused at ${next.id}; say "resume the task" to finish it.` : undefined;
   }
 
   function active() {

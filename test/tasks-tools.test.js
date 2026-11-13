@@ -109,10 +109,15 @@ test('skill never matches bare control words, other subjects, or when no task ex
   for (const t of ['task status', 'resume the task', 'cancel the task']) assert.equal(await none.handle(t, {}), null, t);
 });
 
-test('skill passes a NEEDS_OK question through as the reply', async () => {
+test('skill speaks a NEEDS_OK question without the marker and forwards the turn signal', async () => {
   const r = stubRunner({ text: NEEDS_OK + 'Run again?' });
-  const out = await createTasksSkill({ runner: r }).handle('resume the task', { source: 'chat' });
-  assert.equal(out.reply, NEEDS_OK + 'Run again?');
+  const signal = new AbortController().signal;
+  const out = await createTasksSkill({ runner: r }).handle('resume the task', { source: 'chat', signal });
+  assert.equal(out.reply, 'Run again?');
+  assert.equal(out.record, 'Run again?');
+  const resume = r.calls.find(c => c[0] === 'resume');
+  assert.equal(resume[2].signal, signal);
+  assert.equal(resume[2].turn.source, 'chat');
 });
 
 test('cancel and resume reach a failed task that active() does not report', async () => {

@@ -8,7 +8,8 @@ const { createTaskStore } = require('../src/core/tasks/store');
 const { createTaskRunner } = require('../src/core/tasks/runner');
 const { NEEDS_OK } = require('../src/core/brain/guard');
 
-const ASK = NEEDS_OK + 'Delete x. Say yes to confirm.';
+const SUMMARY = 'Delete x';
+const ASK = NEEDS_OK + SUMMARY + '. Say yes to confirm.';
 
 function setup(script, opts = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jarvis-ctl-'));
@@ -19,9 +20,12 @@ function setup(script, opts = {}) {
   const pending = { action: null };
   const tools = {
     resolves: n => n !== 'nope',
-    async run(name, args) {
-      calls.push({ name, args });
-      return script(name, args, calls.length);
+    async run(name, args, ctx) {
+      calls.push({ name, args, ctx });
+      const res = await script(name, args, calls.length);
+      // like confirm.propose: a NEEDS_OK answer leaves its action pending
+      if (String(res?.text ?? '').startsWith(NEEDS_OK)) pending.action = { tool: name, summary: SUMMARY };
+      return res;
     },
   };
   const runner = createTaskRunner({
@@ -153,7 +157,8 @@ test('confirm: NEEDS_OK makes the task await, text is the question', async () =>
   assert.equal(t.steps[1].asked, true);
   assert.equal(t.steps[1].status, 'pending');
 
-  runner.onConfirmResolved({ tool: 'del', ok: true, text: 'Deleted x.' });
+  const note = runner.onConfirmResolved({ tool: 'del', summary: SUMMARY, ok: true, text: 'Deleted x.' });
+  assert.equal(note, `Task ${r.task.id} paused at s3; say "resume the task" to finish it.`);
   const t2 = store.get(r.task.id);
   assert.equal(t2.status, 'paused');
   assert.equal(t2.steps[1].status, 'done');
@@ -167,7 +172,7 @@ test('confirm: NEEDS_OK makes the task await, text is the question', async () =>
 test('confirm: declined marks the step skipped and the task paused', async () => {
   const { runner, calls, store } = setup(name => (name === 'del' ? { ok: true, text: ASK } : ok(name)));
   const r = await runner.start({ title: 'T', steps: [{ tool: 'del' }, { tool: 'c' }], turn: 1 });
-  runner.onConfirmResolved({ tool: 'del', ok: true, text: 'Cancelled.', declined: true });
+  runner.onConfirmResolved({ tool: 'del', summary: SUMMARY, ok: true, text: 'Cancelled.', declined: true });
   const t = store.get(r.task.id);
   assert.equal(t.status, 'paused');
   assert.equal(t.steps[0].status, 'skipped');
@@ -186,8 +191,8 @@ test('confirm: unmatched tool and no awaiting task are ignored', async () => {
 
 test('confirm: a dropped question reconciles to paused; resume re-proposes', async () => {
   const { runner, calls, store, pending } = setup(name => (name === 'del' ? { ok: true, text: ASK } : ok(name)));
-  pending.action = null;
   const r = await runner.start({ title: 'T', steps: [{ tool: 'del' }, { tool: 'c' }], turn: 1 });
+  pending.action = null;   // the question timed out or was dropped
   const s = runner.status(r.task.id);
   assert.equal(s.ok, true);
   assert.equal(store.get(r.task.id).status, 'paused');
@@ -201,7 +206,6 @@ test('confirm: a dropped question reconciles to paused; resume re-proposes', asy
 test('single slot: start or resume while another task awaits is refused', async () => {
   const { runner, calls, store, pending } = setup(name => (name === 'del' ? { ok: true, text: ASK } : ok(name)));
   const r = await runner.start({ title: 'Cleanup', steps: [{ tool: 'del' }], turn: 1 });
-  pending.action = { tool: 'del', summary: 'Delete x' };
   const other = await runner.start({ title: 'Other', steps: [{ tool: 'a' }], turn: 2 });
   assert.equal(other.ok, false);
   assert.match(other.text, new RegExp(r.task.id));
@@ -261,7 +265,6 @@ test('cancel drops a failed task; done and cancelled stay unchanged', async () =
 test('cancel of an awaiting_confirm task', async () => {
   const { runner, store, pending } = setup(name => (name === 'del' ? { ok: true, text: ASK } : ok(name)));
   const r = await runner.start({ title: 'T', steps: [{ tool: 'del' }], turn: 1 });
-  pending.action = { tool: 'del' };
   assert.equal(runner.cancel(r.task.id).ok, true);
   assert.equal(store.get(r.task.id).status, 'cancelled');
 });
@@ -288,7 +291,7 @@ test('a throwing onCancel does not stop the cancel', async () => {
 test('confirm: a failed action marks the step and the task failed', async () => {
   const { runner, store } = setup(name => (name === 'del' ? { ok: true, text: ASK } : ok(name)));
   const r = await runner.start({ title: 'T', steps: [{ tool: 'del' }, { tool: 'c' }], turn: 1 });
-  runner.onConfirmResolved({ tool: 'del', ok: false, text: 'That did not work: locked.' });
+  runner.onConfirmResolved({ tool: 'del', summary: SUMMARY, ok: false, text: 'That did not work: locked.' });
   const t = store.get(r.task.id);
   assert.equal(t.status, 'failed');
   assert.equal(t.steps[0].status, 'failed');
@@ -369,4 +372,140 @@ test('current: a failed-only task is returned', () => {
   const { runner, store } = setup(ok);
   const id = seed(store, [step('s1', 'a', 'failed')], 'failed');
   assert.deepEqual(runner.current(), { id, status: 'failed' });
+});
+
+// Final review fixes: taint, proposal identity, maybeRan, origin.
+test('taint: an untrusted step taints the outer turn and refuses a later confirm step', async () => {
+  for (const [first, res] of [['read_page', { ok: true, text: 'page text', untrusted: true }], ['get_weather', { ok: true, text: 'sunny' }]]) {
+    const { runner, calls, store } = setup(name => (name === first ? res : name === 'del' ? { ok: true, text: ASK } : ok(name)));
+    const turn = { source: 'chat', tainted: false };
+    const r = await runner.start({ title: 'T', steps: [{ tool: first }, { tool: 'b' }, { tool: 'del', args: { x: { $ref: 's1' } } }], turn });
+    assert.equal(r.ok, false);
+    assert.equal(turn.tainted, true, 'the shared turn object is tainted');
+    assert.deepEqual(calls.map(c => c.name), [first, 'b']);
+    assert.equal(calls[1].ctx.turn.tainted, true, 'later steps run in a tainted turn');
+    const t = store.get(r.task.id);
+    assert.equal(t.tainted, true);
+    assert.equal(t.steps[2].status, 'failed');
+    assert.match(r.text, /needs the user's OK/);
+  }
+});
+
+test('taint: a tainted task resumed in a clean turn still refuses a confirm step', async () => {
+  const { runner, calls, store } = setup(ok);
+  const id = seed(store, [step('s1', 'read_page', 'done'), step('s2', 'del', 'pending')]);
+  const t = store.get(id); t.tainted = true; store.save(t);
+  const r = await runner.resume(id, { turn: { source: 'chat', tainted: false } });
+  assert.equal(r.ok, false);
+  assert.match(r.text, /untrusted/);
+  assert.equal(calls.length, 0);
+});
+
+test('taint: a tainted task without confirm steps resumes and taints the turn', async () => {
+  const { runner, calls, store } = setup(ok);
+  const id = seed(store, [step('s1', 'read_page', 'done'), step('s2', 'b', 'pending')]);
+  const t = store.get(id); t.tainted = true; store.save(t);
+  const turn = { source: 'chat', tainted: false };
+  const r = await runner.resume(id, { turn });
+  assert.equal(r.ok, true);
+  assert.equal(turn.tainted, true);
+  assert.equal(calls[0].ctx.turn.tainted, true);
+});
+
+test('taint: replan of a tainted task refuses confirm steps', async () => {
+  const { runner, calls, store } = setup(ok);
+  const id = seed(store, [step('s1', 'read_page', 'done'), step('s2', 'b', 'failed')], 'failed');
+  const t = store.get(id); t.tainted = true; store.save(t);
+  const r = await runner.replan(id, [{ tool: 'del' }], { turn: { source: 'chat', tainted: false } });
+  assert.equal(r.ok, false);
+  assert.match(r.text, /needs the user's OK/);
+  assert.equal(calls.length, 0);
+  assert.equal(store.get(id).replans, 0);
+});
+
+test('identity: another proposal of the same tool never resolves or keeps alive a stale step', async () => {
+  const seen = [];
+  const { runner, store, pending } = setup(name => (name === 'del' ? { ok: true, text: ASK } : ok(name)), { onCancel: t => seen.push(t.id) });
+  const r = await runner.start({ title: 'T', steps: [{ tool: 'del' }, { tool: 'c' }], turn: 1 });
+  assert.equal(store.get(r.task.id).steps[0].askedFor, SUMMARY);
+  pending.action = { tool: 'del', summary: 'Delete y' };   // the task's question was dropped; an unrelated one is pending
+  assert.equal(runner.onConfirmResolved({ tool: 'del', summary: 'Delete y', ok: true, text: 'Deleted y.' }), undefined);
+  assert.notEqual(store.get(r.task.id).steps[0].status, 'done');
+  assert.match(runner.status(r.task.id).text, /paused/, 'a different pending proposal does not keep the task waiting');
+  assert.equal(runner.cancel(r.task.id).ok, true);
+  assert.deepEqual(seen, [], 'cancelling the stale task leaves the unrelated proposal alone');
+  assert.equal(store.get(r.task.id).status, 'cancelled');
+});
+
+test('identity: cancel of a stale waiting task (question dropped) does not call onCancel', async () => {
+  const seen = [];
+  const { runner, store, pending } = setup(name => (name === 'del' ? { ok: true, text: ASK } : ok(name)), { onCancel: t => seen.push(t.id) });
+  const r = await runner.start({ title: 'T', steps: [{ tool: 'del' }], turn: 1 });
+  pending.action = null;
+  assert.equal(runner.cancel(r.task.id).ok, true);
+  assert.deepEqual(seen, []);
+  assert.equal(store.get(r.task.id).status, 'cancelled');
+});
+
+test('onConfirmResolved: no note when the yes finished the task', async () => {
+  const { runner, store } = setup(name => (name === 'del' ? { ok: true, text: ASK } : ok(name)));
+  const r = await runner.start({ title: 'T', steps: [{ tool: 'a' }, { tool: 'del' }], turn: 1 });
+  assert.equal(runner.onConfirmResolved({ tool: 'del', summary: SUMMARY, ok: true, text: 'Deleted x.' }), undefined);
+  assert.equal(store.get(r.task.id).status, 'done');
+});
+
+test('maybeRan: a write step cut off by an abort asks on resume, survives status, runs on the second resume', async () => {
+  const ac = new AbortController();
+  let hang = true;
+  const { runner, calls, store } = setup(name => { if (name === 'send_message' && hang) { ac.abort(); return { ok: false, text: 'aborted' }; } return ok(name); });
+  const r = await runner.start({ title: 'T', steps: [{ tool: 'a' }, { tool: 'send_message' }, { tool: 'c' }], turn: 1, signal: ac.signal });
+  const id = r.task.id;
+  let t = store.get(id);
+  assert.equal(t.status, 'paused');
+  assert.equal(t.steps[1].status, 'pending');
+  assert.equal(t.steps[1].maybeRan, true);
+  hang = false;
+  const ask = await runner.resume(id, { turn: 2 });
+  assert.ok(ask.text.startsWith(NEEDS_OK));
+  assert.match(ask.text, /may already have run/);
+  assert.equal(calls.length, 2);
+  runner.status(id);
+  runner.current();
+  t = store.get(id);
+  assert.equal(t.status, 'paused');
+  assert.equal(t.steps[1].maybeRan, 'asked');
+  const go = await runner.resume(id, { turn: 3 });
+  assert.equal(go.ok, true);
+  assert.deepEqual(calls.map(c => c.name), ['a', 'send_message', 'send_message', 'c']);
+  assert.equal(store.get(id).steps[1].maybeRan, undefined);
+});
+
+test('maybeRan: the restart question is recorded and asked again only until answered', async () => {
+  const { runner, calls, store } = setup(ok);
+  const id = seed(store, [step('s1', 'send_message', 'running')], 'interrupted');
+  await runner.resume(id, { turn: 2 });
+  assert.equal(store.get(id).steps[0].maybeRan, 'asked');
+  assert.match(runner.status(id).text, /paused/);
+  assert.equal(store.get(id).steps[0].maybeRan, 'asked');
+  assert.equal(calls.length, 0);
+  assert.equal((await runner.resume(id, { turn: 3 })).ok, true);
+  assert.equal(calls.length, 1);
+});
+
+test('maybeRan: a read-only step cut off by an abort is simply re-run', async () => {
+  const ac = new AbortController();
+  let first = true;
+  const { runner, calls, store } = setup(name => { if (first) { first = false; ac.abort(); return { ok: false, text: 'aborted' }; } return ok(name); });
+  const r = await runner.start({ title: 'T', steps: [{ tool: 'get_time' }], turn: 1, signal: ac.signal });
+  assert.equal(store.get(r.task.id).steps[0].maybeRan, undefined);
+  assert.equal((await runner.resume(r.task.id, { turn: 2 })).ok, true);
+  assert.equal(calls.length, 2);
+});
+
+test('origin keeps the source and a given sessionId, not the turn object', async () => {
+  const { runner, store } = setup(ok);
+  const a = await runner.start({ title: 'T', steps: [{ tool: 'a' }], turn: { source: 'voice', tainted: false, extra: 1 }, sessionId: 'S1' });
+  assert.deepEqual(store.get(a.task.id).origin, { source: 'voice', sessionId: 'S1' });
+  const b = await runner.start({ title: 'T', steps: [{ tool: 'a' }], turn: 1 });
+  assert.deepEqual(store.get(b.task.id).origin, { source: null });
 });

@@ -37,6 +37,15 @@ test('validatePlan rejections', () => {
   assert.equal(validatePlan([{ tool: 'send' }], ctx({ riskOf: () => 'confirm', tainted: false })).ok, true);
 });
 
+test('validatePlan refuses task tools as steps', () => {
+  for (const tool of ['task_run', 'task_control']) {
+    const r = validatePlan([{ tool: 'a' }, { tool, args: {} }], ctx());
+    assert.equal(r.ok, false, tool);
+    assert.match(r.text, /s2/);
+    assert.match(r.text, /cannot start or control another task/);
+  }
+});
+
 test('resolveRefs whole text and nesting', () => {
   const m = new Map([['s1', 'hello']]);
   assert.deepEqual(resolveRefs({ a: { $ref: 's1' }, b: [{ $ref: 's1' }, 2], c: { d: { $ref: 's1' } }, e: 'lit' }, m),
