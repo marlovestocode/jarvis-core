@@ -2,6 +2,9 @@
 //   GET  /ai/hello            { app: 'jarvis-core', version }  (port discovery)
 //   GET  /ai/stream           SSE: "event: <type>\ndata: <json>"; current state + provider on connect
 //   POST /ai/open[?mode=voice] 204; foreign Origins refused (the wallpaper sends none)
+//   GET  /ai/brain[?max=&focus=1,2]   the shape of the cortex (ids, kinds, weights, links), no text
+//   GET  /ai/brain/labels?ids=1,2     a few words per node: only when the user allows it, and only to a page with no Origin
+//                                     or file:// (never a localhost web page or a sandboxed frame, which sends Origin: null)
 // Host/Origin rules copied from sysmon-widget/src/main/bridge.js (okHost, okOrigin).
 const http = require('node:http');
 
@@ -22,7 +25,12 @@ function listen(server, port) {
   });
 }
 
-async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PORTS, pingMs = 15000, clientMaxBuffer = CLIENT_MAX_BUFFER }) {
+const okLabelOrigin = o => !o || o === 'file://';
+const idList = v => String(v || '').split(',').map(Number).filter(Number.isInteger).slice(0, 48);
+
+// dashboard = { query(opts) → summary, files: { html, js, css } } | null: the analytics page (src/ui/dashboard) and its numbers, same-origin only
+// brain = { view(opts), labels(ids), labelsOn(), skills() } | null: the cortex picture for the wallpaper (skills() = the skill groups, so tools can fire their neuron)
+async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PORTS, pingMs = 15000, clientMaxBuffer = CLIENT_MAX_BUFFER, brain = null, dashboard = null }) {
   const clients = new Set();
   let dropped = 0;
   let port = null;
@@ -81,6 +89,40 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
       res.writeHead(200, { ...cors, 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ app: 'jarvis-core', version }));
     }
+    if (url === '/ai/brain' && brain) {
+      const q = new URLSearchParams(query);
+      let body;
+      try { body = brain.view({ max: q.get('max'), focus: idList(q.get('focus')) }); } catch { res.writeHead(503, cors); return res.end(); }
+      res.writeHead(200, { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      let skills = [];
+      try { skills = brain.skills?.() || []; } catch { /* the picture works without them */ }
+      return res.end(JSON.stringify({ ...body, labels: !!brain.labelsOn?.(), skills }));
+    }
+    if (url === '/ai/brain/labels' && brain) {
+      if (!brain.labelsOn?.() || !okLabelOrigin(origin)) { res.writeHead(403, cors); return res.end(); }
+      let body;
+      try { body = brain.labels(idList(new URLSearchParams(query).get('ids'))); } catch { res.writeHead(503, cors); return res.end(); }
+      res.writeHead(200, { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      return res.end(JSON.stringify(body));
+    }
+    if (dashboard && (url === '/ai/dashboard' || url === '/ai/dashboard.js' || url === '/ai/dashboard.css' || url === '/ai/metrics')) {
+      // only this page itself (no Origin, or its own origin) may read the numbers: another localhost page cannot
+      if (origin && origin !== `http://${HOST}:${port}` && origin !== `http://localhost:${port}`) { res.writeHead(403, cors); return res.end(); }
+      const q = new URLSearchParams(query);
+      if (url === '/ai/metrics') {
+        const RANGE = { hour: 3600e3, day: 864e5, week: 7 * 864e5, month: 30 * 864e5 };
+        const to = Date.now(), span = RANGE[q.get('range')] || RANGE.day;
+        const pick = k => { const v = q.get(k); return v && v.length <= 64 ? v : null; };
+        let body;
+        try { body = dashboard.query({ from: to - span, to, group: pick('group'), tool: pick('tool'), source: pick('source') }); } catch { res.writeHead(503, cors); return res.end(); }
+        res.writeHead(200, { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        return res.end(JSON.stringify(body));
+      }
+      const asset = url === '/ai/dashboard' ? ['text/html; charset=utf-8', dashboard.files.html] : url === '/ai/dashboard.js' ? ['text/javascript; charset=utf-8', dashboard.files.js] : ['text/css; charset=utf-8', dashboard.files.css];
+      res.writeHead(200, { 'Content-Type': asset[0], 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
+        'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" });
+      return res.end(asset[1]);
+    }
     if (url === '/ai/stream') {
       res.writeHead(200, { ...cors, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
       res.write('retry: 3000\n\n');
@@ -128,4 +170,4 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
   return { port, address: server.address().address, close, clients: () => clients.size, stats: () => ({ clients: clients.size, dropped, capBytes: clientMaxBuffer }) };
 }
 
-module.exports = { startBridge, okOrigin, DEFAULT_PORTS };
+module.exports = { startBridge, okOrigin, okLabelOrigin, DEFAULT_PORTS };

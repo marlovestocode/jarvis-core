@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JARVIS Analytics</title>
+<link rel="stylesheet" href="/ai/dashboard.css">
+</head>
+<body>
+<header>
+  <h1>JARVIS <span>analytics</span></h1>
+  <div class="controls">
+    <div class="seg" id="ranges" role="group" aria-label="Time range">
+      <button data-range="hour">1 h</button><button data-range="day" class="on">24 h</button><button data-range="week">7 d</button><button data-range="month">30 d</button>
+    </div>
+    <label>Skill group <select id="group"><option value="">all</option></select></label>
+    <label>Skill <select id="tool"><option value="">all</option></select></label>
+    <label>Input <select id="source"><option value="">all</option><option value="voice">voice</option><option value="text">text</option></select></label>
+    <label class="chk"><input type="checkbox" id="auto" checked> refresh every 30 s</label>
+    <a id="export" href="#" download="jarvis-analytics.json">Export JSON</a>
+  </div>
+</header>
+<main>
+  <p id="status" class="muted" role="status">Loading…</p>
+  <section class="tiles" id="tiles" aria-label="Key numbers"></section>
+  <section class="grid">
+    <figure><figcaption>Conversation turns and errors <i class="muted">per interval</i></figcaption><div id="c-turns"></div></figure>
+    <figure><figcaption>Reply time <i class="muted">median and slowest 5 %, seconds</i></figcaption><div id="c-latency"></div></figure>
+    <figure><figcaption>Memory <i class="muted">process MB (left), memory store nodes</i></figcaption><div id="c-memory"></div></figure>
+    <figure><figcaption>Connection uptime <i class="muted">share of one-minute checks that were up</i></figcaption><div id="c-conn"></div></figure>
+  </section>
+  <section>
+    <h2>Skills</h2>
+    <div class="scroll"><table id="skills"><thead><tr>
+      <th data-k="name">Skill</th><th data-k="group">Group</th><th data-k="calls" class="n">Calls</th><th data-k="successRate" class="n">Success</th>
+      <th data-k="fail" class="n">Failed</th><th data-k="soft" class="n">Said “nothing happened”</th><th data-k="badArgs" class="n">Bad arguments</th><th data-k="avgMs" class="n">Avg ms</th><th data-k="p95Ms" class="n">Slowest 5 % ms</th>
+    </tr></thead><tbody></tbody></table></div>
+  </section>
+  <p class="muted foot">All numbers come from JARVIS's own log on this PC (<code>metrics</code> folder in his data folder). Nothing leaves it, and no conversation text is stored here.</p>
+</main>
+<script src="/ai/dashboard.js"></script>
+</body>
+</html>
