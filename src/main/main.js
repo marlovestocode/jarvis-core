@@ -17,6 +17,7 @@ if (process.env.JARVIS_GPU !== '1') app.disableHardwareAcceleration();
 const HIDDEN = process.argv.includes('--hidden');          // started by Windows at login: tray only
 const DEV_RUN = !!(process.env.JARVIS_DATA_DIR || process.env.JARVIS_SELFTEST);
 
+const { installCrashHandlers } = require('./crash');
 const { createBus } = require('../core/bus');
 const { createMemWatch } = require('../core/memwatch');
 const { createMetrics } = require('../core/metrics/collector');
@@ -473,7 +474,12 @@ ctx.bus.on('state', ev => {
   lastActivity = Date.now();
   if (ev.state === 'thinking' || ev.state === 'listening') ctx.memorySystem.scheduler.abort();
 });
-process.on('unhandledRejection', err => ctx.log('unhandled rejection:', err?.stack || String(err)));
+// logging is synchronous (appendFileSync), so flush = best-effort cleanup of the quit hooks; then exit non-zero
+installCrashHandlers({
+  log: ctx.log,
+  flush: () => { for (const fn of ctx.onQuit || []) { try { fn(); } catch { /* keep going */ } } },
+  exit: code => app.exit(code),
+});
 // "Jarvis" heard: a short chime says it is listening (the orb flares too)
 ctx.bus.on('wake', () => { ctx.log('wake word heard'); ctx.mic?.play(chime(), 22050).catch(() => {}); });
 ctx.updateMic = () => { if (!ctx.mic) return; if (ctx.voice.active || ctx.config.wakeEnabled) ctx.mic.start(); else ctx.mic.stop(); };
