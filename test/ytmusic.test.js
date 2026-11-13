@@ -225,6 +225,22 @@ test('skill: autoplay blocked is reported, not claimed', async () => {
   assert.match((await skill.handle('play bohemian rhapsody by queen', { source: 'voice' })).reply, /blocked autoplay/);
 });
 
+test('skill: autoplay blocked is started from Windows media controls when that works', async () => {
+  let resumed = 0;
+  const ytm = createYtMusic({ link: fakeExt({ startPlays: false }).link, resume: async () => { resumed++; return true; } });
+  const skill = createMediaSkill({ service: noService, ytm });
+  const r = await skill.handle('play bohemian rhapsody by queen', { source: 'text' });
+  assert.equal(resumed, 1);
+  assert.doesNotMatch(r.reply, /blocked autoplay/);
+});
+
+test('skill: autoplay still reported when the media controls cannot start it', async () => {
+  for (const resume of [async () => false, async () => { throw new Error('host down'); }]) {
+    const skill = createMediaSkill({ service: noService, ytm: createYtMusic({ link: fakeExt({ startPlays: false }).link, resume }) });
+    assert.match((await skill.handle('play bohemian rhapsody by queen', { source: 'voice' })).reply, /blocked autoplay/);
+  }
+});
+
 test('skill: queue next / end, up next, clear, remove, repeat, like', async () => {
   const f = fakeExt();
   const skill = createMediaSkill({ service: noService, ytm: createYtMusic({ link: f.link }) });
@@ -291,4 +307,54 @@ test('link with a key: an old extension (no proof) is dropped, reported once a m
     assert.equal(logs.filter(l => /old version/.test(l)).length, 1);
     assert.equal(link.connected, false);
   } finally { await link.close(); }
+});
+
+test('link: a request in flight fails at once when a newer extension socket replaces its socket', async () => {
+  const link = startYtMusicLink({ ports: [47896, 47897], timeoutMs: 5000 });
+  const port = await link.started;
+  const origin = `chrome-extension://${EXTENSION_ID}`;
+  const a = await client(port, origin);
+  await tick();
+  const p = link.request('status');
+  p.catch(() => {});
+  await tick();
+  const t0 = Date.now();
+  const b = await client(port, origin);
+  await assert.rejects(p, /reconnected/);
+  assert.ok(Date.now() - t0 < 1000, 'did not wait for the 5 s timeout');
+  await tick();
+  assert.equal(link.connected, true, 'the new socket is the link');
+  a.s.destroy(); b.s.destroy();
+  await link.close();
+});
+
+test('link: a socket that goes silent is dropped, a pinging one is kept', async () => {
+  const link = startYtMusicLink({ ports: [47898, 47899], deadMs: 200, checkMs: 40 });
+  const port = await link.started;
+  const origin = `chrome-extension://${EXTENSION_ID}`;
+  const ext = await client(port, origin);
+  await tick();
+  assert.equal(link.connected, true);
+  for (let i = 0; i < 6; i++) { ext.send({ type: 'ping' }); await tick(60); }   // 360 ms, longer than deadMs, but alive
+  assert.equal(link.connected, true, 'kept while it pings');
+  for (let i = 0; i < 40 && link.connected; i++) await tick(20);   // now silent
+  assert.equal(link.connected, false, 'dropped when silent');
+  ext.s.destroy();
+  await link.close();
+});
+
+test('link: a prompt report from the extension reaches onPrompt, trimmed, and is never read as a command', async () => {
+  const seen = [];
+  const link = startYtMusicLink({ ports: [47900, 47901], onPrompt: p => seen.push(p) });
+  const port = await link.started;
+  const ext = await client(port, `chrome-extension://${EXTENSION_ID}`);
+  await tick();
+  ext.send({ type: 'prompt', kind: 'still-listening', confirmed: true, label: 'Yes'.repeat(100), at: 123 });
+  ext.send({ type: 'prompt', kind: 'age-confirm', confirmed: false, reason: 'needs the account' });
+  await tick(60);
+  assert.equal(seen.length, 2);
+  assert.equal(seen[0].kind, 'still-listening'); assert.equal(seen[0].confirmed, true); assert.equal(seen[0].label.length, 60); assert.equal(seen[0].at, 123);
+  assert.equal(seen[1].confirmed, false); assert.equal(seen[1].reason, 'needs the account');
+  ext.s.destroy();
+  await link.close();
 });

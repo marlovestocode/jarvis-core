@@ -188,3 +188,27 @@ test('rateToSapi maps 0.5..2.0 to -10..10', () => {
   assert.equal(rateToSapi(9), 10);
   assert.equal(wavBytes(new Int16Array(4), 16000).length, 44 + 8);
 });
+
+test('a host that ran healthily before dying gets a fresh restart; a crash loop still gives up', async () => {
+  const spawn = fakeSpawn();
+  let t = 1000;
+  const host = createSpeechHost({ spawn, now: () => t, healthyMs: 60000 });
+  host.request('a').catch(() => {});
+  await tick();
+  t += 61000;                                   // healthy for a minute
+  spawn.kids[0].emit('exit', 1);
+  assert.equal(spawn.kids.length, 2, 'first crash restarts');
+  t += 61000;
+  spawn.kids[1].emit('exit', 1);                // would have been the "second crash": gave up before this fix
+  assert.equal(spawn.kids.length, 3, 'a healthy host is restarted again');
+  t += 1000;
+  spawn.kids[2].emit('exit', 1);                // died after 1 s: crash loop
+  spawn.kids[2].emit('exit', 1);
+  assert.equal(spawn.kids.length, 4, 'one quick restart');
+  t += 1000;
+  spawn.kids[3].emit('exit', 1);
+  assert.equal(spawn.kids.length, 4, 'then it gives up');
+  assert.equal(host.health().gaveUp, true);
+  assert.equal(host.health().restarts, 3);
+  host.close();
+});

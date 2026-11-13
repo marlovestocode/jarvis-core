@@ -59,6 +59,18 @@ const svc = (host, o = {}) => createMediaService({ request: host.request, sleep:
 const controls = host => host.calls.filter(c => c.cmd !== 'state');
 
 // ---- intent ----
+test('service: "stop" on a browser asks for pause (Chrome accepts stop from Windows but never stops), other players still get stop', async () => {
+  const chrome = fakeHost({ ignore: new Set(['stop']) });   // like Chrome: the stop is accepted and nothing happens
+  const r = await svc(chrome).act({ action: 'stop' });
+  assert.equal(r.ok, true, 'verified as no longer playing');
+  assert.equal(r.action, 'stop');
+  const sent = chrome.calls.filter(c => c.cmd === 'control').map(c => c.action);
+  assert.deepEqual(sent, ['pause']);
+  const player = fakeHost({ sessions: [session({ app: 'Spotify.exe' })], apps: [] });
+  assert.equal((await svc(player).act({ action: 'stop' })).ok, true);
+  assert.deepEqual(player.calls.filter(c => c.cmd === 'control').map(c => c.action), ['stop']);
+});
+
 test('intent: transport, casual and app-targeted commands', () => {
   const cases = {
     'pause': { action: 'pause' }, 'Jarvis, pause the music.': { action: 'pause' }, 'resume': { action: 'play' }, 'play': { action: 'play' },

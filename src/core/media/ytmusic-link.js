@@ -41,7 +41,7 @@ function createParser(onFrame) {
   };
 }
 
-function startYtMusicLink({ log = () => {}, ports = PORTS, extensionId = EXTENSION_ID, timeoutMs = 15000, onChange = () => {}, onPlay = () => {}, onReject = () => {}, secret = null, authMs = 5000 } = {}) {
+function startYtMusicLink({ log = () => {}, ports = PORTS, extensionId = EXTENSION_ID, timeoutMs = 15000, onChange = () => {}, onPlay = () => {}, onPrompt = () => {}, onReject = () => {}, secret = null, authMs = 5000, deadMs = 70000, checkMs = 10000 } = {}) {
   let rejected = 0, lastRejectLog = 0;   // a stale extension retries every few seconds: say it once, not every time
   let sock = null;            // the connected extension (one at a time; newest wins)
   let authed = false;         // the extension proved it knows the secret (always true when there is no secret)
@@ -54,8 +54,16 @@ function startYtMusicLink({ log = () => {}, ports = PORTS, extensionId = EXTENSI
   function failAll(err) { for (const p of pending.values()) { clearTimeout(p.timer); p.reject(err); } pending.clear(); }
 
   function attach(s, head) {
-    if (sock) { try { sock.end(frame(8)); } catch { /* old one gone */ } }
+    if (sock) {
+      try { sock.end(frame(8)); } catch { /* old one gone */ }
+      failAll(new Error('YouTube Music extension reconnected'));   // its answers can no longer come: fail now, not after the timeout
+    }
     sock = s; info = null;
+    let lastSeen = Date.now();
+    // The extension pings every 20 s. A socket that says nothing for deadMs is half-open (sleeping PC, killed worker): drop it so
+    // connected is false and the extension's retry can bring a fresh one.
+    const watch = setInterval(() => { if (Date.now() - lastSeen > deadMs) { log('ytmusic link: extension went silent, dropped'); s.destroy(); } }, checkMs);
+    watch.unref?.();
     authed = !secret;
     challenge = null;
     let authTimer = null;
@@ -66,6 +74,7 @@ function startYtMusicLink({ log = () => {}, ports = PORTS, extensionId = EXTENSI
     }
     let text = [], textBytes = 0;
     const parse = createParser((fin, op, data) => {
+      lastSeen = Date.now();
       if (op === 8) { s.end(frame(8)); return; }
       if (op === 9) { s.write(frame(10, data)); return; }
       if (op === 10) return;
@@ -82,6 +91,7 @@ function startYtMusicLink({ log = () => {}, ports = PORTS, extensionId = EXTENSI
     s.on('end', () => s.end());   // HTTP sockets are half-open: finish our side when the extension leaves
     s.on('close', () => {
       clearTimeout(authTimer);
+      clearInterval(watch);
       if (sock !== s) return;
       const was = authed;
       sock = null; info = null; authed = false;
@@ -120,6 +130,12 @@ function startYtMusicLink({ log = () => {}, ports = PORTS, extensionId = EXTENSI
     // finished plays from the extension's listening tracker (live, or a batch it kept while JARVIS was closed)
     if (m.type === 'play') { try { onPlay(m.event); } catch (err) { log('ytmusic link: play log:', err.message); } return; }
     if (m.type === 'plays' && Array.isArray(m.events)) { for (const e of m.events.slice(0, 500)) { try { onPlay(e); } catch (err) { log('ytmusic link: play log:', err.message); } } return; }
+    // the extension confirmed (or deliberately left alone) a "still listening" or age notice: a short record, never page text
+    if (m.type === 'prompt') {
+      const s = (v, n) => String(v ?? '').slice(0, n);
+      try { onPrompt({ kind: s(m.kind, 20), confirmed: m.confirmed === true, label: s(m.label, 60), reason: s(m.reason, 60), at: Number.isFinite(m.at) ? m.at : Date.now() }); } catch (err) { log('ytmusic link: prompt:', err.message); }
+      return;
+    }
     if (m.type === 'ping') { sock?.write(frame(1, Buffer.from(JSON.stringify({ type: 'pong' })))); return; }
     if (!m.id || !pending.has(m.id)) return;
     const p = pending.get(m.id);

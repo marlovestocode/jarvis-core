@@ -303,3 +303,45 @@ test('ollama: empty fastModel means quick chat uses the main model; warm loads o
   const w = await p.warm();
   assert.deepEqual(w.loaded, ['jarvis-worker:latest']);
 });
+
+test('ollama: a refused connect is retried with backoff, then the stream works; health counts it', async () => {
+  let n = 0;
+  const routes = standardRoutes(() => { if (++n < 3) throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }); return { ok: true, status: 200, body: ndjson(chatLines) }; });
+  const logs = [];
+  const p = createOllamaProvider({ getConfig, fetch: fakeFetch(routes), retryBaseMs: 1, log: m => logs.push(m) });
+  const out = await collect(p.chat({ messages: [{ role: 'user', content: 'hi' }] }));
+  assert.equal(out.filter(c => c.type === 'token').map(c => c.text).join(''), 'Hello world');
+  assert.equal(n, 3);
+  assert.equal(p.health().retries, 2);
+  assert.equal(p.health().ok, true);
+  assert.equal(logs.length, 2);
+});
+
+test('ollama: when it stays down the turn fails with "not running", and the next check answers from memory', async () => {
+  let calls = 0;
+  const p = createOllamaProvider({ getConfig, fetch: async () => { calls++; throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }); }, retryBaseMs: 1 });
+  assert.equal((await p.status()).ready, false);
+  const afterFirst = calls;
+  assert.equal((await p.status()).ready, false);
+  assert.equal(calls, afterFirst, 'second status did not wait on the network again');
+  assert.equal(p.health().ok, false);
+  assert.ok(p.health().failures >= 1);
+});
+
+test('ollama chat: thinking asked for, model cannot think → a reasoning line in the system message, no think flag', async () => {
+  const calls = [];
+  const p = createOllamaProvider({ getConfig: () => ({ ollama: { ...CFG.ollama, model: 'dolphin3:8b' } }), fetch: fakeFetch(standardRoutes(), calls) });
+  await collect(p.chat({ messages: [{ role: 'system', content: 'You are JARVIS.' }, { role: 'user', content: 'prove it' }], hints: { tier: 'deep', think: true, tools: false } }));
+  const body = calls.find(c => c.path === '/api/chat').body;
+  assert.match(body.messages[0].content, /^You are JARVIS\.\n\nThis question needs care: work through it step by step/);
+  assert.equal(body.think, undefined);
+});
+
+test('ollama chat: a model that can think gets the think flag and an untouched system message', async () => {
+  const calls = [];
+  const p = createOllamaProvider({ getConfig, fetch: fakeFetch(standardRoutes(), calls) });
+  await collect(p.chat({ messages: [{ role: 'system', content: 'You are JARVIS.' }, { role: 'user', content: 'prove it' }], hints: { tier: 'deep', think: true } }));
+  const body = calls.find(c => c.path === '/api/chat').body;
+  assert.equal(body.messages[0].content, 'You are JARVIS.');
+  assert.equal(body.think, true);
+});

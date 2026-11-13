@@ -3,8 +3,9 @@
 const BASE_HOSTS = Object.freeze([
   'api.open-meteo.com', 'geocoding-api.open-meteo.com', 'air-quality-api.open-meteo.com',
   'api.weather.gov', 'en.wikipedia.org', 'site.api.espn.com',
+  'lrclib.net', 'api.genius.com',   // lyrics (src/core/lyrics): LRCLIB for the text, Genius only to name a song from a line
 ]);
-const SOURCES = ['weather', 'news', 'sports', 'wiki', 'web'];
+const SOURCES = ['weather', 'news', 'sports', 'wiki', 'web', 'lyrics'];
 const { isIP } = require('node:net');
 
 function feedUrl(value) {

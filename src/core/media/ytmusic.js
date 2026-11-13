@@ -15,8 +15,16 @@ const named = (it, quote = true) => {
 const REPEAT = { none: 'NONE', list: 'ALL', track: 'ONE' };
 const REPEAT_WORD = { NONE: 'off', ALL: 'all', ONE: 'this track' };
 
-function createYtMusic({ link }) {
+// resume: optional async () => true when the browser's paused media session was started from outside the page.
+// Chrome counts that (Windows media controls, like a hardware play key) as a user action, so it works where the
+// page's own player.playVideo() is blocked by the autoplay policy.
+function createYtMusic({ link, resume = null }) {
   const call = (cmd, args, timeout) => link.request(cmd, args, timeout ? { timeout } : undefined);
+
+  async function resumeBlocked() {
+    if (!resume) return false;
+    try { return !!(await resume()); } catch { return false; }
+  }
 
   async function status() {
     const s = await call('status');
@@ -70,6 +78,7 @@ function createYtMusic({ link }) {
     const p = r?.playing;
     if (!p) return { ok: false, item: it, message: "YouTube Music didn't load it." };
     if (single && it.videoId && p.videoId !== it.videoId) return { ok: false, item: it, message: "YouTube Music played something else." };
+    if (!r.started && await resumeBlocked()) return { ok: true, item: it, sure: score >= SURE_SCORE, started: true, playing: p };
     if (!r.started) return { ok: true, item: it, started: false, playing: p, message: "It's loaded, but Chrome blocked autoplay. Press play once in the YouTube Music tab." };
     return { ok: true, item: it, sure: score >= SURE_SCORE, started: true, playing: p };
   }
@@ -156,7 +165,7 @@ function createYtMusic({ link }) {
     return { ok: true, value: r.like };
   }
 
-  return { get connected() { return link.connected; }, status, isSource, find, findSong, play, enqueue, enqueueItem, queueRandom, playRandom, playItem, upNext, removeNext, clear, repeat, shuffle, like, named };
+  return { get connected() { return link.connected; }, status, isSource, find, findSong, play, enqueue, enqueueItem, queueRandom, playRandom, playItem, resumeBlocked, upNext, removeNext, clear, repeat, shuffle, like, named };
 }
 
 module.exports = { createYtMusic, named };

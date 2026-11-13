@@ -205,7 +205,9 @@ function createMediaService({ request, keys, timeoutMs = 2500, verifyMs = 1800, 
     const hostValue = action === 'repeat' ? { none: 0, track: 1, list: 2 }[value] : value;
     for (let attempt = 1; attempt <= (retry ? 2 : 1); attempt++) {
       let accepted;
-      try { accepted = await call('control', { app: s.id, action, value: hostValue }); } catch (err) { trace.push(`attempt ${attempt}: ${err.message}`); accepted = false; }
+      // a browser accepts "stop" from Windows but never stops (only pauses): ask for the pause it can do
+      const hostAction = action === 'stop' && s.browser && s.can.pause !== false ? 'pause' : action;
+      try { accepted = await call('control', { app: s.id, action: hostAction, value: hostValue }); } catch (err) { trace.push(`attempt ${attempt}: ${err.message}`); accepted = false; }
       trace.push(`attempt ${attempt}: ${action}${value !== undefined ? ' ' + value : ''} → ${accepted ? 'accepted' : 'refused'}`);
       if (!accepted && !retry) break;
       if (!accepted) continue;

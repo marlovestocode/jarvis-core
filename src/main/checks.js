@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const { inspectConfig } = require('../core/config');
 const { statusSafe } = require('../core/settings');
-const { SYSMON } = require('../core/tools/sysmon');
+const { sysmonUp } = require('../core/net/services');
 const { duration } = require('../core/tools/self');
 
 const off = detail => ({ off: true, detail });
@@ -81,8 +81,7 @@ function selfChecks(ctx, { fetch = globalThis.fetch } = {}) {
       return ctx.ytmLink.connected ? 'on' : bad('on in settings, but the Chrome extension is not connected');
     } },
     { id: 'sysmon', run: async () => {
-      const r = await fetch(`${SYSMON}/health`, { signal: AbortSignal.timeout(1000) }).catch(() => null);
-      return r?.ok ? 'running' : off('not running');
+      return (await sysmonUp(fetch, 1000)) ? 'running' : off('not running');
     } },
     { id: 'offline library', run: async () => {
       if (!ctx.kiwix.available()) return off('not installed');

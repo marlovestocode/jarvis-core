@@ -16,9 +16,14 @@ const STATUS_MS = 15000, WAKE_START_MS = 20000, STOP_MS = 5000;
 const speakLimitMs = text => 30000 + 300 * String(text).length;   // 3.3 chars/s is far below the slowest voice rate
 const transcribeLimitMs = seconds => 10000 + 2000 * seconds;      // SAPI reads a file faster than real time
 
-function createSpeechHost({ spawn = childProcess.spawn, script = SCRIPT, log = () => {}, name = 'speech host' } = {}) {
+// A host that ran at least this long before it died was healthy: its next crash gets a fresh restart (the give-up rule is for crash loops).
+const HEALTHY_MS = 60000;
+
+function createSpeechHost({ spawn = childProcess.spawn, script = SCRIPT, log = () => {}, name = 'speech host', now = Date.now, healthyMs = HEALTHY_MS } = {}) {
   let proc = null;
-  let starts = 0;
+  let starts = 0;          // quick starts in a row; reset when a host lived healthyMs
+  let restarts = 0;        // every restart since the app started (metrics)
+  let startedAt = 0;
   let closed = false;
   let nextId = 1;
   const pending = new Map();
@@ -31,6 +36,7 @@ function createSpeechHost({ spawn = childProcess.spawn, script = SCRIPT, log = (
 
   function start() {
     starts++;
+    startedAt = now();
     const kid = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     proc = kid;
     let buf = '';
@@ -61,8 +67,9 @@ function createSpeechHost({ spawn = childProcess.spawn, script = SCRIPT, log = (
     failAll(new Error(name + ' exited'));
     if (closed) return;
     log(`${name} exited (code ${code ?? 'none'})`);
+    if (now() - startedAt >= healthyMs) starts = 0;   // it was healthy for a while: not a crash loop
     if (starts >= 2) { log(name + ' gave up after a restart; ' + (name === 'speech host' ? 'voice uses text only' : 'it is off') + ' until the app restarts'); return; }
-    try { start(); emitLocal('restart'); } catch (err) { log(name + ' restart failed:', err.message); }
+    try { start(); restarts++; emitLocal('restart'); } catch (err) { log(name + ' restart failed:', err.message); }
   }
 
   function onLine(line) {
@@ -111,7 +118,8 @@ function createSpeechHost({ spawn = childProcess.spawn, script = SCRIPT, log = (
     if (proc) { try { proc.kill(); } catch { /* gone */ } proc = null; }
   }
 
-  return { request, on, close, get running() { return !!proc; }, stats: () => ({ pending: pending.size }) };
+  return { request, on, close, get running() { return !!proc; }, stats: () => ({ pending: pending.size }),
+    health: () => ({ running: !!proc, restarts, gaveUp: !proc && starts >= 2 && !closed }) };
 }
 
 // voiceRate 0.5..2.0 → SAPI Rate -10..10 (log scale, 1.0 = 0)
