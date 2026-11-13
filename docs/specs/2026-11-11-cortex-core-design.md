@@ -171,14 +171,24 @@ cortex.close()
 
 `recall(query, opts)` returns a text block that fits `opts.budget` characters, each line tagged with its source. Three stages:
 
-1. **Seeds.** (a) FTS5 `bm25` top 20 on the sanitized query; (b) if a query vector is available within 120 ms, cosine top 20 from the
-   in-memory matrix. Fused with reciprocal-rank fusion (`k = 60`) into an initial activation `a₀` per node. `mode` reports `hybrid`,
-   `keyword` (no vector), or `empty`.
-2. **Spread.** Two hops over `edge` using effective weights: `a(n) += Σ a(m) · w_eff(m→n) · 0.5^hop`, fan-out capped per type, activation
-   floor 0.02, at most 200 nodes touched. Done with prepared statements in a loop (not one giant CTE) so the cap and the early exit are exact.
-3. **Score and pack.** `score = a · (0.6 + 0.4·confidence/100) · (1 + 0.3·importance) · recency(last_used)`; only `status='active'`, kinds
-   filtered; per-kind quotas (so Earlier chats cannot crowd out facts); greedy fill to the budget; each line `text [source · age]`.
-   `brief` mode halves the budget and drops `chat` nodes.
+1. **Seeds.** (a) FTS5 `bm25` top 20 on the sanitized query, keeping only hits within 35% of the best score; (b) if a query vector is
+   available within 120 ms, cosine top 20 from the in-memory matrix, keeping only hits at or above 0.52 cosine *and* within 0.15 of the best
+   (floor calibrated on nomic-embed-text@768). Fused with reciprocal-rank fusion (`k = 60`), each rank's term scaled by 0.5 + 0.5 × the hit's
+   strength relative to its list's best, into an initial activation `a₀` per node (strongest = 1). `mode` reports `hybrid`, `keyword`, or `empty`.
+2. **Spread.** Two hops over `edge` using effective weights. A hop passes `a(m) · conf(m) · w_eff · type(t) · dir · 0.5^hop` where `type` is
+   `PROPAGATE[t]` (structure 1, `mentions` 1, `about/similar` 0.8, `from` 0.7, `next` 0.6, `touched` 0.4; `supersedes`, `contradicts`, `same_as` 0), `dir`
+   is `REVERSE[t]` when the edge is walked against its direction (`mentions/about/from` 0.8, `touched` 0.5), and `conf(m)` = 0.5 + 0.5 · confidence/100.
+   Contributions to one node combine as `1 − Π(1 − c)` (bounded below 1); a node never passes activation straight back to the node it came from;
+   only `active` nodes take or pass activation; a node with confidence under 50 receives 40% of what reaches it by association. Fan-out caps per type,
+   activation floor 0.02, at most 200 nodes touched, at most 40 expanded per hop.
+3. **Score and pack.** `score = a · (0.6 + 0.4·confidence/100) · (1 + 0.3·importance) · recency(updated) · (1 + 0.1·usage)`, where `updated` is the last time
+   the content changed or the user/a tool restated it, and usage (use count, saturating at about 20) adds at most 10%. Only `status='active'`, kinds
+   filtered; candidates under 5% of the best score are dropped; a lower-trust node that `contradicts` a retrieved node is skipped; a node that is a copy
+   (`same_as`, or `similar` ≥ 0.88, or ≥ 90% shared words) of a packed one is skipped; per-kind quotas; greedy fill to the budget; each line
+   `text [source · age]`. `brief` mode halves the budget and drops `chat` nodes.
+4. **Explain.** `recall(q, { debug: true })` also returns `stages` and `explain: { items, dropped }`: per packed item the lexical and vector rank and score,
+   its seed activation, the edges that fed it (`from`, `type`, `dir`, `hop`, contribution), the hop count and the score factors; per dropped candidate the
+   reason (`weak`, `contradicted`, `duplicate`) and what it lost to. Nothing extra is computed or returned without `debug`.
 
 ### 6.1 Latency targets (checked by `scripts/cortex-bench.js`, §10)
 

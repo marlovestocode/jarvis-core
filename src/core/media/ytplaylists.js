@@ -37,7 +37,8 @@ const YES = /^(?:yes|yeah|yep|yup|sure|ok|okay|correct|right|that one|that's it|
 function createYtPlaylists({ link, ytm = null, getConfig = () => ({}), now = Date.now, sleep = delay, file = null, journalFile = null, log = () => {} }) {
   const cfg = () => ({ ...DEFAULT_MUSIC, ...(getConfig()?.music || {}) });
   let library = { at: 0, list: [] };        // at = 0 means "hint from disk or never fetched": refetch before use
-  const tracks = new Map();                  // playlist id → { at, data }
+  const TRACKS_KEPT = 8;
+  const tracks = new Map();                  // playlist id → { at, data }, oldest first, at most TRACKS_KEPT
   let tail = Promise.resolve();              // one extension call at a time
   let lastCall = 0;
 
@@ -136,7 +137,9 @@ function createYtPlaylists({ link, ytm = null, getConfig = () => ({}), now = Dat
       editable: typeof meta.editable === 'boolean' ? meta.editable : !!r.editable,
       truncated: !!r.truncated, tracks: Array.isArray(r.tracks) ? r.tracks : [],
     };
+    tracks.delete(meta.id);   // re-insert so the newest is last
     tracks.set(meta.id, { at: now(), data });
+    while (tracks.size > TRACKS_KEPT) tracks.delete(tracks.keys().next().value);   // each can hold thousands of songs: only the latest few stay in memory
     return { ...data, at: now(), cached: false };
   }
 
@@ -183,11 +186,13 @@ function createYtPlaylists({ link, ytm = null, getConfig = () => ({}), now = Dat
     if (res?.noTab) throw fail('NO_TAB', 'The YouTube Music extension did not open a tab, so it is probably out of date: reload it in chrome://extensions');
     const playing = res?.playing;
     if (!playing || playing.videoId !== start.t.videoId) return { status: 'wrong', playlist: data, playing: playing || null };
+    let started = !!res.started;
+    if (!started && ytm?.resumeBlocked && await ytm.resumeBlocked()) started = true;   // autoplay blocked: start it from Windows media controls
     let shuffled = false;
-    if (shuffle && res.started && !track) {
+    if (shuffle && started && !track) {
       try { shuffled = !!(await call('shuffle', {}, 15000))?.shuffled; } catch { /* playing is what matters */ }
     }
-    return { status: 'ok', playlist: data, track: start.t, started: !!res.started, shuffled, playing };
+    return { status: 'ok', playlist: data, track: start.t, started, shuffled, playing };
   }
 
   // ---- journal: every change JARVIS makes, so it can be taken back ----

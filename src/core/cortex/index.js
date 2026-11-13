@@ -13,6 +13,8 @@ const { withQueryCache } = require('./embedder');
 const { createRecall } = require('./recall');
 const { createConsolidate, EMBED_KINDS } = require('./consolidate');
 const { openChecked, createMaintenance, setMeta, getMeta } = require('./maintenance');
+const { createBrainView } = require('./brainview');
+const { createActivity } = require('./activity');
 
 const { CortexError } = guard;
 const FLUSH_MS = 60000;
@@ -34,12 +36,14 @@ function open({ file = ':memory:', log = () => {}, bus = null, embedder = null, 
   const edges = createEdges(db, { now });
   const maint = createMaintenance({ db, file, now, keep: backups, log, onWipe: () => vectors.trim() });
   const consolidate = createConsolidate({ db, vectors, edges, maintenance: maint, embedder, isIdle, now, log });
-  const nodes = createNodes(db, { now, sources, onWrite: (id, kind) => consolidate.queue.push(id, kind) });
+  const activity = createActivity({ bus, now });
+  const brainview = createBrainView(db, { now });
+  const nodes = createNodes(db, { now, sources, onWrite: (id, kind) => { consolidate.queue.push(id, kind); activity.write(id); } });
   // nodes written while no embedder was set join the embed queue (W1 E8: the model was installed later)
   if (embedder) { try { for (const id of vectors.missingIds([...EMBED_KINDS])) consolidate.queue.push(id); } catch (err) { log('cortex backfill: ' + err.message); } }
   const events = createEvents(db, { now });
   const queryVector = embedder ? withQueryCache(embedder).query : async () => null;
-  const recaller = createRecall({ db, edges, vectors, queryVector, now, log });
+  const recaller = createRecall({ db, edges, vectors, queryVector, now, log, onActivity: a => activity.recall(a) });
 
   // every failure leaves as a CortexError (validation codes as they are, anything else 'internal')
   const safe = fn => (...a) => {
@@ -76,9 +80,13 @@ function open({ file = ':memory:', log = () => {}, bus = null, embedder = null, 
       for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) pairs.push([list[i], list[j]]);
       edges.strengthen(pairs);
       nodes.touch(list);
+      activity.use(list, pairs.length);
       return pairs.length;
     }),
     weaken: safe(ids => edges.weaken(ids)),
+    // the shape of memory for the wallpaper (no text), and a few words per node when the user allows labels
+    view: safe(opts => brainview.view(opts)),
+    labels: safe(ids => brainview.labels(ids)),
     isCorrection: guard.isCorrection,
     consolidate: { tick: opts => consolidate.tick(opts), get queue() { return consolidate.queue.size; } },
 
@@ -107,6 +115,7 @@ function open({ file = ':memory:', log = () => {}, bus = null, embedder = null, 
       if (closed) return;
       closed = true;
       clearInterval(flushTimer);
+      activity.close();
       try { nodes.flushUses(); } catch (err) { log('cortex flush: ' + err.message); }
       if (!db.readOnly) { try { setMeta(db, 'clean_close', '1'); } catch { /* next boot runs the full check */ } }
       db.close();

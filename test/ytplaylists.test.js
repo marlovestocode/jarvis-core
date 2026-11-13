@@ -383,7 +383,7 @@ test('brain: ytm_library exists only with the playlist service, and the prompt c
   await svc.library();
   const withSvc = defaultTools({ ytPlaylists: svc });
   assert.equal(names(withSvc).includes('ytm_library'), true);
-  const p = systemPrompt({ tools: ['ytm_library'], library: svc.digest() });
+  const p = systemPrompt({ tools: withSvc.filter(t => t.name === 'ytm_library'), library: svc.digest() });
   assert.match(p, /ytm_library: the user's OWN playlists/);
   assert.match(p, /YouTube Music playlists: .*Gym \(42\)/);
   assert.doesNotMatch(systemPrompt({ tools: [], library: svc.digest() }), /Gym \(42\)/);
@@ -519,7 +519,7 @@ test('brain: both playlist tools are added together', () => {
   const { svc } = make();
   const names = defaultTools({ ytPlaylists: svc }).map(t => t.name);
   assert.ok(names.includes('ytm_library') && names.includes('ytm_play_library'));
-  assert.match(systemPrompt({ tools: ['ytm_play_library'] }), /ytm_play_library: play one of the user's OWN playlists/);
+  assert.match(systemPrompt({ tools: defaultTools({ ytPlaylists: svc }).filter(t => t.name === 'ytm_play_library') }), /ytm_play_library: play one of the user's OWN playlists/);
 });
 
 // the media skill: what the user hears from "play my gym playlist" without any model call

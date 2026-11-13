@@ -10,13 +10,13 @@ const QUOTAS = { fact: 0.5, entity: 0.2, chat: 0.5 };   // W1 E5
 function createMemoryBlock({ cortex, memory, getConfig = () => ({}) }) {
   const profile = ({ brief = false } = {}) => memory.profile({ budget: brief ? 300 : 500 });
 
-  async function forTurn({ text, previousUserText = '', brief = false, profileIds = [] } = {}) {
+  async function forTurn({ text, previousUserText = '', brief = false, profileIds = [], context = '' } = {}) {
     let query = String(text ?? '');
     if (ftsTokens(query).length < 3 && previousUserText) query += ' ' + String(previousUserText);
     const chats = getConfig()?.memory?.usePastChats !== false;
     const r = await cortex.recall(query, {
       kinds: chats ? ['fact', 'entity', 'chat'] : ['fact', 'entity'],
-      budget: MEMO_MAX - HEADER.length - 1, brief, quotas: QUOTAS, exclude: profileIds,
+      budget: MEMO_MAX - HEADER.length - 1, brief, quotas: QUOTAS, exclude: profileIds, context,
     });
     if (!r.text) return { memo: '', ids: [] };
     return { memo: HEADER + '\n' + r.text, ids: r.items.map(i => i.id) };

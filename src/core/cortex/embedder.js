@@ -3,7 +3,7 @@
 const { l2normalize, truncate } = require('./vectors');
 const { CortexError } = require('./guard');
 
-const LOCAL = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/;
+const { localOrigin } = require('../net/services');
 const STOP = new Set(['the', 'a', 'an', 'my', 'that', 'i', 'is', 'am', 'are', 'to', 'of', 'and', 'it', 'about', 'me', 'on', 'in', 'what', 'do', 'you', 'we', 'he', 'she', 'they', 'this', 'for', 'at', 'be', 'was', 'with', 'or', 'your']);
 
 const fnv1a = s => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return h >>> 0; };
@@ -36,8 +36,8 @@ function createFakeEmbedder({ dim = 256, synonyms = {} } = {}) {
 function createOllamaEmbedder({ getConfig, fetch: fetchImpl, model = 'nomic-embed-text', dim = 768, timeoutMs = 30000 } = {}) {
   const doFetch = fetchImpl || ((...a) => globalThis.fetch(...a));
   const host = () => {
-    const h = String((getConfig?.() || {}).ollama?.host || 'http://127.0.0.1:11434').trim().replace(/\/+$/, '');
-    if (!LOCAL.test(h)) throw new CortexError('host_not_local', 'the embedder only talks to a local Ollama');
+    const h = localOrigin((getConfig?.() || {}).ollama?.host);
+    if (!h) throw new CortexError('host_not_local', 'the embedder only talks to a local Ollama');
     return h;
   };
   const PREFIX = { query: 'search_query: ', doc: 'search_document: ' };

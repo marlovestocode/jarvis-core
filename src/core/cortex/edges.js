@@ -11,6 +11,13 @@ const TYPES = Object.freeze({
   contradicts: { halfLife: 3650, fanOut: 5 }, touched: { halfLife: 30, fanOut: 20 }, about: { halfLife: 180, fanOut: 20 },
 });
 const STRUCTURAL = new Set(['supersedes', 'contradicts', 'same_as']);   // facts about records, not associations: never weakened
+// How much of its activation an edge type passes on during recall. Edges the user or the structure of the data states
+// (part_of, by, contains) pass it whole; inferred or behavioural ones (touched, next) pass little; bookkeeping about records
+// (supersedes, contradicts, same_as) passes none, so a replaced or disputed node never pulls its counterpart into a result.
+const PROPAGATE = Object.freeze({ part_of: 1, by: 1, contains: 0.8, about: 0.8, similar: 0.8, from: 0.7, mentions: 1, next: 0.6, touched: 0.4, same_as: 0, supersedes: 0, contradicts: 0 });
+// A "mentions"-style edge points from the specific thing to the general one (fact → entity). Walking it backwards (an entity to
+// everything that ever mentioned it) fans out into unrelated records, so that direction passes less.
+const REVERSE = Object.freeze({ mentions: 0.8, about: 0.8, touched: 0.5, from: 0.8 });
 const ETA_LINK = 0.3, ETA_USE = 0.15, MAX_W = 1 - 1e-6, FLOOR = 0.02;
 const AROUND = 100;   // strongest links read per direction; the largest fan-out cap is 50
 
@@ -42,15 +49,15 @@ function createEdges(db, { now = Date.now } = {}) {
 
   // Each direction is one index seek that stops after the AROUND strongest stored weights, so a hub with thousands
   // of links costs the same as a small node. Stored weight is as of last_used; the effective order can differ a little.
-  const AROUND_SQL = `SELECT * FROM (SELECT dst AS other, type, weight, last_used FROM edge WHERE src = ?1 ORDER BY weight DESC LIMIT ${AROUND})
-                      UNION ALL SELECT * FROM (SELECT src AS other, type, weight, last_used FROM edge WHERE dst = ?1 ORDER BY weight DESC LIMIT ${AROUND})`;
+  const AROUND_SQL = `SELECT * FROM (SELECT dst AS other, type, weight, last_used, 1 AS out FROM edge WHERE src = ?1 ORDER BY weight DESC LIMIT ${AROUND})
+                      UNION ALL SELECT * FROM (SELECT src AS other, type, weight, last_used, 0 AS out FROM edge WHERE dst = ?1 ORDER BY weight DESC LIMIT ${AROUND})`;
 
-  // both directions of one node, effective weights, fan-out capped per type
+  // both directions of one node, effective weights, fan-out capped per type; `out` is true when the edge leaves this node
   function around(id, t, types) {
     let rows = db.stmt(AROUND_SQL).all(id);
     if (types) rows = rows.filter(r => types.has(r.type));
     const out = [];
-    for (const r of rows) out.push({ id: r.other, type: r.type, weight: effective(r.weight, r.last_used, r.type, t) });
+    for (const r of rows) out.push({ id: r.other, type: r.type, out: r.out === 1, weight: effective(r.weight, r.last_used, r.type, t) });
     out.sort((a, b) => b.weight - a.weight);
     const per = {};
     return out.filter(e => (per[e.type] = (per[e.type] || 0) + 1) <= TYPES[e.type].fanOut);
@@ -117,4 +124,4 @@ function createEdges(db, { now = Date.now } = {}) {
   return { link, unlink, neighbors, strengthen, weaken, prune, around };
 }
 
-module.exports = { createEdges, effective, TYPES, STRUCTURAL, ETA_LINK, ETA_USE, FLOOR };
+module.exports = { createEdges, effective, TYPES, STRUCTURAL, PROPAGATE, REVERSE, ETA_LINK, ETA_USE, FLOOR };

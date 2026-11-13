@@ -15,12 +15,12 @@ const { createCaptureScheduler } = require('./scheduler');
 const { aboutText } = require('../tools/memory');
 
 const TICK_MS = 5000, SLICE_MS = 8, DAY = 864e5;
-const LOCAL = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/;
+const { localOrigin } = require('../net/services');
 
 // POST /api/pull to the local Ollama only; resolves when the model is in (stream off)
 async function ollamaPull({ host, model, fetch = globalThis.fetch }) {
-  const h = String(host || 'http://127.0.0.1:11434').replace(/\/+$/, '');
-  if (!LOCAL.test(h)) throw new Error('Ollama host must be local');
+  const h = localOrigin(host);
+  if (!h) throw new Error('Ollama host must be local');
   const res = await fetch(h + '/api/pull', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, stream: false }), redirect: 'error', signal: AbortSignal.timeout(30 * 60e3) });
   if (!res.ok) throw new Error(`Ollama HTTP ${res.status}`);
   return { ok: true };

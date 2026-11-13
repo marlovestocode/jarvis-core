@@ -111,6 +111,23 @@ function createVectors(db, { dim = 256, model = 'none' } = {}) {
     return topI.map((r, i) => ({ id: m.ids[r], score: topS[i] }));
   }
 
+  // cosine of the query against specific nodes (those with a vector), without a scan: → Map<id, cosine>
+  function similarity(qF32, ids) {
+    const out = new Map();
+    if (!qF32 || qF32.length !== dim) return out;
+    if (!m || !m.complete) load();
+    const { scale: qs, v: q } = quantize(l2normalize(qF32));
+    if (!qs) return out;
+    for (const id of ids) {
+      const r = m.row.get(id);
+      if (r === undefined) continue;
+      let sum = 0;
+      for (let j = 0, off = r * dim; j < dim; j++) sum += m.data[off + j] * q[j];
+      out.set(id, sum * m.scales[r] * qs);
+    }
+    return out;
+  }
+
   const has = nodeId => !!db.stmt('SELECT 1 x FROM vec WHERE node_id = ?').get(nodeId);
   const meta = key => db.stmt('SELECT value FROM meta WHERE key = ?').get(key)?.value ?? null;
   const setMeta = (key, value) => db.stmt('INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, String(value));
@@ -132,7 +149,7 @@ function createVectors(db, { dim = 256, model = 'none' } = {}) {
   }
   function trim() { m = null; }
 
-  return { dim, model, put, remove, search, has, warm, isWarm: () => !!m?.complete, markStaleIfModelChanged, staleCount, staleIds, missingIds, stats, trim, forget: dropRow };
+  return { dim, model, put, remove, search, similarity, has, warm, isWarm: () => !!m?.complete, markStaleIfModelChanged, staleCount, staleIds, missingIds, stats, trim, forget: dropRow };
 }
 
 module.exports = { l2normalize, truncate, quantize, dequantize, dotI8, createVectors };

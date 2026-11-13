@@ -116,7 +116,8 @@ test('memory-recall-prompt: afterTurn reinforces unless tainted; a correction we
 
 test('memory-recall-prompt: prompt hints for recall_chats and memory_about; remember points at past chats', () => {
   const { systemPrompt } = require('../src/core/brain/prompt');
-  const p = systemPrompt({ tools: ['remember', 'forget_memory', 'recall_chats', 'memory_about'], memory: 'likes jazz' });
+  const { realTools } = require('./helpers/tool-deps');
+  const p = systemPrompt({ tools: realTools(['remember', 'forget_memory', 'recall_chats', 'memory_about']), memory: 'likes jazz' });
   assert.match(p, /recall_chats: /);
   assert.match(p, /memory_about: /);
   assert.match(p, /never invent what was said/);

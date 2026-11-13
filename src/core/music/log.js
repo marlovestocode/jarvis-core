@@ -38,10 +38,19 @@ function normalize(e, { now = Date.now() } = {}) {
 function createPlayLog({ file, getConfig = () => ({}), now = Date.now, log = () => {} } = {}) {
   const plays = [];
   const ids = new Set();
+  // The same songs come round again and again, so every play points at one shared copy of its strings and artist list instead of
+  // owning its own (measured: 100,000 plays took 52 MB; see scripts/mem-bench.js playlog). Plays are only ever read, never changed.
+  const pool = new Map(), lists = new Map();
+  const intern = v => { if (typeof v !== 'string') return v; const hit = pool.get(v); if (hit !== undefined) return hit; pool.set(v, v); return v; };
+  function slim(p) {
+    for (const k of ['videoId', 'title', 'artist', 'album', 'list', 'reason', 'outcome']) p[k] = intern(p[k]);
+    if (Array.isArray(p.artists)) { const key = p.artists.join(''); let a = lists.get(key); if (!a) { a = p.artists.map(intern); lists.set(key, a); } p.artists = a; }
+    return p;
+  }
   try {
     for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
       if (!line.trim()) continue;
-      try { const p = JSON.parse(line); if (p?.id && !ids.has(p.id)) { ids.add(p.id); plays.push(p); } } catch { /* a torn last line: skip it */ }
+      try { const p = JSON.parse(line); if (p?.id && !ids.has(p.id)) { ids.add(p.id); plays.push(slim(p)); } } catch { /* a torn last line: skip it */ }
     }
     plays.sort((a, b) => a.at - b.at);
   } catch { /* no log yet */ }
@@ -52,6 +61,7 @@ function createPlayLog({ file, getConfig = () => ({}), now = Date.now, log = () 
     const p = normalize(raw, { now: now() });
     if (!p || ids.has(p.id)) return null;
     ids.add(p.id);
+    slim(p);
     // late events (sent after JARVIS was down) keep time order
     let i = plays.length;
     while (i > 0 && plays[i - 1].at > p.at) i--;
@@ -60,7 +70,7 @@ function createPlayLog({ file, getConfig = () => ({}), now = Date.now, log = () 
     return p;
   }
 
-  function clear() { plays.length = 0; ids.clear(); try { fs.rmSync(file, { force: true }); } catch { /* gone */ } }
+  function clear() { plays.length = 0; ids.clear(); pool.clear(); lists.clear(); try { fs.rmSync(file, { force: true }); } catch { /* gone */ } }
 
   return { add, clear, all: () => plays, count: () => plays.length, since: () => plays[0]?.at ?? null };
 }

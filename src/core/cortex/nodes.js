@@ -2,6 +2,8 @@
 const { CortexError, checkText, checkData, MAX_QUOTE } = require('./guard');
 
 const STATUSES = new Set(['active', 'pending', 'archived']);
+const SPECULATIVE = 50;   // source trust below this = a guess or an unverified claim (model 20, web 40); recall also holds these back
+const RESTATES = new Set(['user', 'tool']);   // a live statement or observation re-confirms a fact; an importer re-running does not
 const ORDERS = { updated: 'updated DESC, id DESC', last_used: 'last_used DESC NULLS LAST, id DESC', uses: 'uses DESC, updated DESC, id DESC', created: 'created DESC, id DESC' };
 const same = (a, b) => String(a).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim() === String(b).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 const parse = s => { try { return s ? JSON.parse(s) : null; } catch { return null; } };
@@ -10,15 +12,17 @@ function createNodes(db, { now = Date.now, sources, onWrite = () => {} } = {}) {
   const row = id => db.stmt('SELECT * FROM node WHERE id = ?').get(id);
 
   function addProvenance(nodeId, sourceId, quote) {
-    db.stmt('INSERT INTO provenance(node_id, source_id, at, quote) VALUES (?, ?, ?, ?) ON CONFLICT(node_id, source_id) DO UPDATE SET quote = coalesce(excluded.quote, quote)')
+    db.stmt('INSERT INTO provenance(node_id, source_id, at, quote) VALUES (?, ?, ?, ?) ON CONFLICT(node_id, source_id) DO UPDATE SET quote = coalesce(excluded.quote, quote), at = excluded.at')
       .run(nodeId, sourceId, now(), quote);
   }
 
-  // highest trust + 5 per additional independent (kind, ref) source, cap 100 (plan D5)
+  // highest trust + 5 per additional independent (kind, ref) source, cap 100 (plan D5). Below SPECULATIVE trust no amount of
+  // agreement lifts a node into the established band: ten guesses are still a guess.
   function refreshConfidence(nodeId) {
     const r = db.stmt(`SELECT max(s.trust) top, count(DISTINCT s.kind || char(31) || coalesce(s.ref, '')) n
                        FROM provenance p JOIN source s ON s.id = p.source_id WHERE p.node_id = ?`).get(nodeId);
-    const c = r.top === null ? 0 : Math.min(100, r.top + 5 * Math.max(0, r.n - 1));
+    let c = r.top === null ? 0 : Math.min(100, r.top + 5 * Math.max(0, r.n - 1));
+    if (r.top !== null && r.top < SPECULATIVE) c = Math.min(c, SPECULATIVE - 1);
     db.stmt('UPDATE node SET confidence = ? WHERE id = ?').run(c, nodeId);
   }
 
@@ -58,6 +62,7 @@ function createNodes(db, { now = Date.now, sources, onWrite = () => {} } = {}) {
       if (same(existing.text, clean)) {
         addProvenance(existing.id, src.id, q); refreshConfidence(existing.id);
         if (existing.status === 'archived' && status !== 'archived') db.stmt('UPDATE node SET status = ?, updated = ? WHERE id = ?').run(status, now(), existing.id);
+        else if (RESTATES.has(src.kind) && src.trust >= SPECULATIVE) db.stmt('UPDATE node SET updated = ? WHERE id = ?').run(now(), existing.id);   // last confirmed
         return { id: existing.id, created: false, wrote: false };
       }
       const slotData = d => JSON.stringify({ ...(parse(d) || {}), _slot: k });
