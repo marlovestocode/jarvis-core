@@ -14,6 +14,7 @@ const groups = [
   { id: 'system', label: 'System', sideEffects: 'read', triggers: [w(['gpu'], 2), w(['temperature', 'temp'], 2)], tools: [{ name: 'gpu_temp' }] },
   { id: 'files', label: 'Files', sideEffects: 'write', triggers: [w(['files', 'delete'], 2), w(['old'], 1)], tools: [{ name: 'file_delete' }] },
   { id: 'browser', label: 'Browser', sideEffects: 'read', triggers: [w(['tabs'], 2)], tools: [{ name: 'tabs_list' }], status: () => ({ ok: false, detail: 'the Chrome extension is not connected' }) },
+  { id: 'pc', label: 'PC', sideEffects: 'write', triggers: [], tools: [{ name: 'app_close' }], status: () => { throw new Error('status broke'); } },
 ];
 const catalog = buildCatalog(groups);
 const fakeP = fn => createFakeProvider([{ type: 'done' }], { constrain: fn });
@@ -157,4 +158,64 @@ test('latency guard: rule-only path adds <5ms avg over 200 calls with no provide
   const avgMs = Number(process.hrtime.bigint() - t0) / 1e6 / 200;
   assert.ok(avgMs < 5, `avg ${avgMs}ms`);
   assert.equal(p.constrained.length, 0);
+});
+
+test('fix: followup reuse skips down and unknown-risky groups, and never overrides a decline', async () => {
+  const r = await run('do that again', { provider: fakeP(async () => ({ kind: 'followup', groups: [], confidence: 0.8 })), lastGroups: ['core', 'browser', 'pc', 'system'] });
+  assert.deepEqual([...r.groups], ['core', 'system']);
+  const d = await run('do that again', { provider: fakeP(async () => ({ kind: 'followup', groups: ['browser'], confidence: 0.9 })), lastGroups: ['core', 'media'] });
+  assert.equal(d.action, 'decline');
+  assert.match(d.decline, /Browser is unavailable/);
+});
+
+test('fix: unsure model with no groups on a risky rule pick asks, never acts', async () => {
+  const r = await run('should I delete the old files?', { provider: fakeP(async () => ({ kind: 'chat', groups: [], confidence: 0.3 })) });
+  assert.equal(r.action, 'ask');
+  assert.ok(r.ask.length > 5);
+});
+
+test('fix: polite orders and a stray "read" make zero provider calls', async () => {
+  for (const text of ['can you pause the music?', 'could you please pause the music?', 'please pause the music?', 'pause the music, then read the article']) {
+    const p = never();
+    const r = await run(text, { provider: p });
+    assert.equal(p.constrained.length, 0, text);
+    assert.equal(r.action, 'act');
+  }
+  // a real question still opens the gate
+  const p = fakeP(async () => ({ kind: 'chat', groups: [], confidence: 0.9 }));
+  await run('why did the music pause?', { provider: p });
+  assert.equal(p.constrained.length, 1);
+});
+
+test('merge: unsure pick is added to the rule pick (merged), model pick first under the cap', async () => {
+  const r = await run('gpu', { provider: fakeP(async () => ({ kind: 'new', groups: ['knowledge'], confidence: 0.4 })) });
+  assert.equal(r.action, 'act');
+  assert.deepEqual([...r.groups], ['core', 'knowledge', 'system']);
+  assert.equal(r.source, 'merged');
+  // rule already has two groups: the model's risky pick survives the cap and triggers the ask
+  const two = await run('gpu weather', { provider: fakeP(async () => ({ kind: 'new', groups: ['files'], confidence: 0.4 })) });
+  assert.deepEqual([...two.groups], ['core', 'files', 'knowledge']);
+  assert.equal(two.action, 'ask');
+});
+
+test('merge: a low rule match is replaced by the model pick; chat goes to knowledge', async () => {
+  const r = await run('blorp the frobnicator', { provider: fakeP(async () => ({ kind: 'new', groups: ['system'], confidence: 0.5 })) });
+  assert.deepEqual([...r.groups], ['core', 'system']);
+  assert.equal(r.source, 'model');
+  assert.equal(r.action, 'act');
+  const c = await run('blorp the frobnicator', { provider: fakeP(async () => ({ kind: 'chat', groups: [], confidence: 0.9 })) });
+  assert.deepEqual([...c.groups], ['core', 'knowledge']);
+});
+
+test('resolveSelection: a large catalog is shortlisted with the embed function', async () => {
+  const many = buildCatalog([groups[0], ...Array.from({ length: 14 }, (_, i) => ({ id: `g${i}`, label: `Group ${i}`, summary: `Handles widget number ${i} things`, examples: [`do widget ${i}`], triggers: [], tools: [{ name: `t${i}` }] }))]);
+  let calls = 0;
+  const embed = async texts => { calls++; return texts.map(t => (/widget number 3 |gizmo/.test(t) ? [1, 0] : [0, 1])); };
+  const p = fakeP(async () => ({ kind: 'new', groups: ['g3'], confidence: 0.9 }));
+  const r = await resolveSelection({ text: 'the gizmo thingy', catalog: many, provider: p, owner: true, embed });
+  assert.ok(calls >= 1);
+  assert.deepEqual([...r.groups], ['core', 'g3']);
+  const prompt = p.constrained[0].messages.map(m => m.content).join('\n');
+  assert.match(prompt, /- g3 /);
+  assert.ok(prompt.split('\n').filter(l => /^- g\d+ /.test(l)).length <= SHORTLIST);
 });

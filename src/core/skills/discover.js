@@ -29,9 +29,14 @@ function effectsOf(catalog, id) {
 }
 
 // Text that may not be an order: a question, discussion, hypothetical or quote (patterns borrowed from router, guard, clarify).
+// A polite order ("can you pause the music?") is still an order: its '?' and question shape do not count.
+const POLITE = /^(?:please\s+)?(?:(?:can|could|would|will)\s+you\b|please\b)/i;
+// FACT's question-word head only: its unanchored read/article/section alternative (capture group 1) says nothing about intent
+const asksFact = t => { const m = FACT.exec(t); return !!m && m[1] === undefined; };
 function looksUnsure(text, lastGroups) {
   const t = String(text || '').trim();
-  return /\?\s*$/.test(t) || FACT.test(t) || NOT_CLAIM.test(t) || QUOTED.test(t) || !!clarify(t, { lastGroups });
+  const question = !POLITE.test(t) && (/\?\s*$/.test(t) || asksFact(t));
+  return question || NOT_CLAIM.test(t) || QUOTED.test(t) || !!clarify(t, { lastGroups });
 }
 
 // Model only for the owner, with a constrain-capable provider, and only when the rule match is unsure or a
@@ -100,7 +105,20 @@ function view(catalog, ids) {
   return { ...catalog, groups, ids: groups.map(g => g.id), cardsNow: async () => (await catalog.cardsNow()).filter(c => keep.has(c.id)) };
 }
 
-const withConf = (arr, conf) => { Object.defineProperty(arr, 'confidence', { value: conf, enumerable: false }); return arr; };
+// The ids still usable now, by the same rule as validateIntent: down groups out, unknown write/external out (fail closed).
+async function usable(catalog, ids) {
+  let cards = [];
+  try { cards = typeof catalog.cardsNow === 'function' ? await catalog.cardsNow() : []; } catch { cards = null; }
+  const byId = new Map((cards || []).map(c => [c.id, c]));
+  return ids.filter(id => {
+    const c = byId.get(id);
+    const avail = cards === null ? null : c ? c.available : true;
+    if (avail === false) return false;
+    return !(avail === null && RISKY.has(c?.sideEffects || effectsOf(catalog, id)));
+  });
+}
+
+const withConf =(arr, conf) => { Object.defineProperty(arr, 'confidence', { value: conf, enumerable: false }); return arr; };
 const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x));
 
 // resolveSelection({ text, rule?, history?, lastGroups?, hint?, live?, catalog, provider?, embed?, owner?, budgetMs?, signal?, hints?, now? })
@@ -131,7 +149,8 @@ async function resolveSelection({ text, rule, history, lastGroups = [], hint, li
   if (intent.status !== 'ok') return asRule({ intent });   // graceful fallback: the rule result, unchanged
 
   let picked = intent.groups.filter(id => catalog.ids.includes(id));
-  if (!picked.length && ['followup', 'correction', 'modify'].includes(intent.kind)) picked = prev;
+  // a continuation with no new area reuses the last ones, but never past an honest decline or a group that is down now
+  if (!picked.length && !intent.decline && ['followup', 'correction', 'modify'].includes(intent.kind)) picked = await usable(catalog, prev);
   if (!picked.length) {
     if (intent.decline) return { action: 'decline', groups: r, source: 'model', decline: intent.decline, intent, decision };
     if (intent.ask) return { action: 'ask', groups: r, source: 'model', ask: intent.ask, intent, decision };
@@ -140,11 +159,16 @@ async function resolveSelection({ text, rule, history, lastGroups = [], hint, li
       decision.finalGroups = [...groups];
       return { action: 'act', groups, source: sameSet(groups, ruleGroups) ? 'rule' : 'model', intent, decision };
     }
+    // the model was unsure and named nothing: a rule pick that changes things asks rather than acts
+    if (intent.confidence < ACT_MIN && ruleGroups.some(id => id !== 'core' && RISKY.has(effectsOf(catalog, id)))) {
+      return { action: 'ask', groups: r, source: 'rule', ask: intent.ask || ASK_TEXT, intent, decision };
+    }
     return asRule({ intent });
   }
-  // a sure (or the only) reading replaces the rule pick; an unsure one is added to the rule's own matches
+  // a sure (or the only) reading replaces the rule pick; an unsure one is added to the rule's own matches (model's pick first,
+  // so the cap never cuts the group the ask below must see)
   const ruleOwn = r.confidence === 'low' ? [] : ruleGroups.filter(id => id !== 'core');
-  const merged = intent.confidence >= ACT_MIN || !ruleOwn.length ? picked : [...new Set([...ruleOwn, ...picked])];
+  const merged = intent.confidence >= ACT_MIN || !ruleOwn.length ? picked : [...new Set([...picked, ...ruleOwn])];
   const cap = picked.length > 1 ? MULTI_MAX : MAX_GROUPS;
   const final = merged.slice(0, cap);
   const groups = withConf(['core', ...final], 'medium');
