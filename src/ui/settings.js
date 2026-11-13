@@ -40,6 +40,8 @@
     for (const k of ['stt', 'tts', 'wake']) opt($(k), d.engines[k], c.engines[k]);
     $('wakeEnabled').checked = !!c.wakeEnabled;
     $('speakerGate').checked = !!c.speakerGate;
+    $('speakerMode').value = c.speakerMode === 'block' ? 'block' : 'guest';
+    $('speakerLearn').checked = c.speakerLearn !== false;
     if (document.activeElement !== $('userName')) $('userName').value = c.user.name;
     if (document.activeElement !== $('userAbout')) $('userAbout').value = c.user.about;
     $('sttGpu').checked = !!c.sttGpu;
@@ -186,6 +188,8 @@
   $('libraryDir').addEventListener('change', e => save({ library: { dir: e.target.value } }));
   $('userAbout').addEventListener('change', e => save({ user: { about: e.target.value } }));
   $('speakerGate').addEventListener('change', e => save({ speakerGate: e.target.checked }));
+  $('speakerMode').addEventListener('change', e => save({ speakerMode: e.target.value }));
+  $('speakerLearn').addEventListener('change', e => save({ speakerLearn: e.target.checked }));
   $('logPlays').addEventListener('change', e => save({ music: { logPlays: e.target.checked } }));
   $('browserOn').addEventListener('change', e => save({ browser: { enabled: e.target.checked } }));
   $('sttGpu').addEventListener('change', e => save({ sttGpu: e.target.checked }));

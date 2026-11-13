@@ -257,7 +257,7 @@ function capsLine() {
   const c = ctx.config, on = v => (v ? 'on' : 'off');
   return [
     `wake word "Jarvis" is ${on(c.wakeEnabled)} (also the voice hotkey ${c.hotkeys.voice})`,
-    `recognises the owner's voice: ${ctx.speaker.enrolled() ? (c.speakerGate ? 'enrolled, only they can wake it' : 'enrolled, gate off') : 'not enrolled'}`,
+    `recognises the owner's voice: ${ctx.speaker.enrolled() ? (c.speakerGate ? `enrolled, ${c.speakerMode} mode${(ctx.speaker.recent?.() || []).length ? `, last scores ${ctx.speaker.recent().slice(-3).map(x => x.score).join(', ')}` : ''}` : 'enrolled, gate off') : 'not enrolled'}`,
     `YouTube Music extension: ${ctx.ytmLink.connected ? 'connected' : 'not connected'}`,
     `listening log: ${c.music.logPlays ? `${ctx.playLog.count()} plays recorded${ctx.playLog.since() ? ` since ${new Date(ctx.playLog.since()).toLocaleDateString(ctx.config.speech.dateOrder === 'dmy' ? 'en-GB' : 'en-US')}` : ''}` : 'off'} (music_stats tool)`,
     skills.capsLine(ctx.catalog, { browser: !c.browser.enabled ? 'off' : ctx.ytmLink.connected ? 'connected' : 'not connected' }),   // every skill group; risky PC actions ask the user first, timers are spoken when they fire

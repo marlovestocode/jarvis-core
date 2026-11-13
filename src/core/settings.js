@@ -127,6 +127,8 @@ function applyPatch(current, patch = {}, { providers, engines }) {
   }
   if ('wakeEnabled' in patch) config.wakeEnabled = !!patch.wakeEnabled;
   if ('speakerGate' in patch) config.speakerGate = !!patch.speakerGate;
+  if ('speakerMode' in patch) { if (patch.speakerMode === 'guest' || patch.speakerMode === 'block') config.speakerMode = patch.speakerMode; else errors.push('Speaker mode must be guest or block'); }
+  if ('speakerLearn' in patch) { if (typeof patch.speakerLearn === 'boolean') config.speakerLearn = patch.speakerLearn; else errors.push('Voice learning switch must be true or false'); }
   if ('sttGpu' in patch) config.sttGpu = !!patch.sttGpu;
   if ('vad' in patch) {
     if (patch.vad === 'silero' || patch.vad === 'energy') config.vad = patch.vad;

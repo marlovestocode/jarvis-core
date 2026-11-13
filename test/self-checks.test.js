@@ -106,3 +106,10 @@ test('selfChecks: cortex check ok / off / problem', async () => {
   assert.deepEqual([bad.state, bad.detail], ['fail', 'the cortex is read-only']);
   assert.equal((await run(fakeCtx({ memorySystem: null }))).cortex.state, 'off');
 });
+
+test('selfChecks: voice recognition line names the mode and the last scores', async () => {
+  const r = await run(fakeCtx({ speaker: { available: () => true, enrolled: () => true, count: () => 3, recent: () => [{ t: 1, score: 0.71, verdict: 'owner' }, { t: 2, score: 0.22, verdict: 'guest' }] } }));
+  assert.equal(r['voice recognition'].detail, 'voice enrolled (3 samples), gate on (guest mode), last scores 0.71, 0.22');
+  const b = await run(fakeCtx({ config: { ...DEFAULTS, provider: 'ollama', speakerMode: 'block', speakerGate: false } }));
+  assert.equal(b['voice recognition'].detail, 'voice enrolled (3 samples), gate off');
+});

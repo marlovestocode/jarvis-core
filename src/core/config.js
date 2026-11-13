@@ -24,6 +24,10 @@ const DEFAULTS = Object.freeze({
   endSilenceMs: 700,                   // quiet that ends a spoken turn; 550 passes the corpus pause set with Silero (Phase 4)
   continuationGuard: false,            // a turn ending on "and"/"the"/... listens 1.5 s more before answering (Phase 4)
   speakerGate: true,                   // once a voice is enrolled, only that voice wakes JARVIS by "Jarvis" (the hotkey always works)
+  speakerMode: 'guest',                // gate on: 'guest' = an unrecognised voice still gets answers (no personal data or actions), 'block' = it is ignored
+  speakerGuestBelow: 0.30,             // a score under this is a guest; between this and speakerThreshold is unsure (config.json only)
+  speakerLearn: true,                  // an owner-matched utterance refines the voice profile
+  speakerLearnAbove: 0.60,             // only a match at least this strong is learned from (config.json only)
   speakerThreshold: 0.45,              // cosine match needed (same voice ~0.8-0.9, another voice ~0.1-0.3)
   micDeviceId: null,
   voiceRate: 1.0,
@@ -81,6 +85,9 @@ function okValue(key, def, v) {
   if (key === 'micDeviceId') return v === null || typeof v === 'string';
   if (key === 'vad') return VADS.includes(v);
   if (key === 'wakeInterrupt') return v === 'now' || v === 'sentence';
+  if (key === 'speakerMode') return v === 'guest' || v === 'block';
+  if (key === 'speakerGuestBelow') return typeof v === 'number' && v >= 0.1 && v <= 0.5;
+  if (key === 'speakerLearnAbove') return typeof v === 'number' && v >= 0.5 && v <= 0.95;
   if (key === 'speakerThreshold') return typeof v === 'number' && v >= 0.2 && v <= 0.9;
   if (key === 'sttPrompt') return ['v0', 'v1', 'none'].includes(v);
   if (key === 'sttModel') return typeof v === 'string' && /^[\w-][\w.-]*\.bin$/.test(v);
@@ -130,6 +137,7 @@ function merge(raw) {
       if (key === 'endSilenceMs') out[key] = Math.round(Math.max(300, Math.min(1500, out[key])));
     }
   }
+  if (out.speakerGuestBelow >= out.speakerThreshold) out.speakerGuestBelow = DEFAULTS.speakerGuestBelow >= out.speakerThreshold ? Math.round(out.speakerThreshold * 0.5 * 1000) / 1000 : DEFAULTS.speakerGuestBelow;   // guests sit below the owner threshold
   return out;
 }
 
