@@ -1,6 +1,7 @@
 // Skill groups: tools regrouped by area. Each group file exports createGroup(deps) → Group | null.
-// Group = { id, label, triggers, hint?, tools, status? }
+// Group = { id, label, triggers, hint?, tools, status?, summary?, examples?, sideEffects? }   (last three: capability.js)
 // status() → { ok, detail } (may be async): whether the group can work right now (extension connected, sysmon up...).
+const { buildCard, buildCardsNow } = require('./capability');
 const ORDER = ['core', 'media', 'ytmusic', 'timers', 'monitors', 'knowledge', 'system', 'pc', 'math', 'memory', 'windows', 'audio-display', 'connectivity', 'clipboard-capture', 'files', 'browser', 'self', 'web', 'lyrics'];
 
 // The groups that loaded, in ORDER. The array also carries .missing: [{ id, error? }], the groups left out:
@@ -28,7 +29,13 @@ function buildCatalog(groups) {
   }
   // aliases never shadow a real tool name
   for (const g of groups) for (const tool of g.tools) for (const a of tool.aliases || []) if (!byName.has(a)) byName.set(a, { tool, groupId: g.id });
-  return { groups, tools, ids: groups.map(g => g.id), missing: groups.missing || [], byName, groupOf: name => byName.get(name)?.groupId ?? null };
+  // cards: descriptive capability cards for the intent interpreter (capability.js). They never grant permission.
+  // The getter reads sync status only (available:null = unknown); cardsNow() also awaits async statuses.
+  return {
+    groups, tools, ids: groups.map(g => g.id), missing: groups.missing || [], byName, groupOf: name => byName.get(name)?.groupId ?? null,
+    get cards() { return groups.map(g => buildCard(g)); },
+    cardsNow: () => buildCardsNow(groups),
+  };
 }
 
 // One line for the prompt's Capabilities: every group, so the model knows what exists when a group is not loaded.
