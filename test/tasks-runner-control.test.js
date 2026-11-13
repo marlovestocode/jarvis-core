@@ -241,6 +241,58 @@ test('pause and cancel; no-ops on finished tasks', async () => {
   assert.equal(runner.pause('zzzz9').ok, false);
 });
 
+test('cancel drops a failed task; done and cancelled stay unchanged', async () => {
+  const { runner, store, clock } = setup(ok);
+  const failed = seed(store, [step('s1', 'a', 'failed')], 'failed');
+  const c = runner.cancel(failed);
+  assert.equal(c.ok, true);
+  assert.equal(store.get(failed).status, 'cancelled');
+  for (const st of ['done', 'cancelled']) {
+    const id = seed(store, [step('s1', 'a', 'done')], st);
+    const before = store.get(id);
+    clock.t += 10;
+    const r = runner.cancel(id);
+    assert.equal(r.ok, false);
+    assert.match(r.text, new RegExp(st));
+    assert.deepEqual(store.get(id), before);
+  }
+});
+
+test('cancel of an awaiting_confirm task', async () => {
+  const { runner, store, pending } = setup(name => (name === 'del' ? { ok: true, text: ASK } : ok(name)));
+  const r = await runner.start({ title: 'T', steps: [{ tool: 'del' }], turn: 1 });
+  pending.action = { tool: 'del' };
+  assert.equal(runner.cancel(r.task.id).ok, true);
+  assert.equal(store.get(r.task.id).status, 'cancelled');
+});
+
+test('confirm: a failed action marks the step and the task failed', async () => {
+  const { runner, store } = setup(name => (name === 'del' ? { ok: true, text: ASK } : ok(name)));
+  const r = await runner.start({ title: 'T', steps: [{ tool: 'del' }, { tool: 'c' }], turn: 1 });
+  runner.onConfirmResolved({ tool: 'del', ok: false, text: 'That did not work: locked.' });
+  const t = store.get(r.task.id);
+  assert.equal(t.status, 'failed');
+  assert.equal(t.steps[0].status, 'failed');
+  assert.equal(t.steps[0].result.text, 'That did not work: locked.');
+});
+
+test('restart: a running confirm step is re-proposed, not asked about', async () => {
+  const { runner, calls, store } = setup(name => (name === 'del' ? { ok: true, text: ASK } : ok(name)));
+  const id = seed(store, [step('s1', 'del', 'running')], 'interrupted');
+  const r = await runner.resume(id, { turn: 2 });
+  assert.equal(r.text, ASK);
+  assert.deepEqual(calls.map(c => c.name), ['del']);
+  assert.equal(store.get(id).status, 'awaiting_confirm');
+});
+
+test('status with no id reports a newest failed task over an older paused one', async () => {
+  const { runner, store, clock } = setup(ok);
+  seed(store, [step('s1', 'a', 'pending')]);
+  clock.t += 10;
+  const failed = seed(store, [step('s1', 'a', 'failed')], 'failed');
+  assert.match(runner.status().text, new RegExp(failed));
+});
+
 test('pause requested during a run stops at the next step boundary', async () => {
   let runner;
   const s = setup((name, a, n) => { if (n === 1) runner.pause(s.store.list()[0].id); return ok(name); });

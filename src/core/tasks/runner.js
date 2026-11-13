@@ -11,6 +11,8 @@ const LINE_CAP = 160;
 const MAX_REPLANS = 2;
 const FINISHED = ['done', 'cancelled', 'failed'];
 const isFinished = t => FINISHED.includes(t.status);
+// A failed task can still be replanned or cancelled; only done and cancelled are closed.
+const isClosed = t => t.status === 'done' || t.status === 'cancelled';
 const settled = s => s.status === 'done' || s.status === 'skipped';
 
 const clip = (s, n = LINE_CAP) => {
@@ -202,7 +204,8 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
       return { ok: false, text: `Task ${id} has a step that needs the user's OK, and this turn was influenced by untrusted content. Ask the user to resume it directly.` };
     }
     const mid = task.steps.find(s => s.status === 'running');
-    if (mid && !isReadOnly(mid.tool) && !mid.asked) {
+    // A confirm tool only proposes, so nothing can have run: it is re-proposed like a read-only step.
+    if (mid && !isReadOnly(mid.tool) && riskOf(mid.tool) !== 'confirm') {
       // A write step was cut off mid-flight: it may have acted. Ask; a later resume is the yes.
       mid.status = 'pending';
       task.status = 'awaiting_confirm';
@@ -234,7 +237,7 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
   function control(id, to) {
     const task = store.get(id);
     if (!task) return { ok: false, text: `No task ${id}.` };
-    if (isFinished(task)) return { ok: false, text: `Task ${id} is already ${task.status}; nothing to ${to === 'paused' ? 'pause' : 'cancel'}.` };
+    if (to === 'paused' ? isFinished(task) : isClosed(task)) return { ok: false, text: `Task ${id} is already ${task.status}; nothing to ${to === 'paused' ? 'pause' : 'cancel'}.` };
     if (inFlight.has(id)) {
       stops.set(id, to);
       return { ok: true, text: `Task ${id} will be ${to} after its current step.` };
@@ -251,7 +254,7 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
     if (id) task = store.get(id);
     else {
       const all = tasksNewestFirst();
-      task = all.find(t => !isFinished(t)) || all[0];
+      task = all.find(t => !isClosed(t)) || all[0];
     }
     if (!task) return { ok: false, text: id ? `No task ${id}.` : 'There are no tasks.' };
     return { ok: true, text: describe(reconcile(task)) };
