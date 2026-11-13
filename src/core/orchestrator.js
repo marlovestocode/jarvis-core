@@ -53,6 +53,7 @@ function forProvider(m) {
 const { repairCall } = require('./tools/constrain');
 const { unbackedClaim, stripClaims, softFail, ungroundedFigures, UNBACKED_FIX, NEEDS_OK } = require('./brain/guard');
 const { resolveFollowUp } = require('./livestate/followup');
+const { liveContext } = require('./livestate/context');
 const { plan } = require('./brain/plan');
 const { instant } = require('./brain/instant');
 
@@ -89,7 +90,7 @@ const nudgeGround = figs => `Your reply gave figures that appear in no tool resu
 const NUDGE_CAP = 'You have used all the tool rounds you are allowed. Answer the user now with what the tool results above gave you, and say plainly what you could not get.';
 const NUDGE_PLAIN ="Reply to the user's last message in one or two sentences.";
 
-function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, rankTools = null, learnTool = null, onQuestionLost = () => {}, memoryBlock = null, live = null, catalog = null, selectWithModel = require('./skills/select').selectWithModel }) {
+function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, rankTools = null, learnTool = null, onQuestionLost = () => {}, memoryBlock = null, context: assembler = null, live = null, catalog = null, selectWithModel = require('./skills/select').selectWithModel }) {
   let current = null; // AbortController of the running turn
   const lastGroupsAt = new Map(); // session id → when lastGroups was last set
   // the areas the last turn used, only while that turn is recent: "make it 10" an hour later does not mean the timer from back then
@@ -313,7 +314,20 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       if (memoryBlock && owner) {
         const prev = s.messages.slice(0, turnStart).reverse().find(m => m.role === 'user' && !m.speaker);
         try {
-          const r = await memoryBlock.forTurn({ text: String(text), previousUserText: prev ? String(prev.content) : '', brief: hints?.tools === false, profileIds: info.memoryIds || [] });
+          // what is on screen and the active task nudge recall; quick chat (brief) skips it
+          let context = '';
+          if (hints?.tools !== false) {
+            // the cross-system assembler (owner, not brief) gives the hint; live state alone is the fallback if it fails or has nothing
+            if (assembler) {
+              try {
+                const pkg = await assembler.assemble({ text: String(text), speaker, brief: false, sessionId: s.id });
+                if (pkg) bus.emit('context', { items: pkg.items?.length || 0, dropped: pkg.dropped?.length || 0, errors: pkg.errors?.length || 0, ms: Number(pkg.ms) || 0 });   // counts only, never text
+                if (typeof pkg?.hint === 'string') context = pkg.hint;
+              } catch { context = ''; }
+            }
+            if (!context) context = liveContext(snap);
+          }
+          const r = await memoryBlock.forTurn({ text: String(text), previousUserText: prev ? String(prev.content) : '', brief: hints?.tools === false, profileIds: info.memoryIds || [], sessionId: s.id, ...(context ? { context } : {}) });
           if (r?.memo) { s.messages[turnStart].memo = String(r.memo); s.messages[turnStart].memoIds = [...(r.ids || [])]; recalled = r.ids || []; sessions.save(s); }
         } catch (err) { bus.emit('log', { level: 'warn', text: `Memory recall failed: ${err?.message || err}` }); }
       }

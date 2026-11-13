@@ -47,6 +47,8 @@ const { createConfirm } = require('../core/pc/confirm');
 const { createActionLog } = require('../core/pc/actions-log');
 const { createTaskStore } = require('../core/tasks/store');
 const { createTaskRunner } = require('../core/tasks/runner');
+const { createAssembler } = require('../core/context/assemble');
+const { liveProvider, taskProvider } = require('../core/context/providers');
 const { createTasksSkill } = require('../core/tasks/skill');
 const { createTaskTools } = require('../core/tools/tasks');
 const { createOrchestrator } = require('../core/orchestrator');
@@ -336,8 +338,12 @@ ctx.live.register('timers', timersSource({ list: () => ctx.scheduler?.list?.() |
 ctx.live.register('confirm', () => { const a = ctx.confirm?.pending?.(); if (!a?.summary) return null; const group = a.tool ? ctx.catalog?.groupOf?.(a.tool) : null; return group ? { summary: a.summary, group } : { summary: a.summary }; });   // pending() exposes no age, so no ageMs; group: the skill area of the waiting tool, when known
 ctx.live.register('task', () => ctx.tasks?.active() ?? null);
 ctx.live.register('groups', () => { const list = ctx.orchestrator?.getLastGroups?.(); const at = ctx.orchestrator?.getLastGroupsAt?.(); return Array.isArray(list) ? { list, at: typeof at === 'number' ? at : 0 } : null; });
+// cross-system context for recall: live state and tasks only. memoryProvider exists but is NOT wired here: the memory block is the recall owner and a second forTurn per turn would double-count.
+const contextProviders = [liveProvider({ live: ctx.live })];
+if (ctx.tasks) contextProviders.push(taskProvider({ tasks: ctx.tasks }));
+ctx.context = createAssembler({ providers: contextProviders });
 ctx.orchestrator = createOrchestrator({
-  live: ctx.live, catalog: ctx.catalog,   // catalog: plan() checks a pending confirm's group against it
+  live: ctx.live, catalog: ctx.catalog, context: ctx.context,   // catalog: plan() checks a pending confirm's group against it
   bus: ctx.bus, sessions: ctx.sessions, providers: ctx.providers, tools: ctx.tools, getConfig: ctx.getConfig,
   systemPrompt: brain.systemPrompt, stamp: brain.nowLine, route: brain.route,
   selectGroups: (text, o) => skills.selectGroups(text, o, ctx.catalog),
