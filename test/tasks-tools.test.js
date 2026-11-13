@@ -52,7 +52,7 @@ test('task_control dispatches each action', async () => {
   const steps = [{ tool: 'x', args: {} }];
   await ctl.run({ action: 'replan', id: 't1', steps }, ctx);
   assert.deepEqual(r.calls, [
-    ['status', 't1'], ['pause', 't1'], ['cancel', 't1'],
+    ['status', 't1', { turn }], ['pause', 't1'], ['cancel', 't1'],
     ['resume', 't1', { turn, signal, sessionId: 'S' }],
     ['replan', 't1', steps, { turn, signal, sessionId: 'S' }],
   ]);

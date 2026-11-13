@@ -40,7 +40,7 @@ function createTaskTools({ runner }) {
       const opts = { turn: ctx.turn, signal: ctx.signal, sessionId: ctx.sessionId };
       let res;
       switch (action) {
-        case 'status': res = runner.status(id); break;
+        case 'status': res = runner.status(id, { turn: ctx.turn }); break;   // a tainted task's report taints this turn
         case 'pause': res = runner.pause(id); break;
         case 'cancel': res = runner.cancel(id); break;
         case 'resume': res = await runner.resume(id, opts); break;

@@ -105,7 +105,7 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
         return { ok: false, text: err || `Task ${task.id} ${task.status} before ${step.id}. ${describe(task)}`, task };
       }
       // Results read so far may carry untrusted text into this step's args: no confirm tool from them.
-      if (turn?.tainted && riskOf(step.tool) === 'confirm') return fail(task, step, `${step.tool} needs the user's OK, and this task read untrusted content. Do that action directly with the user instead`);
+      if ((turn?.tainted || task.tainted) && riskOf(step.tool) === 'confirm') return fail(task, step, `${step.tool} needs the user's OK, and this task read untrusted content. Do that action directly with the user instead`);
       const refs = resolveRefs(step.args, doneResults(task));
       if (!refs.ok) return fail(task, step, refs.text);
 
@@ -223,7 +223,7 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
     if (refusal) return { ok: false, text: refusal };
     if (task.status === 'failed') return { ok: false, text: `Task ${id} failed. Use task_control with action replan to fix the remaining steps, or cancel it.` };
     turn = runTurn(turn, task);
-    if (turn.tainted && task.steps.some(s => riskOf(s.tool) === 'confirm')) {
+    if (turn.tainted && task.steps.some(s => !settled(s) && riskOf(s.tool) === 'confirm')) {
       return { ok: false, text: `Task ${id} has a step that needs the user's OK, and this turn or task was influenced by untrusted content. Ask the user to resume it directly.` };
     }
     // A step cut off mid-call (running after a restart, or flagged maybeRan) may have acted. The first
@@ -253,8 +253,11 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
     if (!Array.isArray(steps) || !steps.length) return { ok: false, text: 'Replan needs at least one step.' };
     turn = runTurn(turn, task);
     const kept = task.steps.slice(0, k);
-    const plan = validate([...kept.map(s => ({ tool: s.tool, args: s.args, expect: s.expect })), ...steps], turn);
+    // Kept steps are settled, so only the new ones are held to the taint rule.
+    const plan = validate([...kept.map(s => ({ tool: s.tool, args: s.args, expect: s.expect })), ...steps], {});
     if (!plan.ok) return { ok: false, text: plan.text };
+    const risky = turn.tainted ? plan.steps.slice(k).find(s => riskOf(s.tool) === 'confirm') : null;
+    if (risky) return { ok: false, text: `Step ${risky.id} uses "${risky.tool}", which needs the user's OK, and this task read untrusted content. Do that action directly with the user instead.` };
     task.steps = [...kept, ...plan.steps.slice(k)];
     task.replans = (task.replans || 0) + 1;
     return execute(task, { turn, signal });
@@ -279,7 +282,8 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
     return { ok: !err, text: err || `Task ${id} "${task.title}" ${to}.` };
   }
 
-  function status(id) {
+  // The report quotes step results: a tainted task's text taints the turn that reads it.
+  function status(id, { turn } = {}) {
     let task;
     if (id) task = store.get(id);
     else {
@@ -287,6 +291,7 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
       task = all.find(t => !isClosed(t)) || all[0];
     }
     if (!task) return { ok: false, text: id ? `No task ${id}.` : 'There are no tasks.' };
+    if (task.tainted && turn && typeof turn === 'object') turn.tainted = true;
     return { ok: true, text: describe(reconcile(task)) };
   }
 
@@ -301,10 +306,20 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
     step.status = declined ? 'skipped' : ok ? 'done' : 'failed';
     if (!declined) step.result = { ok: !!ok, text: String(text ?? ''), t: now() };
     const next = task.steps.find(s => !settled(s));
-    task.status = step.status === 'failed' ? 'failed' : next ? 'paused' : 'done';
+    // only a yes that settles the last step finishes the task; a no leaves it paused
+    task.status = step.status === 'failed' ? 'failed' : step.status === 'done' && !next ? 'done' : 'paused';
     if (persist(task)) return undefined;
     emit('task', { id: task.id, step: step.id, status: step.status });
     return step.status === 'done' && next ? `Task ${task.id} paused at ${next.id}; say "resume the task" to finish it.` : undefined;
+  }
+
+  // A two-stage confirm (e.g. close, then "still open, force close it?"): the yes ran the first proposal
+  // and a new one is pending. The waiting step follows it, so the second answer resolves the step.
+  function onConfirmReasked({ tool, from, summary } = {}) {
+    const task = tasksNewestFirst().find(t => t.status === 'awaiting_confirm' && t.steps.some(s => sameProposal(s, tool, from)));
+    if (!task) return;
+    task.steps.find(s => sameProposal(s, tool, from)).askedFor = summary ?? null;
+    persist(task);
   }
 
   function active() {
@@ -325,7 +340,7 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
   }
 
   return {
-    start, resume, replan, status, onConfirmResolved, active, current, lastFinished, describe, execute,
+    start, resume, replan, status, onConfirmResolved, onConfirmReasked, active, current, lastFinished, describe, execute,
     pause: id => control(id, 'paused'),
     cancel: id => control(id, 'cancelled'),
   };

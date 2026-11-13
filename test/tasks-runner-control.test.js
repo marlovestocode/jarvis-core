@@ -509,3 +509,77 @@ test('origin keeps the source and a given sessionId, not the turn object', async
   const b = await runner.start({ title: 'T', steps: [{ tool: 'a' }], turn: 1 });
   assert.deepEqual(store.get(b.task.id).origin, { source: null });
 });
+
+// Second fix wave: two-stage confirms, status taint, settled confirm steps, declined last step.
+test('reask: a two-stage confirm follows the new summary; an unrelated summary still does not match', async () => {
+  const { runner, store, pending } = setup(name => (name === 'del' ? { ok: true, text: ASK } : ok(name)));
+  const r = await runner.start({ title: 'T', steps: [{ tool: 'del' }, { tool: 'c' }], turn: 1 });
+  // first yes ran the action, which proposed a second question
+  pending.action = { tool: 'del', summary: 'Force delete x' };
+  runner.onConfirmReasked({ tool: 'del', from: 'Something else', summary: 'Force delete x' });
+  assert.equal(store.get(r.task.id).steps[0].askedFor, SUMMARY, 'a re-ask of another proposal is ignored');
+  runner.onConfirmReasked({ tool: 'del', from: SUMMARY, summary: 'Force delete x' });
+  let t = store.get(r.task.id);
+  assert.equal(t.steps[0].askedFor, 'Force delete x');
+  assert.equal(runner.status(r.task.id).ok, true);
+  t = store.get(r.task.id);
+  assert.equal(t.status, 'awaiting_confirm', 'the new proposal keeps the task waiting');
+  assert.equal(runner.onConfirmResolved({ tool: 'del', summary: SUMMARY, ok: true, text: 'x' }), undefined, 'the old summary no longer matches');
+  runner.onConfirmResolved({ tool: 'del', summary: 'Force delete x', ok: true, text: 'Force deleted x.' });
+  t = store.get(r.task.id);
+  assert.equal(t.steps[0].status, 'done');
+  assert.equal(t.steps[0].result.text, 'Force deleted x.');
+  assert.equal(t.status, 'paused');
+});
+
+test('status of a tainted task taints the passed turn; a clean task does not', async () => {
+  const { runner, store, clock } = setup(ok);
+  const clean = seed(store, [step('s1', 'a', 'done')]);
+  const turn1 = { source: 'chat', tainted: false };
+  runner.status(clean, { turn: turn1 });
+  assert.equal(turn1.tainted, false);
+  clock.t += 10;
+  const dirty = seed(store, [step('s1', 'read_page', 'done'), step('s2', 'b', 'pending')]);
+  const t = store.get(dirty); t.tainted = true; store.save(t);
+  const turn2 = { source: 'chat', tainted: false };
+  runner.status(dirty, { turn: turn2 });
+  assert.equal(turn2.tainted, true);
+  const turn3 = { source: 'chat', tainted: false };
+  runner.status(undefined, { turn: turn3 });   // newest open task is the tainted one
+  assert.equal(turn3.tainted, true);
+});
+
+test('a settled confirm step does not make a tainted task unresumable or unreplannable', async () => {
+  const { runner, calls, store } = setup(ok);
+  const id = seed(store, [step('s1', 'del', 'done'), step('s2', 'read_page', 'done'), step('s3', 'b', 'pending')]);
+  const t = store.get(id); t.tainted = true; store.save(t);
+  const r = await runner.resume(id, { turn: { source: 'chat', tainted: false } });
+  assert.equal(r.ok, true);
+  assert.deepEqual(calls.map(c => c.name), ['b']);
+  const f = seed(store, [step('s1', 'del', 'done'), step('s2', 'b', 'failed')], 'failed');
+  const ft = store.get(f); ft.tainted = true; store.save(ft);
+  const rp = await runner.replan(f, [{ tool: 'c' }], { turn: { source: 'chat', tainted: false } });
+  assert.equal(rp.ok, true);
+  const bad = seed(store, [step('s1', 'del', 'done'), step('s2', 'b', 'failed')], 'failed');
+  const bt = store.get(bad); bt.tainted = true; store.save(bt);
+  const rb = await runner.replan(bad, [{ tool: 'del' }], { turn: { source: 'chat', tainted: false } });
+  assert.equal(rb.ok, false);
+  assert.match(rb.text, /needs the user's OK/);
+});
+
+test('start without a turn object still refuses a confirm step after an untrusted one', async () => {
+  const { runner, calls, store } = setup(name => (name === 'read_page' ? { ok: true, text: 'p', untrusted: true } : name === 'del' ? { ok: true, text: ASK } : ok(name)));
+  const r = await runner.start({ title: 'T', steps: [{ tool: 'read_page' }, { tool: 'del' }] });
+  assert.equal(r.ok, false);
+  assert.deepEqual(calls.map(c => c.name), ['read_page']);
+  assert.equal(store.get(r.task.id).steps[1].status, 'failed');
+});
+
+test('a no to the last step leaves the task paused', async () => {
+  const { runner, store } = setup(name => (name === 'del' ? { ok: true, text: ASK } : ok(name)));
+  const r = await runner.start({ title: 'T', steps: [{ tool: 'a' }, { tool: 'del' }], turn: 1 });
+  runner.onConfirmResolved({ tool: 'del', summary: SUMMARY, ok: true, text: 'Cancelled.', declined: true });
+  const t = store.get(r.task.id);
+  assert.equal(t.steps[1].status, 'skipped');
+  assert.equal(t.status, 'paused');
+});
