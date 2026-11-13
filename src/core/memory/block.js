@@ -27,10 +27,17 @@ function createMemoryBlock({ cortex, memory, getConfig = () => ({}) }) {
     let query = String(text ?? '');
     const chats = getConfig()?.memory?.usePastChats !== false;
     if (CONTINUE.test(query)) {
-      // mid-chat: the topic is the previous user message (plus live context); opening message: window/task, else the newest earlier chat
+      // "continue" is always recalled non-brief (the router sends it on the brief path, which would drop the chat kind)
+      brief = false;
       const prev = String(previousUserText || '').trim();
-      let work = prev ? [prev, String(context || '')].filter(Boolean).join(' ') : String(context || '');
-      if (!work && chats) { try { work = lastWork(sessionId); } catch { work = ''; } }
+      const ctx = String(context || '');
+      let work;
+      if (ftsTokens(prev).length >= 2) work = [prev, ctx].filter(Boolean).join(' ');   // mid-chat: the topic is the previous user message
+      else {   // opening message: the newest earlier chat first, the live context only as a nudge; nothing to go on = nothing recalled
+        let last = '';
+        if (chats) { try { last = lastWork(sessionId); } catch { last = ''; } }
+        work = [last, ctx].filter(Boolean).join(' ');
+      }
       if (!work) return { memo: '', ids: [] };
       query = work;
       context = '';

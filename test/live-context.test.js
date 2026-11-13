@@ -153,6 +153,31 @@ test('continue: mid-chat "continue" recalls the previous message topic, not the 
   assert.match(opening.memo, /birthday party/i);
 });
 
+test('continue: opening "continue" on the brief path (as the router sends it) still returns the earlier chat', async () => {
+  const { block, chat } = worldWithChats();
+  chat('old', 'Worked on the wallpaper bridge: SSE stream and port 47801 handling', 'Wallpaper bridge', ['wallpaper', 'bridge']);
+  const out = await block.forTurn({ text: 'continue where we left off', sessionId: 'now', brief: true });
+  assert.match(out.memo, /wallpaper bridge/i);
+  const withCtx = await block.forTurn({ text: 'continue', sessionId: 'now', brief: true, context: 'Code' });
+  assert.match(withCtx.memo, /wallpaper bridge/i);
+});
+
+test('continue: a previous message with under 2 content tokens ("yes", "ok") counts as no previous message', async () => {
+  const { block, chat } = worldWithChats();
+  chat('old', 'Worked on the wallpaper bridge: SSE stream and port 47801 handling', 'Wallpaper bridge', ['wallpaper', 'bridge']);
+  for (const prev of ['yes', 'ok', 'do it']) {
+    const out = await block.forTurn({ text: 'continue', previousUserText: prev, sessionId: 'now', brief: true });
+    assert.match(out.memo, /wallpaper bridge/i, prev);
+  }
+});
+
+test('continue: opening mode puts the newest earlier chat first and the live context only as a nudge', async () => {
+  const { block, chat } = worldWithChats();
+  chat('old', 'Worked on the wallpaper bridge: SSE stream and port 47801 handling', 'Wallpaper bridge', ['wallpaper', 'bridge']);
+  const out = await block.forTurn({ text: 'carry on', sessionId: 'now', context: 'unrelated gardening' });
+  assert.match(out.memo, /wallpaper bridge/i);
+});
+
 test('continue: a message that merely contains the words is an ordinary question', async () => {
   const { block, chat } = worldWithChats();
   chat('old', 'Wallpaper bridge notes', 'Wallpaper bridge', ['wallpaper']);
