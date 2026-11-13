@@ -31,7 +31,7 @@ const BRIEF_RULES = [
 // changed character, and a changed minute made it read the whole prompt and chat again (1.2-2 s per turn, measured). The orchestrator
 // adds nowLine() (the message's own send time) to the end of each user message instead; the system prompt only says where to find it.
 const GUEST_LINE = 'The person speaking now is not the owner of this PC. Do not share, reveal or guess any personal information about the owner (who they are, their notes, music, plans or files). You may answer general questions.';
-const NOW_NOTE ='Every user message ends with a "Now:" line: the date, time and time zone when it was sent. The last one is the current time. Trust it.';
+const NOW_NOTE = 'Every user message ends with a "Now:" line: the date, time and time zone when it was sent. The last one is the current time. Trust it.';
 // Accelerator from settings ("Control+Shift+Space") as the user says it ("Ctrl+Shift+Space").
 function keyName(k, fallback) { return String(k || fallback).replace(/^Control|(?<=\+)Control/g, 'Ctrl').replace(/CommandOrControl/g, 'Ctrl'); }
 
