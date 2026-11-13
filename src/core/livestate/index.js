@@ -4,12 +4,14 @@
 //  - Fed by the bus (voice state, route, finished tools, last turn timing)
 //    and by pull sources registered with register(name, fn).
 //  - Holds only metadata. Tool args and output text are never stored: a tool
-//    entry is { name, ok, soft, t } and nothing else.
+//    entry is { name, ok, soft, t } and nothing else. A model-failure entry
+//    is { name, t } and nothing else.
 //  - Tool ring is bounded (MAX_TOOLS) and entries expire after TOOL_TTL_MS.
 //  - snapshot() is synchronous, returns a fresh plain object each call and
 //    never throws; a failing source is skipped (logged once per source).
 const TOOL_TTL_MS = 10 * 60 * 1000;
 const MAX_TOOLS = 8;
+const MAX_MODELS = 6;
 
 function isPlainObject(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -20,12 +22,15 @@ function createLiveState({ bus, now = Date.now, log = () => {} } = {}) {
   let route = null;
   let turn = null;
   let tools = [];
+  let models = [];
   const sources = new Map(); // name -> fn
   const warned = new Set();
 
   function prune(t) {
     tools = tools.filter((x) => t - x.t <= TOOL_TTL_MS);
     if (tools.length > MAX_TOOLS) tools = tools.slice(tools.length - MAX_TOOLS);
+    models = models.filter((x) => t - x.t <= TOOL_TTL_MS);
+    if (models.length > MAX_MODELS) models = models.slice(models.length - MAX_MODELS);
   }
 
   function onEvent(ev) {
@@ -44,6 +49,13 @@ function createLiveState({ bus, now = Date.now, log = () => {} } = {}) {
         if (ev.phase !== 'end') break;
         const t = now();
         tools.push({ name: typeof ev.name === 'string' ? ev.name : '', ok: ev.ok === true, soft: ev.soft === true, t });
+        prune(t);
+        break;
+      }
+      case 'modelfail': {
+        if (typeof ev.model !== 'string' || !ev.model) break;
+        const t = now();
+        models.push({ name: ev.model, t });
         prune(t);
         break;
       }
@@ -66,6 +78,7 @@ function createLiveState({ bus, now = Date.now, log = () => {} } = {}) {
       tools: tools.map((x) => ({ ...x })),
       route: route ? { ...route } : null,
       turn: turn ? { ...turn } : null,
+      models: models.map((x) => ({ ...x })),
     };
     for (const [name, fn] of sources) {
       try {
@@ -116,4 +129,4 @@ function liveLine(snap, { max = 5 } = {}) {
   return ['Right now:', ...items.map((i) => `- ${i}`)].join('\n');
 }
 
-module.exports = { createLiveState, liveLine, TOOL_TTL_MS, MAX_TOOLS };
+module.exports = { createLiveState, liveLine, TOOL_TTL_MS, MAX_TOOLS, MAX_MODELS };
