@@ -328,3 +328,26 @@ test('active and lastFinished', async () => {
   clock.t += 120000;
   assert.equal(runner.lastFinished(60000), null);
 });
+
+test('current: newest open task, failed included; closed tasks never', async () => {
+  const { runner, store, clock } = setup(ok);
+  assert.equal(runner.current(), null);
+  const paused = seed(store, [step('s1', 'a', 'pending')]);
+  assert.deepEqual(runner.current(), { id: paused, status: 'paused' });
+  clock.t += 10;
+  const failed = seed(store, [step('s1', 'a', 'failed')], 'failed');
+  assert.deepEqual(runner.current(), { id: failed, status: 'failed' });
+  assert.equal(runner.active().id, paused);
+  runner.cancel(failed);
+  assert.deepEqual(runner.current(), { id: paused, status: 'paused' });
+  runner.cancel(paused);
+  clock.t += 10;
+  await runner.start({ title: 'D', steps: [{ tool: 'a' }], turn: 1 });
+  assert.equal(runner.current(), null);
+});
+
+test('current: a failed-only task is returned', () => {
+  const { runner, store } = setup(ok);
+  const id = seed(store, [step('s1', 'a', 'failed')], 'failed');
+  assert.deepEqual(runner.current(), { id, status: 'failed' });
+});

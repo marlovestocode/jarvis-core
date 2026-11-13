@@ -277,13 +277,19 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
     return { id: t.id, title: t.title, status: t.status, done: t.steps.filter(s => s.status === 'done').length, total: t.steps.length };
   }
 
+  // The newest task still open for control (a failed one counts: it can be replanned or cancelled).
+  function current() {
+    const t = tasksNewestFirst().find(x => !isClosed(x));
+    return t ? { id: t.id, status: reconcile(t).status } : null;
+  }
+
   function lastFinished(withinMs) {
     const t = tasksNewestFirst().find(x => x.status === 'done' || x.status === 'failed');
     return t && now() - (t.updated || 0) <= withinMs ? { id: t.id, status: t.status } : null;
   }
 
   return {
-    start, resume, replan, status, onConfirmResolved, active, lastFinished, describe, execute,
+    start, resume, replan, status, onConfirmResolved, active, current, lastFinished, describe, execute,
     pause: id => control(id, 'paused'),
     cancel: id => control(id, 'cancelled'),
   };

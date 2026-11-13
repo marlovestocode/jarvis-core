@@ -24,8 +24,8 @@ function createTasksSkill({ runner }) {
     let res;
     if (action === 'status') res = await runner.status(id);
     else {
-      id = runner.active()?.id;   // the unfinished task the user means
-      if (!id) return { reply: 'There is no unfinished task.', record: 'There is no unfinished task.', tool: 'task_control', ok: false };
+      id = runner.current()?.id;   // the newest open task, a failed one included; the runner words any refusal
+      if (!id) return null;
       res = action === 'resume' ? await runner.resume(id, { turn }) : await runner[action](id);
     }
     return { reply: res.text, record: res.text, tool: 'task_control', ok: !!res.ok };

@@ -4,13 +4,14 @@ const { createTaskTools } = require('../src/core/tools/tasks');
 const { createTasksSkill } = require('../src/core/tasks/skill');
 const { NEEDS_OK } = require('../src/core/brain/guard');
 
-function stubRunner({ exists = true, finished = null, text = 'ok' } = {}) {
+function stubRunner({ failedId = null, exists = true, finished = null, text = 'ok' } = {}) {
   const calls = [];
   const rec = name => async (...a) => { calls.push([name, ...a]); return { ok: true, text: typeof text === 'function' ? text(name) : text }; };
   return {
     calls,
     start: rec('start'), resume: rec('resume'), replan: rec('replan'), pause: rec('pause'), cancel: rec('cancel'), status: (...a) => { calls.push(['status', ...a]); return exists ? { ok: true, text } : { ok: false, text: 'There are no tasks.' }; },
-    active: () => (exists ? { id: 't1' } : null),
+    active: () => null,   // never used by the skill: a failed task is not 'active'
+    current: () => (exists ? { id: failedId || 't1', status: failedId ? 'failed' : 'paused' } : null),
     lastFinished: ms => { calls.push(['lastFinished', ms]); return finished; },
   };
 }
@@ -112,4 +113,13 @@ test('skill passes a NEEDS_OK question through as the reply', async () => {
   const r = stubRunner({ text: NEEDS_OK + 'Run again?' });
   const out = await createTasksSkill({ runner: r }).handle('resume the task', { source: 'chat' });
   assert.equal(out.reply, NEEDS_OK + 'Run again?');
+});
+
+test('cancel and resume reach a failed task that active() does not report', async () => {
+  for (const [text, action] of [['cancel the task', 'cancel'], ['resume the task', 'resume'], ['stop the task', 'cancel']]) {
+    const r = stubRunner({ failedId: 't7', text: 'refusal text' });
+    const out = await createTasksSkill({ runner: r }).handle(text, { source: 'chat' });
+    assert.equal(out.reply, 'refusal text');
+    assert.equal(r.calls.find(c => c[0] === action)[1], 't7');
+  }
 });
