@@ -44,3 +44,17 @@ test('a throwing flush still exits', () => {
   proc.emit('uncaughtException', new Error('x'));
   assert.deepEqual(calls, [['exit', 1]]);
 });
+
+test('a throwing log still flushes and exits non-zero', () => {
+  const proc = new EventEmitter(); const calls = [];
+  installCrashHandlers({
+    proc,
+    log: () => { throw new Error('EPIPE'); },
+    flush: () => calls.push('flush'),
+    exit: code => calls.push(['exit', code]),
+  });
+  proc.emit('uncaughtException', new Error('x'));
+  assert.deepEqual(calls, ['flush', ['exit', 1]]);
+  proc.emit('uncaughtException', new Error('y'));
+  assert.equal(calls.length, 2);
+});
