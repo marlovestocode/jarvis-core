@@ -126,9 +126,31 @@ test('continue: the chat being written now is never "where we left off"', async 
   assert.equal(out.memo, '');
 });
 
-test('continue: with an active task or window the hint is used too; with nothing to go on the memo is empty', async () => {
+test('continue: with nothing to go on the memo is empty', async () => {
   const { block } = worldWithChats();
   assert.deepEqual(await block.forTurn({ text: 'carry on', sessionId: 's' }), { memo: '', ids: [] });
+});
+
+test('continue: a given window/task context string is used as the query', async () => {
+  const { block, chat } = worldWithChats();
+  chat('old', 'Wallpaper bridge notes about the SSE stream', 'Wallpaper bridge', ['wallpaper']);
+  const out = await block.forTurn({ text: 'carry on', sessionId: 's', context: 'wallpaper bridge' });
+  assert.match(out.memo, /wallpaper bridge/i);
+});
+
+test('continue: mid-chat "continue" recalls the previous message topic, not the newest unrelated earlier chat', async () => {
+  let t = 1_700_000_000_000;
+  const cortex = open({ now: () => t });
+  const memory = createMemory({ cortex });
+  const block = createMemoryBlock({ cortex, memory, getConfig: () => ({ memory: { usePastChats: true } }) });
+  const chat = (id, summary, title, topics) => cortex.node.upsert({ kind: 'chat', key: `chat:${id}`, text: summary, data: { title, n: 4, topics }, source: cortex.source.add({ kind: 'model', ref: `history/${id}.json` }) }).id;
+  chat('bridge', 'Worked on the wallpaper bridge: SSE stream and port 47801 handling', 'Wallpaper bridge', ['wallpaper', 'bridge']); t += 86_400_000;
+  chat('party', 'Planned a birthday party menu with tacos', 'Party menu', ['party']); t += 1000;
+  const out = await block.forTurn({ text: 'continue', previousUserText: 'how does the wallpaper bridge stream work', sessionId: 'now' });
+  assert.match(out.memo, /wallpaper bridge/i);
+  assert.ok(!/birthday party/i.test(out.memo));
+  const opening = await block.forTurn({ text: 'continue where we left off', sessionId: 'now' });
+  assert.match(opening.memo, /birthday party/i);
 });
 
 test('continue: a message that merely contains the words is an ordinary question', async () => {

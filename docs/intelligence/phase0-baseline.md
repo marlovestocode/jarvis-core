@@ -56,7 +56,7 @@ Maturity: **S** solid and tested, **P** partial, **N** none.
 | Timers, reminders, proactive | `timers/*`, `proactive/engine.js` (priority, quiet hours, DND, cooldown, per-hour cap, duplicates collapse) | S | relevance is not event- or task-aware | 3 |
 | Workflow / tasks | `tasks/plan.js` (validation, `$ref` of earlier results, expectations), `runner.js`, `store.js` (JSON files), pause/cancel/replan (max 2), crash sweep | P | linear only: no parallel, conditional, alternative, failure branches, per-step approval records, dry run, verification step | 4 |
 | Permission / confirmation / security | taint model, `risk: 'confirm'`, guest allowlist, `speaker` lockout, `safePath`, `public-fetch`, bridge origin/host checks, `guardWebContents` | P | see §5 | 5 |
-| Diagnostics / metrics / tests | metrics JSONL + dashboard, `self_diagnostics`, `self_log`, 1673 tests, offline benches (`skill-accuracy`, `orchestration-bench`, `cortex-*`) | S | no per-decision trace (why this group/tool was rejected) | 2, 5 |
+| Diagnostics / metrics / tests | metrics JSONL + dashboard, `self_diagnostics`, `self_log`, 1673 tests (Phase 0 count), offline benches (`skill-accuracy`, `orchestration-bench`, `cortex-*`) | S | no per-decision trace (why this group/tool was rejected) | 2, 5 |
 
 ## 3. Architecture ownership (Roadmap §0.6) mapped to real modules
 
@@ -65,7 +65,7 @@ Maturity: **S** solid and tested, **P** partial, **N** none.
 | Cortex | `src/core/cortex` | keep; add relationship types and metadata only if Phase 1 proves a need |
 | LiveState | `src/core/livestate` | extend (Phase 3), do not add a second state store |
 | Event infrastructure | `src/core/bus.js` | extend the envelope, keep the API (Phase 3) |
-| Context Engine | **does not exist as a unit.** Pieces: `memory/block.js` (recall), `promptInfo` in `main.js` (media, profile, live line, hardware), `plan()` (live → routing) | a thin assembler over these (Phase 1), not a new store |
+| Context Engine | **did not exist as a unit at Phase 0** (now `src/core/context/assemble.js` + `providers.js` exist: live and task providers wired, memory provider not wired). At Phase 0 the pieces were: Pieces: `memory/block.js` (recall), `promptInfo` in `main.js` (media, profile, live line, hardware), `plan()` (live → routing) | a thin assembler over these (Phase 1), not a new store |
 | Intent Engine | **does not exist.** Pieces: `router.js`, `select.js`, `clarify.js`, `instant*.js`, `followup.js`, `selectWithModel` | structured intent object produced from those (Phase 2) |
 | Capability discovery | `skills/select.js` + `skills/rank.js` over the tool registry | add semantic retrieval and availability filtering there (Phase 2) |
 | Orchestrator | `orchestrator.js` | stays the only turn pipeline |
@@ -78,7 +78,7 @@ Maturity: **S** solid and tested, **P** partial, **N** none.
 | ID | Gap | Evidence | Needed by |
 |---|---|---|---|
 | G1 (slice 1 done: owner turns now pass app, window title if enabled, and active task title; cross-system assembler slice implemented 2026-11-13, see `adr-log.md` A-001, measured below on fakes) | Recall's `context` parameter (lexical nudge from "what the user is doing now") exists in `cortex/recall.js:106` and `memory/block.js:13`, but the orchestrator call (`orchestrator.js:316`) never passes it and `memory/system.js` has no `context`. LiveState's active window, media, task and last groups never influence recall | grep of all callers | 1 |
-| G2 (done in commit 27e666e, for whole-message "continue / carry on / pick up where we left off": uses window or task, else newest earlier chat) | Recall cannot answer "what are we working on / continue where we left off": it is a per-message query with `previousUserText` only when the message has <3 tokens | `block.js:15-16` | 1 |
+| G2 (done in commit 27e666e, with two modes: mid-chat "continue" recalls the previous user message, an opening "continue" uses window/task, else the newest earlier chat; for whole-message "continue / carry on / pick up where we left off": uses window or task, else newest earlier chat) | Recall cannot answer "what are we working on / continue where we left off": it is a per-message query with `previousUserText` only when the message has <3 tokens | `block.js:15-16` | 1 |
 | G3 | Rule-layer intent: 52.1% on the new 71-row set; 1 of 8 non-action sentences ("how do I shut down a computer") avoids loading an action group; injection-shaped text loads `pc`/`browser` groups | §6 | 2 |
 | G4 | The existing "fresh" skill set is 76.3%; known misses are paraphrases the trigger words do not cover. Decline/ask are three narrow hand-written regex lists (`clarify.js`) | `sa_fresh` | 2 |
 | G5 | `risk` has 3 values in practice: `confirm` (11 tools), `safe` (49) and unset (38). Code reads only `=== 'confirm'`; `'safe'` is documentation. `safe` includes writes (`zip_files`, `unzip`, `copy_files`, `make_folder`, `clipboard_write`, `set_system_volume`, `bluetooth_set`, `audio_output_set`); unset includes writes (`ytm_playlist_edit`, `forget_memory`, `cancel_timer`, `monitor_set`) | catalog dump | 5 |
@@ -162,7 +162,7 @@ How to read it: the rule layer *offers* tool groups, the model still chooses, an
 | 5 (security items G5, G7-G10) | partial | the roadmap says security applies from Phase 0; the cheapest, lowest-risk items are G9 (reject undeclared args, default on a flag), G7 (abort signal on timeout + `ctx.signal` actually aborted), G8 (id + fingerprint on the pending slot) |
 | 3, 4 | not started | depend on 1 and 2; ADRs A-005 to A-007 in `adr-log.md` |
 
-**Status after A-001 slices:** Phase 1 slices for G1 and G2 and the cross-system context assembler are implemented (commits 27e666e, 5a9c6cf, dbe4ac8, 05f6dae, c47d8c8, 23272e2, 154c36f; see `adr-log.md` A-001 for what is not done). The table above is the Phase 0 proposal. Beyond that nothing is implemented. Phase 1 should not start until you have read §4 and the ADR log; `adr-log.md` lists the decisions I would ask you to approve.
+**Status after A-001 slices:** Phase 1 slices for G1 and G2 and the cross-system context assembler are implemented (commits 27e666e, 5a9c6cf, dbe4ac8, 05f6dae, c47d8c8, 23272e2, 154c36f; see `adr-log.md` A-001 for what is not done). The table above is the Phase 0 proposal. The remaining phases are not started. Before Phase 2 starts, read §4 and the ADR log; `adr-log.md` lists the decisions I would ask you to approve.
 
 ## 10. Not verified in Phase 0
 

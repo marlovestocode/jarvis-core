@@ -27,8 +27,9 @@ function createMemoryBlock({ cortex, memory, getConfig = () => ({}) }) {
     let query = String(text ?? '');
     const chats = getConfig()?.memory?.usePastChats !== false;
     if (CONTINUE.test(query)) {
-      // what the owner is doing now (window, task), else the newest earlier chat; nothing to go on = nothing recalled
-      let work = String(context || '');
+      // mid-chat: the topic is the previous user message (plus live context); opening message: window/task, else the newest earlier chat
+      const prev = String(previousUserText || '').trim();
+      let work = prev ? [prev, String(context || '')].filter(Boolean).join(' ') : String(context || '');
       if (!work && chats) { try { work = lastWork(sessionId); } catch { work = ''; } }
       if (!work) return { memo: '', ids: [] };
       query = work;
