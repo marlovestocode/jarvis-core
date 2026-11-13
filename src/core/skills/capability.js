@@ -49,14 +49,12 @@ function groupSideEffects(group, meta = GROUP_META[group.id] || {}) {
   return top;
 }
 
-// Sync status only: a promise means "unknown right now" (null); cardsNow() resolves it.
+// Never calls status(): buildCardsNow awaits it once and passes the result in. No status means always available;
+// a status that has not been resolved (undefined/null) means unknown (null), never a guess.
 function availability(group, resolved) {
-  if (typeof group.status !== 'function' && resolved === undefined) return { available: true, missingReason: null };
-  try {
-    const s = resolved !== undefined ? resolved : group.status();
-    if (!s || typeof s.then === 'function') return { available: null, missingReason: null };
-    return s.ok ? { available: true, missingReason: null } : { available: false, missingReason: String(s.detail || 'unavailable') };
-  } catch { return { available: null, missingReason: null }; }
+  if (typeof group.status !== 'function') return { available: true, missingReason: null };
+  if (!resolved || typeof resolved !== 'object') return { available: null, missingReason: null };
+  return resolved.ok ? { available: true, missingReason: null } : { available: false, missingReason: String(resolved.detail || 'unavailable') };
 }
 
 function buildCard(group, resolved) {
@@ -71,13 +69,13 @@ function buildCard(group, resolved) {
   };
 }
 
-// Statuses may be async (system stats): await each once, never throw. A failed status stays unknown (null).
+// Statuses may be sync, async or throwing: await each once, never throw, never leave a floating promise.
+// A rejected or throwing status stays unknown (available:null). The single interpreter-facing API.
 async function buildCardsNow(groups) {
   return Promise.all(groups.map(async g => {
-    if (typeof g.status !== 'function') return buildCard(g);
     let r = null;
-    try { r = await g.status(); } catch { /* unknown */ }
-    return r ? buildCard(g, r) : { ...buildCard({ ...g, status: undefined }), available: null, missingReason: null };
+    if (typeof g.status === 'function') { try { r = await g.status(); } catch { /* unknown */ } }
+    return buildCard(g, r);
   }));
 }
 
