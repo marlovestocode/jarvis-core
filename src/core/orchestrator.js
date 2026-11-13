@@ -81,7 +81,7 @@ const nudgeGround = figs => `Your reply gave figures that appear in no tool resu
 const NUDGE_CAP = 'You have used all the tool rounds you are allowed. Answer the user now with what the tool results above gave you, and say plainly what you could not get.';
 const NUDGE_PLAIN ="Reply to the user's last message in one or two sentences.";
 
-function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, rankTools = null, learnTool = null, onQuestionLost = () => {}, memoryBlock = null, live = null, catalog = null }) {
+function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, rankTools = null, learnTool = null, onQuestionLost = () => {}, memoryBlock = null, live = null, catalog = null, selectWithModel = require('./skills/select').selectWithModel }) {
   let current = null; // AbortController of the running turn
   const lastGroupsAt = new Map(); // session id → when lastGroups was last set
   // the areas the last turn used, only while that turn is recent: "make it 10" an hour later does not mean the timer from back then
@@ -241,6 +241,22 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
         picked = selectGroups && tools?.turn ? selectGroups(routeText, { lastGroups: fu?.kind === 'continue' ? fu.groups : (recentGroups(s.id)), source }) : null;
         if (tools?.turn && fu?.kind === 'continue' && fu.groups?.length && !picked?.some(id => id !== 'core')) picked = fu.groups;
         if (fu?.kind === 'continue' && hints?.tools === false) hints = { ...hints, tier: 'deep', tools: true, think: false, reason: 'follow-up' };
+      }
+      // nothing matched but the turn looks like a command: one short constrained call decides the group, or asks / declines (any failure keeps the rule result)
+      if (picked?.confidence === 'low' && catalog && hints?.tools !== false && p.constrain && tools?.turn && !ac.signal.aborted) {
+        let d = null;
+        try { d = await selectWithModel(routeText, { provider: p, catalog, picked, signal: ac.signal, hints }); } catch { d = null; }
+        if (d?.action === 'act' && Array.isArray(d.groups) && !ac.signal.aborted) picked = d.groups;
+        else if ((d?.action === 'ask' || d?.action === 'decline') && d.question && !ac.signal.aborted) {
+          bus.emit('route', { tier: 'skill', think: false, reason: 'skill', model: null });
+          bus.emit('clarify', { kind: d.action, reason: 'model' });
+          bus.emit('token', { text: d.question });
+          s.messages.push({ role: 'assistant', content: d.question });
+          if (d.action === 'ask') pendingAsk.set(s.id, routeText);
+          sessions.save(s);
+          if (source !== 'voice') bus.emit('state', { state: 'idle' });
+          return { reply: d.question, stopped: false, sessionId: s.id, skill: true };
+        }
       }
       // a short command ("take a screenshot") can look like chat to the router while a skill group clearly matches:
       // quick chat has no tools and would only pretend to act, so the match wins

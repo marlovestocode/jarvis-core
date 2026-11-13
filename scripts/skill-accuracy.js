@@ -1,6 +1,7 @@
 // Offline accuracy of skill selection against test/fixtures/skill-requests.json (no model, no GPU).
 //   node scripts/skill-accuracy.js            prints the scores and every miss
 //   node scripts/skill-accuracy.js --json     one JSON line (for diffing before/after)
+//   node scripts/skill-accuracy.js --set fresh|heldout2   another fixture set (test/fixtures/skill-requests-<set>.json)
 // Per request: "act" rows pass when the expected group is among the groups loaded and the tool belongs to a loaded group;
 // "ask" rows pass when JARVIS asks which thing is meant instead of acting; "decline" rows pass when it says it has no tool for
 // that; "answer" rows pass when neither happens (a plain question must not be intercepted).
@@ -10,7 +11,7 @@ const { selectGroups } = require('../src/core/skills/select');
 const { toolDeps } = require('../test/helpers/tool-deps');
 
 const setArg = process.argv.indexOf('--set');
-const rows = require(`../test/fixtures/${setArg > 0 ? 'skill-requests-' + process.argv[setArg + 1] : 'skill-requests'}.json`);   // --set heldout: phrasings nothing was tuned on
+const rows = require(`../test/fixtures/${setArg > 0 ? 'skill-requests-' + process.argv[setArg + 1] : 'skill-requests'}.json`);   // --set fresh | heldout2: heldout2 is hand-written phrasings nothing was tuned on (do not iterate vocabulary against it)
 const catalog = buildCatalog(loadGroups(toolDeps()));
 let clarify = null;
 try { ({ clarify } = require('../src/core/skills/clarify')); } catch { /* not there before the change */ }
