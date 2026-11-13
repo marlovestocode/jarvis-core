@@ -412,7 +412,7 @@ test('memory: forTurn gets the previous user message, brief and the profile ids'
   const { orc, s } = setup(fp, { orc: { memoryBlock: block, promptInfo: () => ({ memoryIds: [1, 2] }), systemPrompt: () => 'SYS', route: () => ({ tier: 'fast', tools: false }) } });
   await orc.send(s.id, 'tell me about the vet', { source: 'text' });
   await orc.send(s.id, 'when?', { source: 'text' });
-  assert.deepEqual(block.calls.forTurn[1], { text: 'when?', previousUserText: 'tell me about the vet', brief: true, profileIds: [1, 2] });
+  assert.deepEqual(block.calls.forTurn[1], { text: 'when?', previousUserText: 'tell me about the vet', brief: true, profileIds: [1, 2], sessionId: s.id });
 });
 
 test('memory: forTurn throwing → the turn still answers, no memo', async () => {

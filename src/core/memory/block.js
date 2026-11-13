@@ -10,10 +10,30 @@ const QUOTAS = { fact: 0.5, entity: 0.2, chat: 0.5 };   // W1 E5
 function createMemoryBlock({ cortex, memory, getConfig = () => ({}) }) {
   const profile = ({ brief = false } = {}) => memory.profile({ budget: brief ? 300 : 500 });
 
-  async function forTurn({ text, previousUserText = '', brief = false, profileIds = [], context = '' } = {}) {
+  // "continue where we left off", "carry on", "pick up where we stopped": the whole message, nothing else to look up
+  const CONTINUE = /^\W*(?:(?:ok(?:ay)?|so|right|now|please|jarvis)[,\s]+)*(?:continue|carry on|pick (?:it |that )?up|resume|keep going|get back to (?:it|that|work))(?:\s+(?:with (?:it|that)|from)?\s*(?:where|what)\s+we\s+(?:left off|stopped|were doing|were working on|had))?(?:\s+(?:again|please|now))?\W*$/i;
+  const CHATS_SCANNED = 3;
+  // the newest earlier chat (not this one) as search words: its title, topics and the start of its summary
+  function lastWork(sessionId) {
+    const skip = sessionId ? 'chat:' + String(sessionId) : null;
+    const rows = cortex.node.list({ kind: 'chat', order: 'updated', limit: CHATS_SCANNED + 1 }) || [];
+    const n = rows.find(r => r.key !== skip);
+    if (!n) return '';
+    const d = n.data || {};
+    return [d.title, ...(Array.isArray(d.topics) ? d.topics : []), String(n.text || '').slice(0, 200)].filter(Boolean).join(' ');
+  }
+
+  async function forTurn({ text, previousUserText = '', brief = false, profileIds = [], context = '', sessionId = null } = {}) {
     let query = String(text ?? '');
-    if (ftsTokens(query).length < 3 && previousUserText) query += ' ' + String(previousUserText);
     const chats = getConfig()?.memory?.usePastChats !== false;
+    if (CONTINUE.test(query)) {
+      // what the owner is doing now (window, task), else the newest earlier chat; nothing to go on = nothing recalled
+      let work = String(context || '');
+      if (!work && chats) { try { work = lastWork(sessionId); } catch { work = ''; } }
+      if (!work) return { memo: '', ids: [] };
+      query = work;
+      context = '';
+    } else if (ftsTokens(query).length < 3 && previousUserText) query += ' ' + String(previousUserText);
     const r = await cortex.recall(query, {
       kinds: chats ? ['fact', 'entity', 'chat'] : ['fact', 'entity'],
       budget: MEMO_MAX - HEADER.length - 1, brief, quotas: QUOTAS, exclude: profileIds, context,
