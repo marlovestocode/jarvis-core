@@ -259,7 +259,7 @@ Tests use fakes for Ollama, the network, the PC host and ONNX models (`test/help
 | Branch | State |
 |---|---|
 | `main` | an earlier stable point |
-| `feat/jarvis-audit-pass` | **current:** audit pass (connections, extension, skills, analytics dashboard, speech dialect, memory) plus the gap-closure fixes: crash handler, untrusted flag on the tool, no words on the public stream, library folder setting, described tool parameters |
+| `feat/jarvis-audit-pass` | **current:** audit pass (connections, extension, skills, analytics dashboard, speech dialect, memory) plus the gap-closure fixes: crash handler, untrusted flag on the tool, public stream allowlist (structural fields only, no free text), library folder setting, described tool parameters |
 | `feat/cortex` | the *cortex*, one local SQLite "brain" (nodes, weighted edges, provenance, embeddings, spreading-activation recall) for memory, music, actions, knowledge and timers |
 | `feat/constrained-tool-choice`, `fix/router-tool-reliability` | earlier router and tool-loop work the audit branch was cut from |
 | `feat/*`, `perf/*`, `fix/*` | the feature branches each stage was built on |

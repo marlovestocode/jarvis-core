@@ -185,3 +185,71 @@ test('bridge: a client that connects soon after boot gets the boot events replay
   assert.deepEqual(events.filter(e => e.event === 'boot').map(e => e.data.stage), ['core', 'model']);
   await br.close();
 });
+
+// ---- public stream allowlist: only structural fields leave on /ai/stream ----
+const SECRET = 'SECRETWORDS';
+async function publicOf(events) {
+  const { bus, br } = await boot();
+  const got = stream(br.port, evs => evs.filter(e => e.event === 'zz-done').length >= 1);
+  await new Promise(r => setTimeout(r, 50));
+  for (const [type, payload] of events) bus.emit(type, payload);
+  bus.emit('zz-done', {});
+  const { events: out } = await got;
+  await br.close();
+  return out;
+}
+
+test('public stream: word-carrying events lose every free-text field', async () => {
+  const out = await publicOf([
+    ['web', { op: 'search', q: SECRET, url: 'https://' + SECRET + '.test/', hosts: [SECRET + '.test'], error: SECRET, blocked: SECRET, ok: false, ms: 12 }],
+    ['log', { level: 'info', text: 'Heard "' + SECRET + '"' }],
+    ['state', { state: 'error', detail: SECRET }],
+    ['timer', { id: 't1', label: SECRET, kind: 'timer', due: 5, missed: false }],
+    ['ytprompt', { kind: 'play', confirmed: true, label: SECRET, reason: SECRET }],
+    ['wake', { text: SECRET }],
+    ['token', { text: SECRET, prob: 0.4, alts: [{ text: SECRET, prob: 0.2 }] }],
+    ['net', { source: 'web', host: SECRET + '.test', ok: true, ms: 3, cached: false, library: SECRET }],
+    ['mic', { ok: false, reason: SECRET }],
+    ['clarify', { kind: 'ask', reason: SECRET }],
+    ['route', { tier: 'tools', think: true, reason: SECRET, model: 'm1' }],
+    ['boot', { stage: 'tts', ok: false, detail: SECRET, ms: 4 }],
+    ['cortex', { level: 'warn', message: SECRET }],
+    ['mystery', { text: SECRET, n: 1 }],
+  ]);
+  assert.ok(!JSON.stringify(out).includes(SECRET), 'no free text on the public stream: ' + JSON.stringify(out));
+  const by = t => out.find(e => e.event === t).data;
+  assert.ok(out.some(e => e.event === 'state' && e.data.state === 'error'));
+  assert.equal(by('timer').id, 't1');
+  assert.equal(by('log').level, 'info');
+  assert.equal(by('net').ok, true);
+  assert.equal(by('token').prob, 0.4);
+  assert.equal(by('token').alts.length, 1);
+  assert.equal(by('route').model, 'm1');
+  assert.equal(by('boot').stage, 'tts');
+  assert.deepEqual(Object.keys(by('mystery')).sort(), ['t', 'type']);
+});
+
+test('public stream: boot done keeps its count line, structural fields pass', async () => {
+  const out = await publicOf([
+    ['boot', { stage: 'done', ok: true, detail: '3 of 4 ready', ms: 9 }],
+    ['level', { source: 'mic', rms: 0.2 }],
+    ['tool', { id: 'a', name: 'x', phase: 'end', ok: true, soft: true }],
+    ['brain', { op: 'recall', seeds: [1], items: [2], trail: [[1, 2, 1]] }],
+    ['turn', { provider: 'ollama', source: 'voice', model: 'm', tier: 'chat', think: false, tps: 5, ms: 10 }],
+  ]);
+  const by = t => out.find(e => e.event === t).data;
+  assert.equal(by('boot').detail, '3 of 4 ready');
+  assert.equal(by('level').rms, 0.2);
+  assert.equal(by('tool').soft, true);
+  assert.deepEqual(by('brain').trail, [[1, 2, 1]]);
+  assert.equal(by('turn').tps, 5);
+});
+
+test('chat window bus path keeps the full events', async () => {
+  const { bus, br } = await boot();
+  const seen = [];
+  bus.on('*', e => seen.push(e));
+  bus.emit('log', { level: 'info', text: SECRET });
+  assert.equal(seen[0].text, SECRET);
+  await br.close();
+});

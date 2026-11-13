@@ -1,6 +1,6 @@
 // Local event bridge for the wallpaper (spec §5). Binds 127.0.0.1 only.
 //   GET  /ai/hello            { app: 'jarvis-core', version }  (port discovery)
-//   GET  /ai/stream           SSE: "event: <type>\ndata: <json>"; current state + provider on connect
+//   GET  /ai/stream           SSE: "event: <type>\ndata: <json>"; current state + provider on connect. Structural fields only (allowlist in publicEvent): no free text
 //   POST /ai/open[?mode=voice] 204; foreign Origins refused (the wallpaper sends none)
 //   GET  /ai/brain[?max=&focus=1,2]   the shape of the cortex (ids, kinds, weights, links), no text
 //   GET  /ai/brain/labels?ids=1,2     a few words per node: only when the user allows it, and only to a page with no Origin
@@ -48,13 +48,55 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
     if (res.writableLength > clientMaxBuffer) { clients.delete(res); dropped++; res.destroy(); return; }
     res.write(text);
   }
-  // Any page on localhost (or a sandboxed frame, which sends Origin: null) may read this stream, so the words of the
-  // conversation never go out on it: the wallpaper draws a spark per token, not the text.
-  // A tool event keeps its name and phase; its label (and args) quote what the user asked for, so they stay on the bus for the chat window.
+  // Any page on localhost (or a sandboxed frame, which sends Origin: null) may read this stream, so no words go out on it:
+  // not the conversation, and not what a log line, a search, a timer, a heard phrase or an error message says.
+  // publicEvent is an ALLOWLIST: per event type, only structural fields pass (names, phases, ids, numbers, booleans, enums).
+  // Everything else is dropped, and an event type that is not listed forwards only { type, t }.
+  // The wallpaper draws a spark per token and a caption per phase, not the text. The chat window reads the bus, not this.
+  const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+  const bool = v => (typeof v === 'boolean' ? v : undefined);
+  const word = v => (typeof v === 'string' && /^[\w.:\/@-]{1,80}$/.test(v) ? v : undefined);       // an id or name, never a sentence
+  const oneOf = (...set) => v => (set.includes(v) ? v : undefined);
+  const ids = v => (Array.isArray(v) ? v.filter(Number.isInteger).slice(0, 200) : undefined);
+  const trail = v => (Array.isArray(v) ? v.slice(0, 200).map(p => (Array.isArray(p) ? p.slice(0, 3).map(n => (Number.isFinite(n) ? n : 0)) : [])) : undefined);
+  const PUBLIC_FIELDS = {
+    state: { state: oneOf('idle', 'listening', 'thinking', 'speaking', 'error') },
+    token: { prob: num },                                                          // text blanked, alts reduced to their weights below
+    reasoning: { chars: num },
+    tool: { id: word, name: word, phase: oneOf('start', 'end'), ok: bool, soft: bool, badArgs: bool },
+    context: { used: num, max: num },
+    level: { source: oneOf('mic', 'tts'), rms: num },
+    wake: {},
+    provider: { id: word, label: v => (typeof v === 'string' ? v.slice(0, 40) : undefined), ready: bool },
+    log: { level: oneOf('debug', 'info', 'warn', 'error') },
+    route: { tier: word, think: bool, model: word },
+    turn: { provider: word, source: word, model: word, tier: word, think: bool, promptTokens: num, completionTokens: num, ms: num, tps: num, toolRounds: num },
+    boot: { stage: word, ok: bool, ms: num },
+    mic: { ok: bool },
+    net: { source: word, ok: bool, cached: bool, offline: bool, stale: bool, refused: bool, ms: num, ageMs: num },
+    brain: { op: word, seeds: ids, items: ids, ids, count: num, links: num, trail },
+    web: { ok: bool, ms: num, bytes: num, results: num },
+    timer: { id: word, kind: word, due: num, missed: bool },
+    ytprompt: { kind: word, confirmed: bool },
+    followup: { kind: word },
+    clarify: { kind: word },
+    cortex: { level: oneOf('debug', 'info', 'warn', 'error') },
+    memory: { level: oneOf('ok', 'warn', 'critical'), rssMB: num, heapMB: num, externalMB: num, peakMB: num },
+    modelfail: { model: word },
+    speaker: { ok: bool, score: num },
+    retract: {},
+  };
   function publicEvent(ev) {
-    if (ev.type === 'token' && 'text' in ev) return { ...ev, text: '' };
-    if (ev.type === 'tool') { const { label, args, ...rest } = ev; return rest; }
-    return ev;
+    const out = { type: ev.type, t: ev.t };
+    const spec = PUBLIC_FIELDS[ev.type];
+    if (!spec) return out;
+    for (const [k, ok] of Object.entries(spec)) { const v = ok(ev[k]); if (v !== undefined) out[k] = v; }
+    if (ev.type === 'token') {
+      out.text = '';
+      if (Array.isArray(ev.alts)) out.alts = ev.alts.slice(0, 8).map(a => ({ prob: num(a?.prob) ?? 0 }));
+    }
+    if (ev.type === 'boot' && ev.stage === 'done' && /^\d+ of \d+ ready$/.test(ev.detail)) out.detail = ev.detail;
+    return out;
   }
   function write(res, ev) {
     const out = publicEvent(ev);
