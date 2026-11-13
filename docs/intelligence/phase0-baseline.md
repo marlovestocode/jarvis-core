@@ -2,7 +2,7 @@
 
 Branch `feat/jarvis-audit-pass` at `ea5ba2e` plus uncommitted `package.json` (`loc` script), `scripts/loc.js`, `.playwright-mcp/`, `clean-speaking.png` (none mine, none touched).
 Everything below was read from the code or measured on this machine today. Where I did not trace or run something, it says so.
-Added by Phase 0: `test/baseline-security.test.js`, `test/fixtures/intelligence-eval-v1.json`, `scripts/intelligence-eval.js`, `docs/intelligence/*`. No source file under `src/` was changed.
+Added by Phase 0: `test/baseline-security.test.js`, `test/fixtures/intelligence-eval-v1.json`, `scripts/intelligence-eval.js`, `docs/intelligence/*`. No source file under `src/` was changed by Phase 0 itself; the later A-001 slices did change `src/` (see "Status after A-001 slices" below).
 
 **Headline:** most of the roadmap's "systems" already exist under other names. The real gaps are narrower: (1) context from LiveState/the PC never reaches recall or intent, (2) intent is a regex-and-keyword layer with a 52% offline score on new phrasings, (3) the permission model is a single flag (`risk: 'confirm'`) and approvals are one anonymous slot, (4) tool timeouts do not cancel, (5) events are untyped fire-and-forget with no ids, provenance or dedupe, (6) there is no persisted multi-step graph with branches, only a linear task list. Phases should extend these, not add parallel systems.
 
@@ -73,12 +73,12 @@ Maturity: **S** solid and tested, **P** partial, **N** none.
 | Security authority | **spread across** `registry.js` (taint, guest, args), `confirm.js`, `pc/paths.js`, `net/*`, `brain/guard.js`, `tasks/runner.js` (re-checks taint) | consolidate behind the existing `registry.exec` boundary (Phase 5) |
 | Verification | per tool, ad hoc (`media` verifies state, `files` re-reads names after rename, zip re-lists) and `brain/guard.js` for claims | a declared `verify` per capability (Phase 4) |
 
-## 4. Verified gaps and limitations
+## 4. Verified gaps and limitations (as of Phase 0, before the A-001 slices)
 
 | ID | Gap | Evidence | Needed by |
 |---|---|---|---|
 | G1 (slice 1 done: owner turns now pass app, window title if enabled, and active task title; cross-system assembler slice implemented 2026-11-13, see `adr-log.md` A-001, measured below on fakes) | Recall's `context` parameter (lexical nudge from "what the user is doing now") exists in `cortex/recall.js:106` and `memory/block.js:13`, but the orchestrator call (`orchestrator.js:316`) never passes it and `memory/system.js` has no `context`. LiveState's active window, media, task and last groups never influence recall | grep of all callers | 1 |
-| G2 (done for whole-message "continue / carry on / pick up where we left off": uses window or task, else newest earlier chat) | Recall cannot answer "what are we working on / continue where we left off": it is a per-message query with `previousUserText` only when the message has <3 tokens | `block.js:15-16` | 1 |
+| G2 (done in commit 27e666e, for whole-message "continue / carry on / pick up where we left off": uses window or task, else newest earlier chat) | Recall cannot answer "what are we working on / continue where we left off": it is a per-message query with `previousUserText` only when the message has <3 tokens | `block.js:15-16` | 1 |
 | G3 | Rule-layer intent: 52.1% on the new 71-row set; 1 of 8 non-action sentences ("how do I shut down a computer") avoids loading an action group; injection-shaped text loads `pc`/`browser` groups | §6 | 2 |
 | G4 | The existing "fresh" skill set is 76.3%; known misses are paraphrases the trigger words do not cover. Decline/ask are three narrow hand-written regex lists (`clarify.js`) | `sa_fresh` | 2 |
 | G5 | `risk` has 3 values in practice: `confirm` (11 tools), `safe` (49) and unset (38). Code reads only `=== 'confirm'`; `'safe'` is documentation. `safe` includes writes (`zip_files`, `unzip`, `copy_files`, `make_folder`, `clipboard_write`, `set_system_volume`, `bluetooth_set`, `audio_output_set`); unset includes writes (`ytm_playlist_edit`, `forget_memory`, `cancel_timer`, `monitor_set`) | catalog dump | 5 |
@@ -118,7 +118,7 @@ Authorization points, in the order a tool call meets them: speaker lockout → g
 
 | Measure | Result | Command |
 |---|---|---|
-| Full suite | **1673 tests, 1660 before my additions + 13 new, 0 fail** (19.5 s) | `npm test` |
+| Full suite | **1673 tests at Phase 0** (1660 before my additions + 13 new, 0 fail, 19.5 s); **1730 tests, 0 fail after the A-001 slices** | `npm test` |
 | Skill selection, tuned set | 100% (101) | `node scripts/skill-accuracy.js` |
 | Skill selection, heldout (no longer independent) | 100% (45) | `--set heldout` |
 | Skill selection, **fresh (never tuned)** | **76.3%** (act 26/31, ask 0/2, decline 0/2, answer 3/3) | `--set fresh` |
@@ -162,7 +162,7 @@ How to read it: the rule layer *offers* tool groups, the model still chooses, an
 | 5 (security items G5, G7-G10) | partial | the roadmap says security applies from Phase 0; the cheapest, lowest-risk items are G9 (reject undeclared args, default on a flag), G7 (abort signal on timeout + `ctx.signal` actually aborted), G8 (id + fingerprint on the pending slot) |
 | 3, 4 | not started | depend on 1 and 2; ADRs A-005 to A-007 in `adr-log.md` |
 
-Nothing is implemented beyond Phase 0. Phase 1 should not start until you have read §4 and the ADR log; `adr-log.md` lists the decisions I would ask you to approve.
+**Status after A-001 slices:** Phase 1 slices for G1 and G2 and the cross-system context assembler are implemented (commits 27e666e, 5a9c6cf, dbe4ac8, 05f6dae, c47d8c8, 23272e2, 154c36f; see `adr-log.md` A-001 for what is not done). The table above is the Phase 0 proposal. Beyond that nothing is implemented. Phase 1 should not start until you have read §4 and the ADR log; `adr-log.md` lists the decisions I would ask you to approve.
 
 ## 10. Not verified in Phase 0
 

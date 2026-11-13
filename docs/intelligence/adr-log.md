@@ -1,10 +1,10 @@
 # Architecture decision log (intelligence roadmap)
 
-Status of every record: **Proposed**. Nothing here is built. Each needs user approval before its phase starts.
+Status: the A-001 slices are implemented (see A-001 below); every other record remains **Proposed** and needs user approval before its phase starts.
 Gap ids (G1..) are in `phase0-baseline.md` §4. Baseline numbers are in §6 there.
 
 ## A-001: Context assembly extends existing recall, no new store (Phase 1)
-- **Status: first slice implemented 2026-11-13** (`livestate/context.js`, wired at `orchestrator.js` recall call, tests `test/live-context.test.js`). G2 slice implemented (`memory/block.js` CONTINUE + `lastWork`, `sessionId` passed from orchestrator).
+- **Status: first slice implemented 2026-11-13** (`livestate/context.js`, wired at `orchestrator.js` recall call, tests `test/live-context.test.js`). G2 slice implemented (commit 27e666e; `memory/block.js` CONTINUE + `lastWork`, `sessionId` passed from orchestrator).
 - **Cross-system slice implemented 2026-11-13** (commits 5a9c6cf, dbe4ac8, 05f6dae, c47d8c8, 23272e2, 154c36f): `src/core/context/assemble.js` (assembler: validate, redact, access, freshness, supersede, rank, dedupe, 800-char budget) and `providers.js` (livestate, tasks, memory), used by the orchestrator for the recall hint and wired in `main.js`. The orchestrator emits a `ctxpkg` bus event (counts only, named to avoid the gauge event `context`). Measured on fakes by `scripts/context-bench.js` (see `phase0-baseline.md` §6).
 - **Not done:** prompt block with freshness labels; file/project and browser/event providers; relationship expansion beyond Cortex's own; retrieval quality on a real store; live-model check; memory provider is not wired in production; minor issues in `providers.js` (the `mem:<index>` id fallback when ids are missing, and an "undefined" task title when a task has none); ISO dates like 2026-11-13 are redacted to `[number]` by the digit rule; the `ctxpkg` event is not consumed by metrics yet.
 - **Existing:** `memory/block.js forTurn` → `cortex.recall`; `promptInfo` in `main.js`; `plan()`; `live.snapshot()`.
