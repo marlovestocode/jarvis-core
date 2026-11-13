@@ -26,6 +26,22 @@ test('cooldown: soft failures count 0.5, so two do not cool a tool and four do',
   assert.deepEqual([...cooling({ tools: soft(4) }, NOW).tools], ['fetch']);
 });
 
+test('cooldown: soft failures recorded as ok:true also count 0.5 (LiveState shape)', () => {
+  const soft = n => ({ tools: Array.from({ length: n }, (_, i) => ({ name: 'fetch', ok: true, soft: true, t: NOW - i })) });
+  assert.deepEqual([...cooling(soft(3), NOW).tools], []);
+  assert.deepEqual([...cooling(soft(4), NOW).tools], ['fetch']);
+});
+
+test('cooldown: an entry exactly COOLDOWN_MS old still counts', () => {
+  const snap = { tools: [
+    { name: 'web_search', ok: false, soft: false, t: NOW - COOLDOWN_MS },
+    { name: 'web_search', ok: false, soft: false, t: NOW - COOLDOWN_MS },
+  ], models: [{ name: 'qwen', t: NOW - COOLDOWN_MS }, { name: 'qwen', t: NOW - COOLDOWN_MS }] };
+  const out = cooling(snap, NOW);
+  assert.deepEqual([...out.tools], ['web_search']);
+  assert.deepEqual([...out.models], ['qwen']);
+});
+
 test('cooldown: ok:true entries count 0', () => {
   const snap = { tools: Array.from({ length: 5 }, () => ({ name: 'web_search', ok: true, soft: false, t: NOW })) };
   assert.deepEqual([...cooling(snap, NOW).tools], []);
