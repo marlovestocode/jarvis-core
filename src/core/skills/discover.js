@@ -140,7 +140,7 @@ async function resolveSelection({ text, rule, history, lastGroups = [], hint, li
   if (!g.call) return asRule();   // the simple-command path: no await on anything slow, no provider touch
 
   decision.gated = false;
-  // the hand-written ask/decline rules answer an unmatched turn first, as selectWithModel always did
+  // the hand-written ask/decline rules answer an unmatched turn first, with no model call
   if (r.confidence === 'low') {
     const hit = clarify(text, { lastGroups });
     if (hit) { decision.status = 'rule'; decision.why = `clarify ${hit.kind}`; return hit.kind === 'ask' ? { action: 'ask', groups: r, source: 'rule', ask: hit.reply, decision } : { action: 'decline', groups: r, source: 'rule', decline: hit.reply, decision }; }

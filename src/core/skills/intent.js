@@ -115,7 +115,7 @@ function buildMessages({ text, history, lastGroups, hint, live, cards }) {
   return [{ role: 'system', content: system }, { role: 'user', content: data }];
 }
 
-// One provider.constrain call under a budget, shared with selectWithModel. -> { status:'ok', out } | { status:'timeout' } | { status:'unavailable' }
+// One provider.constrain call under a budget. -> { status:'ok', out } | { status:'timeout' } | { status:'unavailable' }
 // The budget timer is always cleared and the provider call aborted when it fires or the caller's signal aborts.
 async function callConstrain(provider, req, { budgetMs = BUDGET_MS, signal } = {}) {
   if (!provider || typeof provider.constrain !== 'function' || signal?.aborted) return { status: 'unavailable' };

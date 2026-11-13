@@ -73,40 +73,4 @@ function selectGroups(text, { lastGroups = [] } = {}, catalog) {
   return out;
 }
 
-// Low-confidence turns only (nothing matched): one short constrained model call picks a group, or says ask / decline. The grammar
-// limits the answer to the group ids plus 'ask' and 'decline', and ask / decline are spoken from fixed text, never from the model.
-// Any failure (no constrain, a throw, an abort, a bad answer, a call over the budget) returns the rule result unchanged.
-// selectWithModel(text, { provider, catalog, picked?, lastGroups?, signal?, hints?, budgetMs? }) -> { action: 'act' | 'ask' | 'decline', groups, question? }
-const { BUDGET_MS, callConstrain } = require('./intent');
-const ASK_TEXT = 'Could you tell me a bit more about what you would like me to do?';
-const DECLINE_TEXT = "I'm afraid I don't have a tool for that.";
-
-async function selectWithModel(text, { provider, catalog, picked, lastGroups = [], signal, hints, budgetMs = BUDGET_MS } = {}) {
-  const rule = picked || selectGroups(text, { lastGroups }, catalog);
-  const fallback = { action: 'act', groups: rule };
-  if (rule.confidence !== 'low') return fallback;
-  try {
-    const hit = require('./clarify').clarify(text, { lastGroups });   // the hand-written rules answer first, with no model call
-    if (hit) return { action: hit.kind, groups: rule, question: hit.reply };
-    const areas = catalog.groups.filter(g => g.id !== 'core');
-    const choices = [...areas.map(g => g.id), 'ask', 'decline'];
-    const list = areas.map(g => `- ${g.id}: ${g.label}`).join('\n');
-    // the budget, abort and timer handling is shared with the intent interpreter (intent.js callConstrain)
-    const call = await callConstrain(provider, {
-      messages: [{ role: 'user', content: `Which skill area handles this request? Answer "ask" if it is too vague to act on, or "decline" if none of the areas can do it.\n${list}\nRequest: ${String(text).slice(0, 300)}` }],
-      schema: { type: 'object', properties: { choice: { type: 'string', enum: choices } }, required: ['choice'], additionalProperties: false },
-      hints,
-    }, { budgetMs, signal });
-    if (call.status !== 'ok') return fallback;
-    const out = call.out;
-    const choice = out && typeof out === 'object' && typeof out.choice === 'string' ? out.choice : null;
-    if (!choice || !choices.includes(choice)) return fallback;
-    if (choice === 'ask') return { action: 'ask', groups: rule, question: ASK_TEXT };
-    if (choice === 'decline') return { action: 'decline', groups: rule, question: DECLINE_TEXT };
-    const groups = ['core', choice];
-    Object.defineProperty(groups, 'confidence', { value: 'medium', enumerable: false });
-    return { action: 'act', groups };
-  } catch { return fallback; }
-}
-
-module.exports = { selectGroups, selectWithModel, THRESHOLD, MAX_GROUPS };
+module.exports = { selectGroups, THRESHOLD, MAX_GROUPS };
