@@ -122,3 +122,7 @@ Builder's calls (marked as mine, not the owner's):
 - **Unsure in `block` mode:** not ignored, and still no acting rights (the same lockout as in `guest` mode).
 - **Self-update** replaces only learned prints, never enrolled ones; with the cap full of enrolled prints, it learns nothing. Cap 30 total; at most 20 learned slots.
 - **Guest prompt:** one added line telling the model the speaker is not the owner and that it must not share or guess personal information; it still answers general questions.
+
+## Owner decisions
+
+- 2026-11-13: `speakerMode` starts as `guest` on upgrade. An existing `speakerGate: true` migrates to `guest`, not `block`; `speakerGate: false` stays "no gating". The owner approved the design on this basis.
