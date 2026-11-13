@@ -15,6 +15,9 @@ const f = format;
 
 const calculate = {
   name: 'calculate',
+  examples: ['divide multiply add subtract numbers','what is the result of this sum','work out the percentage','square root power exponent'],   // wording the ranker matches requests against (skills/rank.js)
+  direct: t => t.split(' (exact)').join('') + '.',   // the result is the reply, no second model call
+  hint: 'calculate: every arithmetic step, however small. Never do arithmetic in your head.',
   description: 'Evaluate a math expression exactly. Use it for ANY arithmetic instead of computing in your head. Supports + - * / % ^ !, parentheses, sqrt cbrt abs exp ln log10 log2 log(x, base), sin cos tan asin acos atan atan2 sinh cosh tanh (radians; write "30 deg" for degrees), floor ceil round(x, digits), min max hypot, nCr nPr gcd lcm factorial gamma, constants pi e tau phi. Whole-number math is exact for huge numbers.',
   params: obj({ expression: str('e.g. "23.7^3.2", "2^100", "sqrt(2*6.674e-11*5.972e24/6.371e6)"') }, ['expression']),
   async run({ expression }) {
@@ -25,6 +28,7 @@ const calculate = {
 
 const solveTool = {
   name: 'solve_equation',
+  hint: 'solve_equation: roots of equations.',
   description: 'Find all real roots of an equation in one variable numerically, e.g. "x^3 - 2x - 5 = 0" or "cos(t) = t". Searches from..to (default -100..100).',
   params: obj({ equation: str('equation with one "="'), variable: str('variable name, default x'), from: num('search start'), to: num('search end') }, ['equation']),
   async run(a) {
@@ -36,6 +40,7 @@ const solveTool = {
 
 const integrateTool = {
   name: 'integrate',
+  hint: 'integrate / differentiate: calculus with numbers.',
   description: 'Definite integral of an expression. Bounds may be numbers, expressions like "pi", or "inf"/"-inf".',
   params: obj({ expression: str('integrand, e.g. "x^2 * e^(-x)"'), variable: str('default x'), from: str('lower bound'), to: str('upper bound') }, ['expression', 'from', 'to']),
   async run(a) {
@@ -56,6 +61,7 @@ const diffTool = {
 
 const statsTool = {
   name: 'statistics',
+  hint: 'statistics: mean, stdev, median, regression of data.',
   description: 'Statistics of a list of numbers: count, sum, mean, median, mode, min, max, quartiles, sample and population variance/stdev. Give y too for a least-squares line (slope, intercept, r²).',
   params: obj({ values: { type: 'array', items: { type: 'number' } }, y: { type: 'array', items: { type: 'number' } } }, ['values']),
   async run({ values, y }) {
@@ -72,6 +78,8 @@ const statsTool = {
 
 const unitsTool = {
   name: 'convert_units',
+  direct: t => t + '.',
+  hint: 'convert_units: any unit conversion.',
   description: 'Convert a value between units of the same kind (length, mass, time, temperature, speed, area, volume, energy, power, pressure, force, frequency, data, angle, and compound units like "m/s^2", "kWh", "mi/h"). Temperatures: degC, degF, K.',
   params: obj({ value: num('amount'), from: str('unit, e.g. "mph"'), to: str('unit, e.g. "m/s"') }, ['value', 'from', 'to']),
   async run({ value, from, to }) {
@@ -82,6 +90,7 @@ const unitsTool = {
 
 const constTool = {
   name: 'physics_constant',
+  hint: 'physics_constant: exact constants (c, h, G, k_B, masses...).',
   description: 'Exact CODATA value of a physical constant by name or symbol (c, h, hbar, e, k_B, N_A, R, G, g, epsilon_0, mu_0, m_e, m_p, alpha, sigma, Earth mass, Sun mass, au, ...).',
   params: obj({ name: str('e.g. "Planck", "G", "electron mass"') }, ['name']),
   async run({ name }) {
@@ -93,6 +102,7 @@ const constTool = {
 
 const dateTool = {
   name: 'date_calc',
+  hint: 'date_calc: days between dates, adding days/months.',
   description: 'Calendar math: days between two dates, a date plus/minus "N days|weeks|months|years", and weekdays. Dates as YYYY-MM-DD (or "today").',
   params: obj({ from: str('start date'), to: str('end date'), add: str('e.g. "90 days", "-2 weeks"') }),
   async run(a) {
@@ -113,6 +123,7 @@ function skillTools() {
 function createStatusTool({ getStatus }) {
   return {
     name: 'jarvis_status',
+    hint: 'jarvis_status: the PC\'s hardware (CPU, GPU, total RAM) and JARVIS parts. It has NO live usage: never answer a usage question from it.',
     description: "Facts about this PC and JARVIS itself: CPU, RAM, GPU and VRAM, Windows version, the AI model in use, and whether sysmon, the wallpaper, voice and hotkeys are working. Use it for any question about the user's computer or JARVIS.",
     params: obj({}),
     async run() {

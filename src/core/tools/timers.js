@@ -25,6 +25,9 @@ function createTimerTools({ scheduler, now = Date.now }) {
 
   const setTimer = {
     name: 'set_timer',
+    examples: ['count down minutes','timer for cooking','start a stopwatch countdown'],   // wording the ranker matches requests against (skills/rank.js)
+    direct: true,   // its result is already a sentence: it is the reply, no second model call
+    hint: 'set_timer: a countdown ("10 minutes"). set_alarm: a clock time. set_reminder: text plus at or in. list_timers / cancel_timer: see or cancel them. Read back the time the tool gives.',
     description: 'Start a countdown timer. Give seconds, or duration_text like "10 minutes"; label is optional.',
     params: { type: 'object', properties: { seconds: { type: 'number' }, duration_text: { type: 'string' }, label: { type: 'string' } }, additionalProperties: false },
     async run({ seconds, duration_text: text, label = '' } = {}) {
@@ -40,6 +43,9 @@ function createTimerTools({ scheduler, now = Date.now }) {
 
   const setAlarm = {
     name: 'set_alarm',
+    examples: ['wake me up in the morning','alarm clock at a time of day'],   // wording the ranker matches requests against (skills/rank.js)
+    direct: true,   // its result is already a sentence: it is the reply, no second model call
+    hint: 'set_alarm: see set_timer.',
     description: 'Set an alarm for a clock time, e.g. at "7:30 am" or "tomorrow at 9". label is optional.',
     params: { type: 'object', properties: { at: { type: 'string' }, label: { type: 'string' } }, required: ['at'], additionalProperties: false },
     async run({ at, label = '' } = {}) {
@@ -51,6 +57,8 @@ function createTimerTools({ scheduler, now = Date.now }) {
 
   const setReminder = {
     name: 'set_reminder',
+    direct: true,   // its result is already a sentence: it is the reply, no second model call
+    hint: 'set_reminder: see set_timer.',
     description: 'Remind the user of something. text is what to remind; give at (a clock time) or in (a delay like "20 minutes").',
     params: { type: 'object', properties: { text: { type: 'string' }, at: { type: 'string' }, in: { type: 'string' } }, required: ['text'], additionalProperties: false },
     async run({ text, at, in: delay } = {}) {
@@ -69,6 +77,8 @@ function createTimerTools({ scheduler, now = Date.now }) {
 
   const listTimers = {
     name: 'list_timers',
+    direct: true,   // its result is already a sentence: it is the reply, no second model call
+    hint: 'list_timers: see set_timer.',
     description: 'List the timers, alarms and reminders that are set.',
     params: { type: 'object', properties: {}, additionalProperties: false },
     async run() {
@@ -80,6 +90,8 @@ function createTimerTools({ scheduler, now = Date.now }) {
 
   const cancelTimer = {
     name: 'cancel_timer',
+    direct: true,   // its result is already a sentence: it is the reply, no second model call
+    hint: 'cancel_timer: see set_timer.',
     description: 'Cancel a timer, alarm or reminder by label or id, or all of them with all: true.',
     params: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' }, all: { type: 'boolean' } }, additionalProperties: false },
     async run({ id, label, all } = {}) {

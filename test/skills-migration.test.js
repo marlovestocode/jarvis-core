@@ -104,7 +104,7 @@ test('catalog: each tool belongs to exactly one group', () => {
 test('catalog: group ids', () => {
   // groups added later come after these, in order
   const ids = loadGroups(toolDeps()).map(g => g.id);
-  assert.deepEqual(ids.slice(0, ORIGINAL_GROUPS.length), ORIGINAL_GROUPS);
+  assert.deepEqual(ids.filter(id => id !== 'monitors').slice(0, ORIGINAL_GROUPS.length), ORIGINAL_GROUPS);
   assert.deepEqual(buildCatalog(loadGroups(toolDeps())).ids, ids);
 });
 

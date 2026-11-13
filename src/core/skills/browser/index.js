@@ -10,6 +10,7 @@ function createGroup({ browserLink, getConfig = () => ({}), pc } = {}) {
     id: 'browser',
     label: 'Browser tabs, page text, downloads, history, bookmarks (Chrome extension)',
     triggers: [
+      { re: /\b(?:search|check|look (?:through|in)) my (?:browser |browsing )?history\b/i, w: 3 },
       { words: ['tab', 'tabs'], w: 5 },
       { words: ['browser', 'chrome tab', 'bookmark', 'bookmarks', 'browsing history'], w: 3 },
       { re: /\b(?:browser|chrome|recent|latest) downloads\b|\bdownload(?:ed)? history\b|\bwhat did i download\b/i, w: 3 },   // "downloads" alone is the folder

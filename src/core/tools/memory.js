@@ -37,6 +37,7 @@ function createMemoryTools({ memory, chats = null, cortex = null, getConfig = ()
   const remember = {
     needsClean: true,
     name: 'remember',
+    hint: 'remember / forget_memory: save or delete a lasting fact or preference when the user asks ("remember that...", "forget..."). Say it is saved only when the tool says so. Past chats: use recall_chats; never invent what was said.',
     description: "Save one short lasting fact or preference about the user, only when they ask you to remember it. Never save passwords, keys or card numbers.",
     params: { type: 'object', properties: { fact: { type: 'string', description: 'One short sentence, e.g. "User prefers Fahrenheit"' } }, required: ['fact'], additionalProperties: false },
     async run({ fact } = {}) {
@@ -60,6 +61,7 @@ function createMemoryTools({ memory, chats = null, cortex = null, getConfig = ()
   const recallChats = {
     untrusted: true,   // raw snippets are old chat text: quoted data, and the turn can no longer write memory
     name: 'recall_chats',
+    hint: 'recall_chats: what was said in earlier chats (summaries, then raw snippets as quoted data). Answer only from what it returns; if it finds nothing, say so.',
     description: 'Find what was said in earlier chats with the user: chat summaries first, then short raw snippets. Use it whenever the user asks what you talked about before.',
     params: { type: 'object', properties: {
       query: { type: 'string', description: 'A few words about the topic, e.g. "vet visit Rex"' },
@@ -72,6 +74,8 @@ function createMemoryTools({ memory, chats = null, cortex = null, getConfig = ()
   };
   const about = {
     name: 'memory_about',
+    examples: ['what do you know about me','what do you remember about a person or topic'],   // wording the ranker matches requests against (skills/rank.js)
+    hint: 'memory_about: everything saved about one person, pet, place or project: its facts, the chats it came up in, reminders.',
     description: 'Everything saved about one person, pet, place or project the user named: its facts, the chats it came up in, its reminders.',
     params: { type: 'object', properties: { topic: { type: 'string', description: 'The name, e.g. "Rex"' } }, required: ['topic'], additionalProperties: false },
     async run({ topic } = {}) { return aboutText(cortex, topic); },

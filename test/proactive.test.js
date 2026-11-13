@@ -193,7 +193,12 @@ test('config: proactive defaults and validation', () => {
   const { loadConfig } = require('../src/core/config');
   const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jpro-'));
-  assert.deepEqual(DEFAULTS.proactive, { enabled: true, dnd: false, quietStart: '22:00', quietEnd: '07:00', minGapSec: 10, chime: true });
+  const { monitors, cooldownMin, maxPerHour, ...base } = DEFAULTS.proactive;
+  assert.deepEqual(base, { enabled: true, dnd: false, quietStart: '22:00', quietEnd: '07:00', minGapSec: 10, chime: true });
+  assert.equal(cooldownMin, 15);
+  assert.equal(maxPerHour, 6);
+  assert.equal(monitors.timersSoon.enabled, false);
+  assert.equal(monitors.sysmon.enabled, false);
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ proactive: { quietStart: '25:00', quietEnd: '6:00', minGapSec: 1, dnd: true } }));
   const c = loadConfig(dir);
   assert.equal(c.proactive.quietStart, '22:00');

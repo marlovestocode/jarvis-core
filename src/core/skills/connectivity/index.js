@@ -15,6 +15,7 @@ function minutesWords(m) {
 function createConnectivityTools({ host, confirm }) {
   const status = {
     name: 'connectivity_status', risk: 'safe',
+    hint: 'connectivity_status: Wi-Fi, Bluetooth, battery, power plan and focus assist in one answer. wifi_set / power_plan_set: ask first. bluetooth_set, focus_assist: switch them. Say it is done only when the result says so.',
     description: 'Wi-Fi, Bluetooth, battery, power plan and focus assist (do not disturb) in one reply.',
     params: obj({}),
     async run() {
@@ -39,6 +40,7 @@ function createConnectivityTools({ host, confirm }) {
 
   const wifiSet = {
     name: 'wifi_set', risk: 'confirm',
+    hint: 'wifi_set: see connectivity_status.',
     description: 'Turn Wi-Fi on or off. Asks the user first (turning it off can cut the connection JARVIS uses).',
     params: obj({ on: { type: 'boolean' } }, ['on']),
     async run({ on } = {}) {
@@ -57,6 +59,7 @@ function createConnectivityTools({ host, confirm }) {
 
   const bluetoothSet = {
     name: 'bluetooth_set', risk: 'safe',
+    hint: 'bluetooth_set: see connectivity_status.',
     description: 'Turn Bluetooth on or off.',
     params: obj({ on: { type: 'boolean' } }, ['on']),
     async run({ on } = {}) {
@@ -70,6 +73,7 @@ function createConnectivityTools({ host, confirm }) {
 
   const powerPlanSet = {
     name: 'power_plan_set', risk: 'confirm',
+    hint: 'power_plan_set: see connectivity_status.',
     description: 'Switch the Windows power plan by name, e.g. "power saver" or "high performance". Asks the user first.',
     params: obj({ name: { type: 'string' } }, ['name']),
     async run({ name } = {}) {
@@ -93,6 +97,7 @@ function createConnectivityTools({ host, confirm }) {
 
   const focusAssist = {
     name: 'focus_assist', risk: 'safe',
+    hint: 'focus_assist: see connectivity_status.',
     description: 'Turn focus assist (do not disturb) on or off.',
     params: obj({ on: { type: 'boolean' } }, ['on']),
     async run({ on } = {}) {

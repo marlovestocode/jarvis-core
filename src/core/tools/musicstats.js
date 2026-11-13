@@ -4,6 +4,9 @@ const { report, REPORTS } = require('../music/stats');
 function createMusicStatsTool({ playLog, playlistName = () => null }) {
   return {
     name: 'music_stats',
+    examples: ['my most played songs and artists','what I listen to the most','listening habits history'],   // wording the ranker matches requests against (skills/rank.js)
+    hint: 'music_stats: the user\'s listening history and taste (top artists/tracks, skips, repeats, when they listen, sessions, trends, discoveries). ALWAYS call it for questions about their music habits; quote its numbers, never guess. If the log is empty or short, say how long it has been recording.',
+    mistakes: [{ match: /^(?:ytm|ytmusic|youtube_music)_(?:stats|history|listening|taste)$/ }],
     description: "The user's own listening statistics from their play log (what they play, skip, repeat, when, and how their taste changes). Pick a report; reports: overview, top_artists, top_tracks, skips, time_of_day, weekday, sessions, repeats, trends, discovery, artist (needs name), sources, recent. Always call it for questions about their music taste or habits.",
     params: {
       type: 'object',

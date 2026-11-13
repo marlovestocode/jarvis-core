@@ -164,7 +164,7 @@ function orcSetup(provider, { selectGroups, route } = {}) {
   const orc = createOrchestrator({
     bus, sessions, providers, tools: runner, getConfig: () => ({ ...DEFAULTS, provider: provider.id }),
     selectGroups, route,
-    systemPrompt: ctx => { sysSeen.push(ctx); return `SYS ${ctx.tools.join(',')}`; },
+    systemPrompt: ctx => { sysSeen.push(ctx); return `SYS ${ctx.tools.map(t => t.name).join(',')}`; },
   });
   const s = sessions.create(); sessions.save(s);
   return { orc, s, sysSeen };
@@ -224,7 +224,7 @@ test('orchestrator: a quick-chat turn that clearly matches a skill group gets to
 });
 
 test('orchestrator: a failed turn does not move lastGroups', async () => {
-  const fp = createFakeProvider([[{ type: 'throw', message: 'boom' }], [{ type: 'token', text: 'ok' }, { type: 'done' }]]);
+  const fp = createFakeProvider([[{ type: 'throw', message: 'Ollama is not running' }], [{ type: 'token', text: 'ok' }, { type: 'done' }]]);   // a failure a retry cannot fix
   const seen = [];
   const { orc, s } = orcSetup(fp, { selectGroups: (t, o) => { seen.push(o.lastGroups); return ['core', 'pc']; } });
   await orc.send(s.id, 'one', { source: 'text' });

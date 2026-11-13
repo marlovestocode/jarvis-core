@@ -17,8 +17,16 @@ function toolDeps() {
   const roots = ['C:\t\Desktop', 'C:\t\Documents', 'C:\t\Downloads', 'C:\t\Projects'];
   const pc = { host: createFakePcHost(), getAllowlist: async () => [], roots, confirm: createConfirm({}), actionLog: createActionLog({ file: path.join(dir, 'a.log') }) };
   const browserLink = { connected: false, request: async () => { throw new Error('no extension in tests'); } };
+  const analytics = { metrics: { summary: () => 'ok', query: () => ({}) }, openDashboard: async () => 'http://127.0.0.1:47801/ai/dashboard' };
   const self = { getChecks: () => [], about: () => ({ version: '0.0.0', startedAt: 0 }), logFile: path.join(dir, 'jarvis.log'), dataDir: dir };
-  return { self, browserLink, getStatus: async () => ({}), fetch: async () => ({}), fetcher: any, web: any, kiwix: any, getConfig: () => DEFAULTS, bus: createBus(), media: any, ytm: any, ytPlaylists: any, memory: any, chats: any, cortex: any, playLog: any, scheduler, pc };
+  return { self, analytics, browserLink, getStatus: async () => ({}), fetch: async () => ({}), fetcher: any, web: any, kiwix: any, getConfig: () => DEFAULTS, applySettings: () => [], bus: createBus(), media: any, ytm: any, lyrics: any, ytPlaylists: any, memory: any, chats: any, cortex: any, playLog: any, scheduler, pc };
 }
 
-module.exports = { toolDeps };
+// the real tool objects for some names, as the prompt now takes them (its guidance line is the tool's own hint)
+function realTools(names) {
+  const { loadGroups, buildCatalog } = require('../../src/core/skills');
+  const cat = buildCatalog(loadGroups(toolDeps()));
+  return names.map(n => cat.tools.find(t => t.name === n) || { name: n });
+}
+
+module.exports = { toolDeps, realTools };

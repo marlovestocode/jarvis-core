@@ -1,5 +1,5 @@
 // get_system_stats: reads the sysmon bridge snapshot (127.0.0.1:47800, local only).
-const SYSMON = 'http://127.0.0.1:47800';
+const { SYSMON } = require('../net/services');
 
 const pct = v => (typeof v === 'number' && isFinite(v) ? Math.round(v) + '%' : null);
 const deg = v => (typeof v === 'number' && isFinite(v) ? Math.round(v) + '°C' : null);
@@ -26,6 +26,8 @@ function summarize(s) {
 function createSysmonTool({ fetch = globalThis.fetch, timeoutMs = 3000 } = {}) {
   return {
     name: 'get_system_stats',
+    examples: ['how hot is my graphics card','cpu gpu ram usage load','computer performance temperature'],   // wording the ranker matches requests against (skills/rank.js)
+    hint: 'get_system_stats: live CPU/GPU load, temperatures, memory in use, VRAM, network, disk. Use it for any "how much memory/CPU/GPU is used" question, including JARVIS own use.',
     description: 'Get current PC stats from the local system monitor: CPU, GPU, RAM, network, disk.',
     params: { type: 'object', properties: {}, additionalProperties: false },
     async run(_args, ctx = {}) {

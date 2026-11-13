@@ -8,6 +8,8 @@ function createGroup({ pc } = {}) {
     id: 'files',
     label: 'Find, read and inspect files and documents (recent, big, text inside, PDF, Word); rename, sort, copy, zip, unzip, new folders',
     triggers: [
+      { re: /\bwhich (?:folders?|files?) (?:are )?(?:taking|using|eating)\b|\bmost (?:disk )?(?:space|storage)\b|\bwhat(?:'s| is) (?:taking|using) (?:up )?(?:the )?(?:space|storage|disk)\b/i, w: 3 },
+      { re: /\bfiles? (?:did )?(?:i|we) (?:changed?|modified|edited|opened|downloaded|created|saved)\b|\bfiles? (?:mentioning|containing|with the text|that (?:mention|contain))\b|\bfind files\b/i, w: 3 },
       { re: /\b(?:recent|big|large|largest|biggest) files?\b|\bdisk space\b|\bhow big is\b|\bsearch (?:my |the )?files\b|\bin my files\b/i, w: 3 },
       { re: /\b(?:read) (?:this |the |that |my )?(?:pdf|doc(?:ument|x)?|file)\b|\bsummari[sz]e (?:the |this |that |my )?(?:file|pdf|doc(?:ument|x)?)\b/i, w: 3 },
       { re: /\bfind (?:the |my |a )?(?:\w+ )?(?:pdf|docx?|document|spreadsheet)s?\b|\b(?:downloaded|modified|changed|created) (?:today|yesterday|this week|recently|last week)\b/i, w: 3 },

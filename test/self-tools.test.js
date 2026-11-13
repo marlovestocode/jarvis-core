@@ -226,9 +226,10 @@ test('self questions get tools and the self group; small talk stays quick', () =
 
 test('prompt and aliases: the self tools are named, and plausible wrong names reach them', async () => {
   const { catalog, runner, ctx } = setup();
-  const self = catalog.groups.find(g => g.id === 'self').tools.map(t => t.name);
-  assert.deepEqual(self, ['self_diagnostics', 'skills_list', 'self_config', 'self_log']);
-  const prompt = systemPrompt({ tools: self });
+  const selfTools = catalog.groups.find(g => g.id === 'self').tools;
+  const self = selfTools.map(t => t.name);
+  assert.deepEqual(self, ['self_diagnostics', 'skills_list', 'self_config', 'self_log', 'analytics_summary', 'open_dashboard']);
+  const prompt = systemPrompt({ tools: selfTools });
   for (const n of self) assert.match(prompt, new RegExp(`\\b${n}\\b`), n);
   for (const a of ['diagnostics', 'health_check', 'list_skills', 'list_tools', 'get_version', 'error_log']) assert.doesNotMatch((await runner.run(a, {}, ctx)).text, /unknown tool/, a);
 });

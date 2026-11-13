@@ -117,6 +117,8 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
   const tools = [
     {
       name: 'get_weather',
+      examples: ['is it raining outside','how hot cold is it temperature','do I need an umbrella or a jacket','will it snow this weekend forecast'],   // wording the ranker matches requests against (skills/rank.js)
+      hint: 'get_weather: current weather and forecast; omit place for home. Use for rain tomorrow, temperatures, wind and air quality.',
       description: 'Live weather: current conditions and up to a 7-day forecast (highs, lows, rain chance, wind, UV, air quality). Default place is the user\'s home.',
       params: obj({ place: { type: 'string', description: 'City, e.g. "Dallas" or "Springfield, IL". Omit for home.' }, days: { type: 'integer', minimum: 1, maximum: 7 }, hourly: { type: 'boolean', description: 'Include the next 12 hours.' } }),
       timeoutMs: 20000,
@@ -129,6 +131,7 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
     },
     {
       name: 'weather_alerts',
+      hint: 'weather_alerts: active US weather watches and warnings; omit place for home.',
       description: 'Active US National Weather Service watches, warnings and advisories for a place (default home).',
       params: obj({ place: { type: 'string' } }),
       timeoutMs: 20000,
@@ -143,6 +146,8 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
     },
     {
       name: 'news_headlines',
+      examples: ['what is in the news','latest headlines today'],   // wording the ranker matches requests against (skills/rank.js)
+      hint: 'news_headlines: current news; optionally topic and count.',
       description: 'Latest news headlines from the user\'s news feeds, optionally about a topic.',
       params: obj({ topic: { type: 'string' }, count: { type: 'integer', minimum: 1, maximum: 20 } }),
       timeoutMs: 20000,
@@ -154,6 +159,8 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
     },
     {
       name: 'sports_scores',
+      examples: ['did the team win','game score last night','who won the match'],   // wording the ranker matches requests against (skills/rank.js)
+      hint: 'sports_scores: live/final scores and next game; specify team and league, e.g. Cowboys/nfl.',
       description: 'Live and final scores, and the next game, from ESPN. Leagues: nfl, nba, mlb, nhl, cfb, mls, epl. With no team or league: the user\'s followed teams.',
       params: obj({ team: { type: 'string', description: 'Team name, city or abbreviation, e.g. "Cowboys".' }, league: { type: 'string', enum: ['nfl', 'nba', 'mlb', 'nhl', 'cfb', 'mls', 'epl'] } }),
       timeoutMs: 20000,
@@ -164,6 +171,8 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
     },
     {
       name: 'lookup_knowledge',
+      examples: ['who is this person','what is the capital of a country','explain a concept encyclopedia facts','who invented discovered','tell me about a topic'],   // wording the ranker matches requests against (skills/rank.js)
+      hint: 'lookup_knowledge: for facts about the world, look up the subject FIRST, then answer from the cited passages.',
       description: 'Look up facts about the world in Wikipedia (offline library first, then online). Returns cited passages. Use for who/what/when/where/why questions before answering.',
       params: obj({ query: { type: 'string', description: 'What to look up, e.g. "Treaty of Westphalia year signed".' } }, ['query']),
       timeoutMs: 30000,
@@ -171,6 +180,7 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus }) {
     },
     {
       name: 'read_article',
+      hint: 'read_article: follow-ups on an article title, optionally a section.',
       description: 'Read a longer extract of one Wikipedia article, optionally one section, for follow-up questions.',
       params: obj({ title: { type: 'string' }, section: { type: 'string' } }, ['title']),
       timeoutMs: 30000,

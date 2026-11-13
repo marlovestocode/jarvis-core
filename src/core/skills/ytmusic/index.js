@@ -7,6 +7,7 @@ function createGroup({ ytPlaylists, playLog } = {}) {
   if (ytPlaylists) tools.push(createYtLibraryTool({ playlists: ytPlaylists }), createYtPlayLibraryTool({ playlists: ytPlaylists }), createYtEditTool({ playlists: ytPlaylists }));
   if (playLog) tools.push(createMusicStatsTool({ playLog, playlistName: id => ytPlaylists?.titleOf?.(id) || null }));
   return { id: 'ytmusic', label: 'YouTube Music library, playlists and listening stats', triggers: [
+    { re: /\b(?:what (?:did|have) i (?:listen(?:ed)? to|play(?:ed)?)|(?:listen(?:ed)?|play(?:ed)?) (?:to )?(?:the )?most|top (?:songs|artists|tracks)|most (?:played|listened))\b|\bplay my [\w' ]{1,30}\b(?:mix|playlist|library|favou?rites)\b/i, w: 3 },
     { words: ['playlist', 'playlists', 'liked', 'listening', 'taste'], w: 3 },
     { re: /\badd (?:this|it|that|the current song|the song)(?: song)? to\b/i, w: 3 },
     { re: /\btop (?:artists?|tracks?|songs?)\b/i, w: 3 },

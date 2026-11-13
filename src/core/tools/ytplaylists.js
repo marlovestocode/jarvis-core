@@ -20,6 +20,7 @@ const page = (n, fallback) => (Number.isInteger(n) && n > 0 ? n : fallback);
 function createYtLibraryTool({ playlists }) {
   return {
     name: 'ytm_library',
+    hint: 'ytm_library: the user\'s OWN playlists: list them or see the songs in one. For \'my gym playlist\' style names use this, not youtube_music. Pass the playlist name as the user said it. ALWAYS call it for a playlist question, even if an earlier reply in this chat said it failed or was not connected: that may be fixed now, so never repeat an old failure without calling the tool.',
     description: "The user's own YouTube Music playlists, read live: view=playlists lists them; view=playlist shows the songs in one (name as the user said it). query filters, limit/offset page.",
     timeoutMs: 90000,
     params: {
@@ -74,6 +75,7 @@ const song = t => `"${t.title}"${t.artists?.length ? ' by ' + t.artists.join(', 
 function createYtPlayLibraryTool({ playlists }) {
   return {
     name: 'ytm_play_library',
+    hint: 'ytm_play_library: play one of the user\'s OWN playlists, or one song from it (track), optionally shuffled. \'play my gym playlist\', \'play stronger from my gym playlist\'. If it says more than one playlist matches, ask the user which.',
     description: "Play one of the user's OWN YouTube Music playlists, or one song of it (track), optionally shuffled, and confirm it started.",
     timeoutMs: 90000,
     params: {
@@ -133,6 +135,7 @@ function reportAdd(r, a) {
 function createYtEditTool({ playlists }) {
   return {
     name: 'ytm_playlist_edit',
+    hint: 'ytm_playlist_edit: add songs to the user\'s OWN playlists: songs by name (add), the song playing now (add_current), or undo. Use the playlist the user names; if none, ask which. Say it is done only when the result says Added.',
     description: "Change the user's OWN YouTube Music playlists. op=add: add songs by name to a playlist (songs: [\"title by artist\"]). op=add_current: add the song playing now. op=undo: take back the last add. The playlist is the one the user named; if they did not name one, ask. Duplicates are skipped.",
     timeoutMs: 90000,
     params: {

@@ -3,13 +3,16 @@
 // when `script` is an array of arrays (one per call); a flat array is reused every call.
 function abortError() { const e = new Error('aborted'); e.name = 'AbortError'; return e; }
 
-function createFakeProvider(script, { delayMs = 0, contextMax, tools = true, id = 'fake', label = 'Fake' } = {}) {
+function createFakeProvider(script, { delayMs = 0, contextMax, tools = true, id = 'fake', label = 'Fake', constrain = null } = {}) {
   const calls = [];
+  const constrained = [];
   const multi = Array.isArray(script[0]);
   return {
     id, label,
     capabilities: { tools, logprobs: true, reasoning: true },
     calls,
+    constrained,
+    ...(constrain ? { async constrain(req) { constrained.push(req); return constrain(req); } } : {}),
     async status() { return { ready: true, detail: 'fake', ...(contextMax ? { contextMax } : {}) }; },
     async *chat({ messages, tools: t, signal, hints }) {
       const n = calls.length;

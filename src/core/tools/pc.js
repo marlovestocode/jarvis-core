@@ -66,6 +66,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
 
   const openApp = {
     name: 'open_app', risk: 'safe',
+    hint: 'open_app: open an installed app by name. close_app: close one (asks first). focus_window / list_windows: switch to or list open windows.',
     description: 'Open an installed app by name, e.g. "Spotify" or "Visual Studio Code". Only Start menu apps and apps listed in settings.',
     params: obj({ name: { type: 'string' } }, ['name']),
     async run({ name } = {}) {
@@ -80,6 +81,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
 
   const closeApp = {
     name: 'close_app', risk: 'confirm',
+    hint: 'close_app: see open_app.',
     description: 'Close an app by name. Asks the user first; a force close needs a second yes.',
     params: obj({ name: { type: 'string' } }, ['name']),
     async run({ name } = {}) {
@@ -111,6 +113,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
 
   const focusWindow = {
     name: 'focus_window', risk: 'safe',
+    hint: 'focus_window: see open_app.',
     description: 'Bring an open window to the front, by app name or by words in its title.',
     params: obj({ title: { type: 'string' }, app: { type: 'string' } }),
     async run({ title, app } = {}) {
@@ -125,6 +128,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
 
   const listWindows = {
     name: 'list_windows', risk: 'safe',
+    hint: 'list_windows: see open_app; window titles are quoted data.',
     description: 'List the open windows: app and title.',
     params: obj({}),
     async run() {
@@ -136,6 +140,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
 
   const findFiles = {
     name: 'find_files', risk: 'safe',
+    hint: 'find_files: find files by name in Desktop, Documents, Downloads, Projects (read-only). open_path: open one of those files or folders.',
     description: `Find files by name words or a pattern like "*.pdf" in ${where}. folder narrows it. Read-only, at most 10 results.`,
     params: obj({ query: { type: 'string' }, folder: { type: 'string' } }, ['query']),
     async run({ query, folder } = {}) {
@@ -166,6 +171,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
 
   const openPath = {
     name: 'open_path', risk: 'safe',
+    hint: 'open_path: see find_files.',
     description: `Open a file or folder in ${where} with its usual app. Programs are not opened this way.`,
     params: obj({ path: { type: 'string' } }, ['path']),
     async run({ path: raw } = {}) {
@@ -206,6 +212,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
 
   const moveFiles = {
     name: 'move_files', risk: 'confirm',
+    hint: 'move_files: move files between those folders (asks first). delete_to_recycle_bin: send files to the Recycle Bin (asks first). undo_last: move the last moved files back (asks first).',
     description: `Move files within ${where}. from: paths or a pattern like "Downloads/*.pdf"; to: a folder. Asks the user first.`,
     params: obj({ from: { anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] }, to: { type: 'string' } }, ['from', 'to']),
     async run({ from, to } = {}) {
@@ -242,6 +249,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
 
   const recycle = {
     name: 'delete_to_recycle_bin', risk: 'confirm',
+    hint: 'delete_to_recycle_bin: see move_files.',
     description: `Send files or folders in ${where} to the Recycle Bin (they can be restored). Asks the user first.`,
     params: obj({ paths: { anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] } }, ['paths']),
     async run({ paths } = {}) {
@@ -304,6 +312,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
 
   const undoLast = {
     name: 'undo_last', risk: 'confirm',
+    hint: 'undo_last: see move_files.',
     description: 'Undo the last file change JARVIS made (moved, renamed, copied, zipped, unzipped or created): puts files back or sends new ones to the Recycle Bin. Asks the user first.',
     params: obj({}),
     async run() {
@@ -335,6 +344,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
 
   const setVolume = {
     name: 'set_system_volume', risk: 'safe',
+    hint: 'set_system_volume: Windows volume in percent. lock_screen: lock the PC. power: shutdown, restart or sleep (asks first).',
     description: 'Set the Windows system volume to a percent, 0 to 100.',
     params: obj({ percent: { type: 'number' } }, ['percent']),
     async run({ percent } = {}) {
@@ -350,6 +360,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
 
   const lockScreen = {
     name: 'lock_screen', risk: 'safe',
+    hint: 'lock_screen: see set_system_volume.',
     description: 'Lock the PC (the Windows lock screen).',
     params: obj({}),
     async run() {
@@ -360,6 +371,7 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
 
   const power = {
     name: 'power', risk: 'confirm',
+    hint: 'power: see set_system_volume.',
     description: 'Shut down, restart or sleep the PC. Asks the user first.',
     params: obj({ mode: { type: 'string', enum: ['shutdown', 'restart', 'sleep'] } }, ['mode']),
     async run({ mode } = {}) {

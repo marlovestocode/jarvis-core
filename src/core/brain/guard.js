@@ -28,6 +28,30 @@ function unbackedClaim(reply, okTools = 0) {
   return text.split(/(?<=[.!?])\s+/).some(s => !NOT_CLAIM.test(s) && CLAIMS.some(re => re.test(s)));
 }
 
+// A tool can answer "ok" and still say it did nothing ("Could not find that window", "No change"). Such an answer never backs a claim
+// that something was done: the reply must report what the tool said, not what the user hoped for.
+const SOFT_FAIL = /^\s*(?:could ?n[o']?t|can ?n[o']?t|unable to|no such|not found|nothing (?:was )?(?:changed|done|found|happened|to do)|no change|failed|did ?n[o']?t|was ?n[o']?t|is ?n[o']?t|not (?:connected|available|supported|allowed))\b/i;
+const softFail = text => SOFT_FAIL.test(String(text ?? ''));
+
+// Precise figures in a reply (4 or more digits, or a decimal) that appear in nothing the tools returned and nothing the user said.
+// A small model rounds, converts and sometimes invents; a figure it cannot trace to a result is the one to check. Years and values
+// that are a rounding of a result pass. → the first few offending figures.
+function ungroundedFigures(reply, evidence = []) {
+  const nums = t => [...String(t ?? '').replace(/(\d),(?=\d{3}(?!\d))/g, '$1').matchAll(/\d+(?:\.\d+)?/g)].map(m => m[0]);
+  const have = nums(evidence.join(" "));
+  const vals = have.map(Number);
+  const bad = [];
+  for (const n of nums(reply)) {
+    if (n.replace('.', '').length < 4 || /^(?:19|20)\d\d$/.test(n) || have.includes(n)) continue;
+    const v = Number(n);
+    // a rounding of a result: equal to the reply's own last decimal place, or a round integer ("4800" for 4821) within 1 %
+    const dec = (n.split('.')[1] || '').length, round = !n.includes('.') && n.endsWith('0');
+    if (vals.some(h => Math.abs(h - v) <= 0.5 * 10 ** -dec + 1e-9 || (round && h !== 0 && Math.abs(h - v) / Math.abs(h) < 0.01))) continue;
+    bad.push(n);
+  }
+  return [...new Set(bad)].slice(0, 3);
+}
+
 const UNBACKED_FIX = "I haven't actually done that: no tool confirmed it.";
 
 // The reply with every sentence that claims an action taken out, plus one plain line saying nothing was done.
@@ -50,4 +74,4 @@ const NO = new Set(['no', 'nope', 'cancel', 'stop', "don't", 'do not', 'never mi
 const isYes = t => YES.has(plain(t));
 const isNo = t => NO.has(plain(t));
 
-module.exports = { unbackedClaim, stripClaims, UNBACKED_FIX, isYes, isNo, UNTRUSTED_TOOLS, NEEDS_OK };
+module.exports = { ungroundedFigures, softFail, unbackedClaim, stripClaims, UNBACKED_FIX, isYes, isNo, UNTRUSTED_TOOLS, NEEDS_OK };

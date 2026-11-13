@@ -5,6 +5,7 @@ const { own } = require('../util');
 // Loads another skill group for the rest of the turn. ctx.skills is set by the per-turn runner (tools/registry.js).
 const moreSkills = {
   name: 'more_skills',
+  hint: 'more_skills: load another skill group when your tools do not cover the request; groups are listed under Capabilities.',
   description: 'Load another skill group when your tools do not cover the request. Groups are listed under Capabilities.',
   params: { type: 'object', properties: { group: { type: 'string', description: 'group id, e.g. pc, media, math' } }, required: ['group'], additionalProperties: false },
   risk: 'safe',

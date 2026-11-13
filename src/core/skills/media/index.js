@@ -6,6 +6,8 @@ function createGroup({ fetch, media, ytm } = {}) {
   if (media) tools.push(own(createMediaStatusTool({ service: media }), ['get_volume']));
   if (ytm) tools.push(own(createYtMusicTool({ ytm }), ['ytm_music', 'youtube', 'play_music']));
   return { id: 'media', label: 'Music and media playback, volume', triggers: [
+    { re: /\bwho (?:sings|sang|is singing|performs|wrote)\b|\bwhat (?:artist|band) is (?:this|that)\b/i, w: 3 },
+    { re: /\b(?:put on|throw on|spin|blast)\b (?:some |a |the )?\w+|\b(?:is (?:anything|something|music) playing|anything playing|what(?:'s| is) (?:currently )?playing)\b/i, w: 3 },
     { words: ['play', 'pause', 'resume', 'skip', 'louder', 'quieter', 'mute', 'unmute', 'shuffle', 'queue', 'song', 'songs', 'track', 'tracks', 'album', 'albums', 'spotify'], w: 3 },
     { re: /^(?!.*\b(?:brightness|screen|display|lights?)\b).*\bturn (?:it |the \w+ )?(?:up|down)\b/i, w: 3 },
     { words: ['volume', 'music'], w: 2 },

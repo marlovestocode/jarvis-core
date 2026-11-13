@@ -1,7 +1,7 @@
 // Skill groups: tools regrouped by area. Each group file exports createGroup(deps) → Group | null.
 // Group = { id, label, triggers, hint?, tools, status? }
 // status() → { ok, detail } (may be async): whether the group can work right now (extension connected, sysmon up...).
-const ORDER = ['core', 'media', 'ytmusic', 'timers', 'knowledge', 'system', 'pc', 'math', 'memory', 'windows', 'audio-display', 'connectivity', 'clipboard-capture', 'files', 'browser', 'self', 'web'];
+const ORDER = ['core', 'media', 'ytmusic', 'timers', 'monitors', 'knowledge', 'system', 'pc', 'math', 'memory', 'windows', 'audio-display', 'connectivity', 'clipboard-capture', 'files', 'browser', 'self', 'web', 'lyrics'];
 
 // The groups that loaded, in ORDER. The array also carries .missing: [{ id, error? }], the groups left out:
 // error is set when the group file threw (one broken group must not stop the app), absent when it simply
@@ -38,7 +38,7 @@ function capsLine(catalog, state = {}) {
     const note = g.id === 'browser' && state.browser ? ` [${state.browser}]` : '';
     return `${g.id} = ${g.label}${note}`;
   });
-  return `skill groups (the tools of the ones this request needs are loaded; call more_skills with a group id to load another): ${parts.join('; ')}`;
+  return `skill areas, NOT tools: never call these names. The tools of the areas this request needs are already loaded; use only tools from your tool list, exactly as named. If you need another area, call more_skills with its id: ${parts.join('; ')}`;
 }
 
 module.exports = { loadGroups, buildCatalog, capsLine, ...require('./select') };

@@ -51,6 +51,7 @@ function createWindowsTools({ host, confirm, actionLog, waitMs = 5000, pollMs = 
 
   const windowArrange = {
     name: 'window_arrange', risk: 'safe',
+    hint: 'window_arrange: snap, maximize, minimize, restore or center a window. window_to_monitor: move it to another monitor. desktop_switch / window_to_desktop: virtual desktops. end_unresponsive_app: end a hung app (asks first). Say it is done only when the result says so.',
     description: `Snap, maximize, minimize, restore or center a window. layout: ${LAYOUTS.join(', ')}. target: app or title words; omit for the window in front.`,
     params: obj({ target: { type: 'string' }, layout: { type: 'string', enum: LAYOUTS } }, ['layout']),
     async run({ target, layout } = {}) {
@@ -78,6 +79,7 @@ function createWindowsTools({ host, confirm, actionLog, waitMs = 5000, pollMs = 
 
   const windowToMonitor = {
     name: 'window_to_monitor', risk: 'safe',
+    hint: 'window_to_monitor: see window_arrange.',
     description: 'Move a window to monitor number N, or to the "next" monitor. target: app or title words; omit for the window in front.',
     params: obj({ target: { type: 'string' }, monitor: { anyOf: [{ type: 'integer', minimum: 1 }, { type: 'string', enum: ['next'] }] } }, ['monitor']),
     async run({ target, monitor } = {}) {
@@ -101,6 +103,7 @@ function createWindowsTools({ host, confirm, actionLog, waitMs = 5000, pollMs = 
 
   const desktopSwitch = {
     name: 'desktop_switch', risk: 'safe',
+    hint: 'desktop_switch: see window_arrange.',
     description: 'Switch virtual desktop: "next" or "previous". A number is only possible where Windows allows it; the result says so.',
     params: obj({ to: { anyOf: [{ type: 'string', enum: ['next', 'previous'] }, { type: 'integer', minimum: 1 }] } }, ['to']),
     async run({ to } = {}) {
@@ -112,6 +115,7 @@ function createWindowsTools({ host, confirm, actionLog, waitMs = 5000, pollMs = 
 
   const windowToDesktop = {
     name: 'window_to_desktop', risk: 'safe',
+    hint: 'window_to_desktop: see window_arrange.',
     description: 'Move a window to virtual desktop number N, where Windows allows it; the result says if not. target: app or title words; omit for the window in front.',
     params: obj({ target: { type: 'string' }, desktop: { type: 'integer', minimum: 1 } }, ['desktop']),
     async run({ target, desktop } = {}) {
@@ -124,6 +128,7 @@ function createWindowsTools({ host, confirm, actionLog, waitMs = 5000, pollMs = 
 
   const endUnresponsive = {
     name: 'end_unresponsive_app', risk: 'confirm',
+    hint: 'end_unresponsive_app: see window_arrange.',
     description: 'End an app Windows reports as not responding. Only for hung windows. Asks the user first; unsaved work is lost.',
     params: obj({ name: { type: 'string' } }, ['name']),
     async run({ name } = {}) {

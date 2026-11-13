@@ -10,6 +10,7 @@ function localIso(d) {
 
 const timeTool = {
   name: 'get_time',
+  hint: 'get_time: the current time if the Now line at the end of the message is not enough.',
   description: 'Get the current local date, time, weekday and time zone.',
   params: { type: 'object', properties: {}, additionalProperties: false },
   async run() {

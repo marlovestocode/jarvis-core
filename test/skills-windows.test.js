@@ -81,7 +81,7 @@ test('windows: layout outside the enum is refused', async () => {
   const { host, run } = setup();
   const r = await run('window_arrange', { target: 'chrome', layout: 'diagonal' });
   assert.equal(r.ok, false);
-  assert.match(r.text, /Layouts: left, right, top_left/);
+  assert.match(r.text, /layout must be one of left, right, top_left/);   // the runner's argument check names the allowed values
   assert.ok(!host.calls.some(c => c[0] === 'place'));
 });
 

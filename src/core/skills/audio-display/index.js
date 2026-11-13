@@ -9,6 +9,7 @@ const listWords = a => (a.length < 2 ? a.join('') : `${a.slice(0, -1).join(', ')
 function createAudioDisplayTools({ host }) {
   const audioDevices = {
     name: 'audio_devices', risk: 'safe',
+    hint: 'audio_devices: list sound outputs. audio_output_set: switch the default output ("headphones"). brightness_set: laptop panel brightness. displays_list: connected displays. night_light: blue light filter on or off. Say it is done only when the result says so; volume and mute are media_control.',
     description: 'List the sound output devices and which one is the default.',
     params: obj({}),
     async run() {
@@ -20,6 +21,7 @@ function createAudioDisplayTools({ host }) {
 
   const audioOutputSet = {
     name: 'audio_output_set', risk: 'safe',
+    hint: 'audio_output_set: see audio_devices.',
     description: 'Switch the default sound output device by name, e.g. "headphones" or "speakers".',
     params: obj({ name: { type: 'string' } }, ['name']),
     async run({ name } = {}) {
@@ -40,6 +42,7 @@ function createAudioDisplayTools({ host }) {
 
   const brightnessSet = {
     name: 'brightness_set', risk: 'safe',
+    hint: 'brightness_set: see audio_devices.',
     description: 'Set the laptop screen brightness: percent (0-100) or by (a change such as -10). Built-in panels only.',
     params: obj({ percent: { type: 'number' }, by: { type: 'number' } }),
     async run({ percent, by } = {}) {
@@ -56,6 +59,7 @@ function createAudioDisplayTools({ host }) {
 
   const displaysList = {
     name: 'displays_list', risk: 'safe',
+    hint: 'displays_list: see audio_devices.',
     description: 'List the connected displays: size and refresh rate.',
     params: obj({}),
     async run() {
@@ -67,6 +71,7 @@ function createAudioDisplayTools({ host }) {
 
   const nightLight = {
     name: 'night_light', risk: 'safe',
+    hint: 'night_light: see audio_devices.',
     description: 'Turn the Windows night light (blue light filter) on or off.',
     params: obj({ on: { type: 'boolean' } }, ['on']),
     async run({ on } = {}) {
@@ -89,6 +94,8 @@ function createGroup({ pc } = {}) {
     label: 'Sound output device, brightness, displays, night light',
     // "volume" and "mute" stay with media
     triggers: [
+      { re: /\b(?:dim|brighten)\b.*\b(?:screen|display|monitor)\b|\b(?:dim|brighten) the (?:screen|display)\b|\b(?:screen|display) (?:is )?(?:too )?(?:bright|dim|dark)\b/i, w: 3 },
+      { re: /\b(?:which|what|how many) (?:monitors|displays|screens)\b/i, w: 3 },
       { words: ['output device', 'output devices', 'speakers', 'headphones', 'sound output', 'audio output', 'brightness', 'dimmer', 'brighter', 'display', 'displays', 'night light', 'blue light'], w: 3 },
     ],
     tools: createAudioDisplayTools(pc).map(t => own(t)),

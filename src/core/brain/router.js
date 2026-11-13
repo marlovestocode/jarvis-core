@@ -7,7 +7,7 @@ const CODE = /```|\b(code|function|script|python|javascript|typescript|node|powe
 const MUSIC_STATS = /\b(listen(?:ed|ing)? (?:to|stats|history|habits)|my (?:top|most played|favou?rite|most listened)|music (?:taste|stats|profile|habits|history)|skip(?:ped|ping)? rate|how (?:often|much|many) (?:do|did) i (?:skip|listen|play|replay)|what (?:do|did) i (?:listen|play)|most played|listening (?:time|stats|history|habits)|taste in music|(?:my|the) (?:top|favou?rite) (?:artists?|songs?|tracks?)|how long (?:have|did) i (?:been )?listen)/i;
 const SYSTEM = /\b(my (?:pc|computer|gpu|cpu|ram|system|machine)|this (?:pc|computer)|gpu|cpu|vram|temperature|temps|fps|sysmon|wallpaper|jarvis status|play|pause|next track|volume|music|song)\b/i;
 // JARVIS asked about itself: its health, skills, version, settings, log (the self skill group triggers on this too)
-const SELF = /\b(?:diagnos\w*|self[- ]?(?:check|test)|health check|troubleshoot\w*|what can you do|what (?:skills|tools|abilities) do you have|(?:your|jarvis'?s?) (?:skills|tools|abilities|capabilities|version|settings|config\w*|logs?)|(?:list|show)(?: me)?(?: all)?(?: of)? (?:your|the) (?:skills?|tools)|(?:give|tell|show) me (?:your|the) (?:skill|tool|ability) ?(?:list|set|sets)|(?:your|the) (?:skill|tool) ?(?:list|set)|what version are you|errors? log|(?:recent|last|latest) errors?|what went wrong|is (?:everything|anything) (?:working|broken|ok(?:ay)?))\b/i;
+const SELF = /\b(?:diagnos\w*|self[- ]?(?:check|test)|health check|troubleshoot\w*|what can you do|are you (?:working|running|functioning) (?:properly|correctly|ok|okay|fine)|(?:what|which) version (?:are you|is this|of jarvis)|what (?:skills|tools|abilities) do you have|(?:your|jarvis'?s?) (?:skills|tools|abilities|capabilities|version|settings|config\w*|logs?)|(?:list|show)(?: me)?(?: all)?(?: of)? (?:your|the) (?:skills?|tools)|(?:give|tell|show) me (?:your|the) (?:skill|tool|ability) ?(?:list|set|sets)|(?:your|the) (?:skill|tool) ?(?:list|set)|what version are you|errors? log|(?:recent|last|latest) errors?|what went wrong|is (?:everything|anything) (?:working|broken|ok(?:ay)?))\b/i;
 const DATES = /\b(days? (?:between|until|since|from)|how many (?:days|weeks|months)|what day|weekday|date|what time|time is it|the time|time\?|today)\b|^time\b/i;
 const EXPLAIN = /\b(explain|why|how does|how do|compare|difference between|analy[sz]e|design|plan|strategy|summari[sz]e|essay|write)\b/i;
 const THINK = /\b(prove|proof|derive|derivation|show that|step by step|puzzle|riddle|logic|paradox|optimi[sz]e|trade-?offs?|catch up|how far|how long until|word problem)\b/i;
@@ -17,21 +17,30 @@ const LIVE = /\b(weather|forecast|rain|snow|wind|humidity|alerts?|warnings?|advi
 const FACT = /^(?:who|what|when|where|why|which|how (?:does|do|did|many|much|big|old|tall|long|far|fast|heavy|large)|tell me (?:about|more about|who|what|where|when|why)|whose|(?:please |can you |could you )?(?:search|look|google|find out|check)\b|explain|define|describe|is there|are there|did|does)\b|\b(read|article|section)\b/i;
 // Asking JARVIS to do something on the PC or to the media: needs tools even when short. Without them the
 // quick-chat model "did" things it could not do ("Chrome volume is now at 90%" with no tool call).
-const ACTION = /\b(resume|unpause|skip|replay|rewind|mute|unmute|louder|quieter|lower|raise|turn (?:it |the \w+ )?(?:up|down|off|on)|put on|shuffle|repeat|queue|add|save|undo|playlists?|tracks?|albums?|songs?|liked songs|media|chrome|youtube|spotify|open|launch|close|stop)\b|^(?:please|try)\b|^(?:can|could|would|will) you (?!tell me a joke)/i;
+const ACTION = /\b(resume|unpause|skip|replay|rewind|mute|unmute|louder|quieter|lower|raise|turn (?:it |the \w+ )?(?:up|down|off|on)|put on|shuffle|repeat|queue|add|save|undo|playlists?|tracks?|albums?|songs?|liked songs|media|chrome|youtube|spotify|open|launch|close|stop)\b|\b(?:remind(?:er)?s?|alarms?|timers?|schedule|snooze|cancel|download|install|search|screenshots?|calculate)\b|^(?:please|try)\b|^(?:can|could|would|will) you (?!tell me a joke|(?:hear|help|see|understand) me\W*$|help me with (?:something|a question|a thing)\W*$)/i;
+// A statement, not a request: no question mark and nothing that asks for a tool. Short or long, it is quick chat
+// ("I'm feeling tired today", "Hey Jarvis, I was just wondering how your day is going ...").
+const STATEMENT = /^(?:hey|hi|hello|yo|good (?:morning|evening|afternoon|night)|i['’]?m|i am|i feel|i['’]?ve|i was|i have been|that['’]?s|this is|it['’]?s been|what a)\b/i;
+const STEPS = /\b(?:and then|then|after that|afterwards|and also|also|and)\b/gi;
 
+// depth: 0 = chat, 1 = a task or a lookup (tools, no thinking), 2 = reasoning (thinking on). steps = how many things the request asks for.
 function route(text, { source = 'text' } = {}) {
   const t = String(text || '').trim();
   const words = t.split(/\s+/).filter(Boolean).length;
   const asked = ASK_THINK.test(t);
   const technical = MATH.test(t) || MUSIC_STATS.test(t) || SCIENCE.test(t) || UNITS.test(t) || CODE.test(t) || SYSTEM.test(t) || SELF.test(t) || DATES.test(t) || ACTION.test(t);
   const knowledge = LIVE.test(t) || (!CHAT.test(t) && FACT.test(t));
+  // a statement with no task in it is chat even when a stray word ("today") or its length looks technical
+  const strong = MATH.test(t) || MUSIC_STATS.test(t) || SCIENCE.test(t) || UNITS.test(t) || CODE.test(t) || SYSTEM.test(t) || SELF.test(t) || LIVE.test(t) || ACTION.test(t);
+  if (!asked && STATEMENT.test(t) && !strong && !EXPLAIN.test(t) && !FACT.test(t) && !t.includes('?') && words <= 60) return { tier: 'fast', think: false, tools: false, depth: 0, steps: 0, reason: 'chat' };
   const heavy = technical || knowledge || EXPLAIN.test(t) || words > 25 || (t.match(/\?/g) || []).length > 1;
   // quick chat: no tools and a short prompt — answers start in well under a second
-  if (!heavy && !asked && (CHAT.test(t) || words <= 12)) return { tier: 'fast', think: false, tools: false, reason: 'chat' };
+  if (!heavy && !asked && (CHAT.test(t) || words <= 12)) return { tier: 'fast', think: false, tools: false, depth: 0, steps: 0, reason: 'chat' };
   // reasoning: proofs/derivations/multi-step word problems; long multi-part asks
   const reasoning = THINK.test(t) || (words > 30 && (MATH.test(t) || SCIENCE.test(t)));
   const think = asked || (source !== 'voice' && reasoning);
-  return { tier: 'deep', tools: true, think, reason: asked ? 'asked to think' : reasoning ? 'reasoning' : knowledge ? 'knowledge' : technical ? 'technical' : 'long' };
+  const steps = Math.min(4, 1 + (t.match(STEPS) || []).length);
+  return { tier: 'deep', tools: true, think, depth: think ? 2 : 1, steps, reason: asked ? 'asked to think' : reasoning ? 'reasoning' : knowledge ? 'knowledge' : technical ? 'technical' : 'long' };
 }
 
 module.exports = { route, MATH, SCIENCE, UNITS, DATES, FACT, SELF };
