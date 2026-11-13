@@ -66,10 +66,12 @@ const DEFAULTS = Object.freeze({
   speech: Object.freeze({ dialect: 'british-formal', contractions: true, pauses: true, dateOrder: 'mdy' }),
   // the offline library (Kiwix/ZIM store): an absolute folder, default where scripts/install-library.ps1 puts it
   library: Object.freeze({ dir: 'C:\\JarvisData\\library' }),
+  // live state: windowTitle puts the title of the window in front into the live picture (it can hold private text; never sent on any stream or into the prompt)
+  livestate: Object.freeze({ windowTitle: false }),
 });
 
 const VADS = ['silero', 'energy'];
-const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive', 'pc', 'browser', 'memory', 'cortex', 'speech', 'library'];
+const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive', 'pc', 'browser', 'memory', 'cortex', 'speech', 'library', 'livestate'];
 const MODEL_NAME = /^[\w.:-]{1,64}$/;   // an Ollama model tag, e.g. nomic-embed-text:latest
 const HHMM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;   // "22:00"
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);

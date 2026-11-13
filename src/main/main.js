@@ -52,6 +52,8 @@ const { createTaskTools } = require('../core/tools/tasks');
 const { createOrchestrator } = require('../core/orchestrator');
 const { createLiveState, liveLine } = require('../core/livestate');
 const { timersSource } = require('../core/livestate/sources');
+const livePersist = require('../core/livestate/persist');
+const { createActiveWindow } = require('../core/livestate/active-window');
 const { createPolicy } = require('../core/net/policy');
 const { createFetcher } = require('../core/net/fetcher');
 const { createPublicFetch } = require('../core/net/public-fetch');
@@ -326,7 +328,9 @@ const liveInstant = async (text, o = {}) => {
 const tasksFast = async (text, o) => { if (!ctx.tasksSkill) return null; try { return await ctx.tasksSkill.handle(text, o); } catch (err) { ctx.log('task skill failed:', err?.message || err); return null; } };
 // LiveState: what is happening right now, for the prompt and for follow-ups ("again", "undo that"). A missing service just omits its source.
 let lastMedia = null;   // { st, at } from the media state promptInfo already fetches
-ctx.live = createLiveState({ bus: ctx.bus, log: ctx.log });
+ctx.live = createLiveState({ bus: ctx.bus, log: ctx.log, restore: livePersist.load(DATA_DIR), save: snap => livePersist.save(DATA_DIR, snap) });
+const activeWindow = createActiveWindow({ host: ctx.pcHost, includeTitle: () => ctx.getConfig().livestate?.windowTitle === true });
+ctx.live.register(activeWindow.name, activeWindow.read);
 ctx.live.register('media', () => (lastMedia && Date.now() - lastMedia.at <= 60000 && Array.isArray(lastMedia.st?.sessions) ? { playing: lastMedia.st.sessions.some(s => s.status === 'playing') } : null));
 ctx.live.register('timers', timersSource({ list: () => ctx.scheduler?.list?.() || [] }));
 ctx.live.register('confirm', () => { const a = ctx.confirm?.pending?.(); if (!a?.summary) return null; const group = a.tool ? ctx.catalog?.groupOf?.(a.tool) : null; return group ? { summary: a.summary, group } : { summary: a.summary }; });   // pending() exposes no age, so no ageMs; group: the skill area of the waiting tool, when known
@@ -499,7 +503,7 @@ ctx.memwatch = createMemWatch({
 });
 ctx.memwatch.start();
 ctx.metrics.start();
-ctx.onQuit = [() => ctx.memwatch.stop(), () => ctx.metrics.close(), () => ctx.monitors.stop(), () => ctx.proactive.stop(), () => ctx.scheduler.stop(), () => ctx.pcHostProc.close(), () => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close(), () => ctx.memorySystem.close(), () => ctx.live.close()];
+ctx.onQuit = [() => ctx.memwatch.stop(), () => ctx.metrics.close(), () => ctx.monitors.stop(), () => ctx.proactive.stop(), () => ctx.scheduler.stop(), () => ctx.pcHostProc.close(), () => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close(), () => ctx.memorySystem.close(), () => ctx.live.close(), () => livePersist.flush()];
 
 app.on('web-contents-created', (_e, wc) => guardWebContents(wc));
 app.on('second-instance', () => ctx.windows?.showChat());

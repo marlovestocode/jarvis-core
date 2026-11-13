@@ -8,6 +8,9 @@
 //    badArgs or skipped set are not stored. A model-failure entry
 //    is { name, t } and nothing else.
 //  - Tool ring is bounded (MAX_TOOLS) and entries expire after TOOL_TTL_MS.
+//  - Optional restore (a snapshot loaded from disk) seeds tools, models, route and turn on boot, re-pruned by the
+//    same TTLs; optional save(meta) is called after each state change with the metadata-only picture. Both are
+//    best effort: a throwing hook or a malformed restore is ignored.
 //  - snapshot() is synchronous, returns a fresh plain object each call and
 //    never throws; a failing source is skipped (logged once per source).
 const TOOL_TTL_MS = 10 * 60 * 1000;
@@ -18,7 +21,7 @@ function isPlainObject(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
-function createLiveState({ bus, now = Date.now, log = () => {} } = {}) {
+function createLiveState({ bus, now = Date.now, log = () => {}, restore = null, save = null } = {}) {
   let voice = null;
   let route = null;
   let turn = null;
@@ -34,8 +37,35 @@ function createLiveState({ bus, now = Date.now, log = () => {} } = {}) {
     if (models.length > MAX_MODELS) models = models.slice(models.length - MAX_MODELS);
   }
 
+  function meta(t) {
+    return { t, voice, tools: tools.map((x) => ({ ...x })), models: models.map((x) => ({ ...x })), route: route ? { ...route } : null, turn: turn ? { ...turn } : null };
+  }
+
+  function persistNow() {
+    if (typeof save !== 'function') return;
+    try { save(meta(now())); } catch { /* persistence is best effort */ }
+  }
+
+  // metadata only, rebuilt field by field; the old voice state is not restored (nothing is speaking after a restart)
+  function restoreFrom(r) {
+    if (!isPlainObject(r)) return;
+    const t = now();
+    const okT = (x) => isPlainObject(x) && typeof x.t === 'number' && Number.isFinite(x.t) && x.t <= t;
+    if (Array.isArray(r.tools)) tools = r.tools.filter(okT).map((x) => ({ name: typeof x.name === 'string' ? x.name : '', ok: x.ok === true, soft: x.soft === true, t: x.t }));
+    if (Array.isArray(r.models)) models = r.models.filter((x) => okT(x) && typeof x.name === 'string' && x.name).map((x) => ({ name: x.name, t: x.t }));
+    if (isPlainObject(r.route)) route = { tier: r.route.tier ?? null, model: r.route.model ?? null, reason: r.route.reason ?? null };
+    if (isPlainObject(r.turn)) turn = { ms: typeof r.turn.ms === 'number' ? r.turn.ms : null };
+    prune(t);
+  }
+  try { restoreFrom(restore); } catch { tools = []; models = []; }
+
   function onEvent(ev) {
     if (!ev || typeof ev !== 'object') return;
+    onEventInner(ev);
+    if (['state', 'route', 'turn', 'tool', 'modelfail'].includes(ev.type)) persistNow();
+  }
+
+  function onEventInner(ev) {
     switch (ev.type) {
       case 'state':
         voice = typeof ev.state === 'string' ? ev.state : null;
