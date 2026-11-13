@@ -7,6 +7,7 @@ const { createVad } = require('./vad');
 const { createTrace } = require('./trace');
 const { isYes } = require('../brain/guard');
 const { speakable, createSentenceSplitter } = require('./speech-text');
+const { resolve: resolveDialect } = require('./dialect');
 
 const SPEAKING_GAIN = 3; // speaker echo is mostly under the ×3 threshold, so Whisper is not run on it
 const MAX_BUFFER_MS = 31000;
@@ -365,7 +366,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     let stream = null, offTok = null, splitter = null;
     const offTrace = bus.on('token', () => { if (my === turn) trace.mark('first_token'); });  // timing only; works for non-streaming TTS too
     const feedText = s => {
-      const t = speakable(s);
+      const t = speakable(s, { dialect: resolveDialect(getConfig().speech) });
       if (!t || my !== turn) return;
       if (!stream) {
         op = new AbortController();

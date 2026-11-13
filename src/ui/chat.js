@@ -65,7 +65,13 @@
     return el('div', 'lookup-note', 'Looked up: ' + [...new Set(labels)].join(' · '));
   }
 
+  // Follow new text only while the reader is at the bottom (or just switched chats), so scrolling up to read stays put
+  let shownId = null;
+  const nearBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+
   function drawLog() {
+    const stick = shownId !== (session?.id ?? null) || nearBottom(), keep = log.scrollTop;
+    shownId = session?.id ?? null;
     log.replaceChildren();
     const msgs = session?.messages || [];
     if (!msgs.length && !live) log.appendChild(el('div', 'empty-log', 'READY. TYPE OR PRESS THE MIC.'));
@@ -98,22 +104,26 @@
       log.appendChild(box);
     });
     if (live) {
-      for (const name of liveTools) log.appendChild(el('div', 'msg tool', `⚙ ${name}`));   // tools called so far this turn, above the reply
+      // tools called so far this turn, above the reply; the ones already saved in the chat are drawn above, so skip those
+      const lastUser = msgs.map(m => m.role).lastIndexOf('user');
+      const saved = msgs.slice(lastUser + 1).filter(m => m.role === 'tool').length;
+      for (const name of liveTools.slice(saved)) log.appendChild(el('div', 'msg tool', `⚙ ${name}`));
       live.el = el('div', 'msg assistant live');
       live.el.appendChild(md(live.text));
       if (lookupEvents.length) live.el.appendChild(lookupNote(lookupEvents));
       log.appendChild(live.el);
     }
-    log.scrollTop = log.scrollHeight;
+    log.scrollTop = stick ? log.scrollHeight : keep;
   }
 
   function drawLive() {
     renderQueued = false;
     if (!live) return;
     if (!live.el || !live.el.isConnected) { drawLog(); return; }
+    const stick = nearBottom();
     live.el.replaceChildren(md(live.text));
     if (lookupEvents.length) live.el.appendChild(lookupNote(lookupEvents));
-    log.scrollTop = log.scrollHeight;
+    if (stick) log.scrollTop = log.scrollHeight;
   }
 
   async function reload() {

@@ -47,10 +47,20 @@
       <label class="row"><span>Do not disturb</span><input type="checkbox" id="dnd"></label>
       <label class="row"><span>Quiet hours</span><span><input type="time" id="quietStart"> to <input type="time" id="quietEnd"></span></label>
       <p class="hint">During quiet hours or Do not disturb, JARVIS only shows a notification.</p>
+      <p class="hint"><b>Heads-ups (off by default)</b></p>
+      <label class="row"><span>Timers coming up</span><span><input type="checkbox" id="monTimers"> <input type="number" id="monLead" min="1" max="120" step="1"> minutes ahead</span></label>
+      <label class="row"><span>High CPU, RAM, disk or temperature</span><input type="checkbox" id="monSys"></label>
+      <label class="row"><span>CPU limit</span><span><input type="number" id="monCpu" min="1" max="100" step="1"> %</span></label>
+      <label class="row"><span>RAM limit</span><span><input type="number" id="monRam" min="1" max="100" step="1"> %</span></label>
+      <label class="row"><span>Disk limit</span><span><input type="number" id="monDisk" min="1" max="100" step="1"> %</span></label>
+      <label class="row"><span>Temperature limit</span><span><input type="number" id="monTemp" min="30" max="110" step="1"> °C</span></label>
+      <p class="hint">JARVIS only speaks these when idle, and never during quiet hours or Do not disturb.</p>
       <label class="row"><span>Whisper on the GPU</span><input type="checkbox" id="sttGpu"></label>
       <p class="hint">GPU Whisper takes effect after restarting JARVIS.</p>
       <label class="row"><span>Microphone</span><select id="mic"></select></label>
       <p class="hint" id="micDetail"></p>
+      <label class="row"><span>How he talks</span><select id="dialect"></select></label>
+      <label class="row"><span>Contractions (it's, can't)</span><input type="checkbox" id="contractions"></label>
       <label class="row"><span>Voice rate <b id="rateVal"></b></span><input type="range" id="rate" min="0.5" max="2" step="0.05"></label>
     </section>
     <section id="knowledge">

@@ -3,7 +3,8 @@ const assert = require('node:assert/strict');
 const { systemPrompt, nowLine } = require('../src/core/brain/prompt');
 const { route } = require('../src/core/brain/router');
 
-const TOOLS = ['calculate', 'convert_units', 'jarvis_status', 'get_time'];
+const { realTools } = require('./helpers/tool-deps');
+const TOOLS = realTools(['calculate', 'convert_units', 'jarvis_status', 'get_time']);
 
 test('prompt: identity, date, tool guidance, no LaTeX, hardware facts', () => {
   const p = systemPrompt({ source: 'text', now: new Date('2026-11-09T19:00:00'), tools: TOOLS, model: 'jarvis-worker:latest',
@@ -84,7 +85,7 @@ test('router: live data, world facts and follow-ups use the main model with tool
 
 test('prompt: lookup rules only when registered; local inference and lookup privacy are accurate', () => {
   const names = ['get_weather', 'weather_alerts', 'news_headlines', 'sports_scores', 'lookup_knowledge', 'read_article'];
-  const p = systemPrompt({ tools: names });
+  const p = systemPrompt({ tools: realTools(names) });
   for (const name of names) assert.match(p, new RegExp(name));
   assert.match(p, /fetched text.*data.*not instructions/i);
   assert.match(p, /source and age/i);

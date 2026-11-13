@@ -2,10 +2,12 @@
 const { feedUrl, SOURCES } = require('./net/policy');
 const { LEAGUES } = require('./knowledge/sports');
 const { HHMM } = require('./config');
+const { cleanMonitors, patchMonitors, clampNumber } = require('./proactive/monitor-config');
+const DIALECTS = require('./voice/dialect').list().map(d => d.id);
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 function applyPatch(current, patch = {}, { providers, engines }) {
-  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama }, online: { ...current.online }, location: { ...current.location }, news: { feeds: [...current.news.feeds] }, sports: { follow: current.sports.follow.map(x => ({ ...x })) }, music: { ...current.music, aliases: (current.music?.aliases || []).map(x => ({ ...x })) }, proactive: { ...current.proactive }, browser: { ...current.browser }, user: { ...current.user }, memory: { ...current.memory }, cortex: { ...current.cortex } };
+  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama }, online: { ...current.online }, location: { ...current.location }, news: { feeds: [...current.news.feeds] }, sports: { follow: current.sports.follow.map(x => ({ ...x })) }, music: { ...current.music, aliases: (current.music?.aliases || []).map(x => ({ ...x })) }, proactive: { ...current.proactive, monitors: cleanMonitors(current.proactive?.monitors) }, browser: { ...current.browser }, user: { ...current.user }, memory: { ...current.memory }, cortex: { ...current.cortex }, speech: { ...current.speech } };
   const errors = [];
   if (!isObj(patch)) return { config, errors: ['bad patch'] };
 
@@ -102,6 +104,17 @@ function applyPatch(current, patch = {}, { providers, engines }) {
       if (Number.isFinite(n)) config.proactive.minGapSec = Math.round(Math.max(3, Math.min(120, n)));
       else errors.push('Bad gap between spoken alerts');
     }
+    for (const [k, min, max, label] of [['cooldownMin', 1, 240, 'alert cooldown'], ['maxPerHour', 1, 60, 'alerts per hour']]) {
+      if (!(k in p)) continue;
+      const n = Number(p[k]);
+      if (Number.isFinite(n)) config.proactive[k] = clampNumber(n, min, max);
+      else errors.push(`Bad ${label}`);
+    }
+    if ('monitors' in p) {
+      const r = patchMonitors(config.proactive.monitors, p.monitors);
+      config.proactive.monitors = r.monitors;
+      errors.push(...r.errors);
+    }
   }
   if (isObj(patch.user)) {
     for (const [k, max] of [['name', 60], ['about', 500]]) {
@@ -127,6 +140,12 @@ function applyPatch(current, patch = {}, { providers, engines }) {
     const r = Number(patch.voiceRate);
     if (Number.isFinite(r)) config.voiceRate = Math.round(Math.max(0.5, Math.min(2, r)) * 100) / 100;
     else errors.push('Bad voice rate');
+  }
+  if (isObj(patch.speech)) {
+    const sp = patch.speech;
+    if ('dialect' in sp) { if (DIALECTS.includes(sp.dialect)) config.speech.dialect = sp.dialect; else errors.push(`Unknown dialect: ${String(sp.dialect).slice(0, 30)}`); }
+    for (const k of ['contractions', 'pauses']) if (k in sp) { if (typeof sp[k] === 'boolean') config.speech[k] = sp[k]; else errors.push(`Bad speech switch: ${k}`); }
+    if ('dateOrder' in sp) { if (sp.dateOrder === 'mdy' || sp.dateOrder === 'dmy') config.speech.dateOrder = sp.dateOrder; else errors.push('Date order must be mdy or dmy'); }
   }
   if (isObj(patch.hotkeys)) {
     const next = { ...config.hotkeys };
@@ -169,7 +188,7 @@ async function describe({ config, providers, engines, hotkeyFailures = [], statu
       new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('No answer')), statusTimeoutMs); }),
     ]); } catch { models = []; } finally { clearTimeout(timer); }
   }
-  return { config, providers: p, engines: { stt, tts, wake }, models, hotkeyFailures: [...hotkeyFailures], library };
+  return { config, providers: p, engines: { stt, tts, wake }, models, hotkeyFailures: [...hotkeyFailures], library, dialects: require('./voice/dialect').list() };
 }
 
 module.exports = { applyPatch, describe, statusSafe };

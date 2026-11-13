@@ -32,7 +32,7 @@ test('splitter: a long run without a full stop is cut at a comma so speech start
 
 test('articulation: times, dates, money, ranges, abbreviations, acronyms, pauses', () => {
   const { speakable } = require('../src/core/voice/speech-text');
-  assert.equal(speakable('Meeting at 3:05 PM, or 15:00, or 9am.'), 'Meeting at 3 oh 5 P M, or 15 hundred, or 9 A M.');
+  assert.equal(speakable('Meeting at 3:05 PM, or 15:00, or 9am.'), 'Meeting at 3 oh 5 P M, or fifteen hundred, or 9 A M.');
   assert.equal(speakable('Released 2026-11-10 for $5.99, not $1.5 million.'), 'Released November 10, twenty twenty-six for 5 dollars 99 cents, not 1.5 million dollars.');
   assert.equal(speakable('Takes 10-20 ms on the GPU (about 4 GB); e.g. Chrome vs. Edge — fine.'),
     'Takes 10 to 20 milliseconds on the G P U, about 4 gigabytes. for example Chrome versus Edge, fine.');
@@ -60,4 +60,45 @@ test('years are read as years, slang is lifted to a formal register, and numbers
   assert.equal(speakable('You have 2026 files and 1500 meters. By 1500 meters it ends.'), 'You have 2026 files and 1500 meters. By 1500 meters it ends.');
   assert.equal(humanize('Yeah, okay, I am gonna do it. Nope.'), "Yes, very well, I'm going to do it. No.");
   assert.equal(humanize('Awesome, no worries.'), 'Excellent, not at all.');
+});
+
+// ---- Phase 5: dialect and number style ----
+const { resolve: dialectOf } = require('../src/core/voice/dialect');
+const say = (t, speech) => speakable(t, { dialect: dialectOf(speech) });
+
+test('speech: big numbers, ordinals and glued units are read as a person says them', () => {
+  assert.equal(say('It cost 1,234,567 dollars.'), 'It cost one million two hundred and thirty-four thousand five hundred and sixty-seven dollars.');
+  assert.equal(say('About 2,500 files.', { dialect: 'neutral' }), 'About two thousand five hundred files.', 'no British "and" in the neutral dialect');
+  assert.equal(say('The 3rd, the 21st and the 12th.'), 'The third, the twenty-first and the twelfth.');
+  assert.equal(say('It is 5km away and uses 2.5GB in 30ms.'), 'It is 5 kilometers away and uses 2.5 gigabytes in 30 milliseconds.');
+  assert.equal(say('Only 1 km and 1 hr left.'), 'Only 1 kilometer and 1 hour left.');
+  assert.equal(say('Version 1,5 and 12,34 stay.'), 'Version 1,5 and 12,34 stay.', 'not a thousands group');
+  assert.equal(say('That is 1,234.5 metres.'), 'That is 1,234.5 metres.', 'decimals are left to the voice');
+});
+
+test('speech: 24-hour times are spoken as words, 12-hour ones as before', () => {
+  assert.equal(say('At 14:30 and 09:05 pm and 15:00 and 7:45.'), 'At fourteen thirty and 9 oh 5 P M and fifteen hundred and 7 45.');
+  assert.equal(say('Back at 18:07.'), 'Back at eighteen oh seven.');
+});
+
+test('speech: date order follows the setting, month first by default', () => {
+  assert.equal(say('On 2026-11-12.'), 'On November 12, twenty twenty-six.');
+  assert.equal(say('On 2026-11-12.', { dateOrder: 'dmy' }), 'On 12 November twenty twenty-six.');
+});
+
+test('speech: the dialect decides the register; formal rewrites casual words, neutral and casual leave them', () => {
+  assert.equal(say('Yeah, okay. Gonna do it.'), 'Yes, very well. Going to do it.');
+  assert.equal(say('Yeah, okay. Gonna do it.', { dialect: 'casual' }), "Yeah, okay. Gonna do it.");
+  assert.equal(say('Okay, I am on it.', { dialect: 'neutral' }), "Okay, I'm on it.");
+  assert.equal(say('I am sure it is not here.', { contractions: false }), 'I am sure it is not here.');
+  assert.equal(say('I am sure it is not here.'), "I'm sure it isn't here.");
+  assert.equal(say('Yeah.', { dialect: 'does-not-exist' }), 'Yes.', 'an unknown dialect falls back to the default');
+});
+
+test('speech: a long sentence gets a breath before its first joining word, a number never does, and it can be turned off', () => {
+  const long = 'The meeting with the design team was moved to Thursday afternoon and the room is now on the second floor near the lifts.';
+  assert.match(say(long), /Thursday afternoon, and the room/);
+  assert.equal(say(long, { pauses: false }), long);
+  assert.doesNotMatch(say('It costs 1,234,567 dollars on the third of March and it is on sale for the whole week.'), /five hundred, and sixty/);
+  assert.equal(say('Short and sweet.'), 'Short and sweet.');
 });

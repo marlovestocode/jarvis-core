@@ -49,8 +49,15 @@
     $('dnd').checked = !!c.proactive.dnd;
     $('quietStart').value = c.proactive.quietStart;
     $('quietEnd').value = c.proactive.quietEnd;
+    const mon = c.proactive.monitors || {};
+    const mt = mon.timersSoon || {}, ms = mon.sysmon || {};
+    $('monTimers').checked = !!mt.enabled;
+    $('monSys').checked = !!ms.enabled;
+    for (const [id, v] of [['monLead', mt.leadMin], ['monCpu', ms.cpu], ['monRam', ms.ram], ['monDisk', ms.disk], ['monTemp', ms.temp]]) if (document.activeElement !== $(id) && v != null) $(id).value = v;
     $('startAtLogin').checked = !!c.startAtLogin;
     if (c.memory) { $('memAuto').checked = !!c.memory.autoCapture; $('memChats').checked = !!c.memory.usePastChats; }
+    if (d.dialects) { const sel = $('dialect'); if (sel.options.length !== d.dialects.length) { sel.textContent = ''; for (const x of d.dialects) { const o = document.createElement('option'); o.value = x.id; o.textContent = x.label; sel.append(o); } } sel.value = c.speech.dialect; }
+    $('contractions').checked = c.speech.contractions !== false;
     $('rate').value = c.voiceRate;
     $('rateVal').textContent = Number(c.voiceRate).toFixed(2) + '×';
     $('hkChat').value = c.hotkeys.chat;
@@ -186,6 +193,10 @@
   $('dnd').addEventListener('change', e => save({ proactive: { dnd: e.target.checked } }));
   $('quietStart').addEventListener('change', e => save({ proactive: { quietStart: e.target.value } }));
   $('quietEnd').addEventListener('change', e => save({ proactive: { quietEnd: e.target.value } }));
+  $('monTimers').addEventListener('change', e => save({ proactive: { monitors: { timersSoon: { enabled: e.target.checked } } } }));
+  $('monLead').addEventListener('change', async e => { if (e.target.value === '') { e.target.blur(); render(await S.get()); return; } save({ proactive: { monitors: { timersSoon: { leadMin: Number(e.target.value) } } } }); });
+  $('monSys').addEventListener('change', e => save({ proactive: { monitors: { sysmon: { enabled: e.target.checked } } } }));
+  for (const [id, f] of [['monCpu', 'cpu'], ['monRam', 'ram'], ['monDisk', 'disk'], ['monTemp', 'temp']]) $(id).addEventListener('change', async e => { if (e.target.value === '') { e.target.blur(); render(await S.get()); return; } save({ proactive: { monitors: { sysmon: { [f]: Number(e.target.value) } } } }); });
   function showVoice(v, msg) {
     $('voiceState').textContent = v.available ? (v.enrolled ? 'Your voice: enrolled' : 'Your voice: not enrolled') : 'Your voice: model missing';
     $('voiceEnroll').textContent = v.enrolled ? 'Re-enroll' : 'Enroll';
@@ -202,6 +213,8 @@
   $('voiceClear').addEventListener('click', async () => showVoice(await S.speakerClear(), 'Voice print removed.'));
   $('mic').addEventListener('change', e => save({ micDeviceId: e.target.value || null }));
   $('rate').addEventListener('input', e => { $('rateVal').textContent = Number(e.target.value).toFixed(2) + '×'; });
+  $('dialect').addEventListener('change', e => save({ speech: { dialect: e.target.value } }));
+  $('contractions').addEventListener('change', e => save({ speech: { contractions: e.target.checked } }));
   $('rate').addEventListener('change', e => save({ voiceRate: Number(e.target.value) }));
   for (const [key, id] of Object.entries({ enabled: 'onlineEnabled', weather: 'onlineWeather', news: 'onlineNews', sports: 'onlineSports', wiki: 'onlineWiki', web: 'onlineWeb' })) $(id).addEventListener('change', e => save({ online: { [key]: e.target.checked } }));
   $('units').addEventListener('change', e => save({ location: { units: e.target.value } }));
