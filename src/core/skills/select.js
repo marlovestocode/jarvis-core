@@ -77,7 +77,7 @@ function selectGroups(text, { lastGroups = [] } = {}, catalog) {
 // limits the answer to the group ids plus 'ask' and 'decline', and ask / decline are spoken from fixed text, never from the model.
 // Any failure (no constrain, a throw, an abort, a bad answer, a call over the budget) returns the rule result unchanged.
 // selectWithModel(text, { provider, catalog, picked?, lastGroups?, signal?, hints?, budgetMs? }) -> { action: 'act' | 'ask' | 'decline', groups, question? }
-const BUDGET_MS = 4000;
+const { BUDGET_MS, callConstrain } = require('./intent');
 const ASK_TEXT = 'Could you tell me a bit more about what you would like me to do?';
 const DECLINE_TEXT = "I'm afraid I don't have a tool for that.";
 
@@ -88,31 +88,24 @@ async function selectWithModel(text, { provider, catalog, picked, lastGroups = [
   try {
     const hit = require('./clarify').clarify(text, { lastGroups });   // the hand-written rules answer first, with no model call
     if (hit) return { action: hit.kind, groups: rule, question: hit.reply };
-    if (!provider?.constrain || signal?.aborted) return fallback;
     const areas = catalog.groups.filter(g => g.id !== 'core');
     const choices = [...areas.map(g => g.id), 'ask', 'decline'];
     const list = areas.map(g => `- ${g.id}: ${g.label}`).join('\n');
-    const ac = new AbortController();
-    const onAbort = () => ac.abort();
-    signal?.addEventListener('abort', onAbort, { once: true });
-    let timer;
-    try {
-      const out = await Promise.race([
-        provider.constrain({
-          messages: [{ role: 'user', content: `Which skill area handles this request? Answer "ask" if it is too vague to act on, or "decline" if none of the areas can do it.\n${list}\nRequest: ${String(text).slice(0, 300)}` }],
-          schema: { type: 'object', properties: { choice: { type: 'string', enum: choices } }, required: ['choice'], additionalProperties: false },
-          signal: ac.signal, hints,
-        }),
-        new Promise((_, rej) => { timer = setTimeout(() => { ac.abort(); rej(new Error('over budget')); }, budgetMs); }),
-      ]);
-      const choice = out && typeof out === 'object' && typeof out.choice === 'string' ? out.choice : null;
-      if (!choice || !choices.includes(choice)) return fallback;
-      if (choice === 'ask') return { action: 'ask', groups: rule, question: ASK_TEXT };
-      if (choice === 'decline') return { action: 'decline', groups: rule, question: DECLINE_TEXT };
-      const groups = ['core', choice];
-      Object.defineProperty(groups, 'confidence', { value: 'medium', enumerable: false });
-      return { action: 'act', groups };
-    } finally { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); }
+    // the budget, abort and timer handling is shared with the intent interpreter (intent.js callConstrain)
+    const call = await callConstrain(provider, {
+      messages: [{ role: 'user', content: `Which skill area handles this request? Answer "ask" if it is too vague to act on, or "decline" if none of the areas can do it.\n${list}\nRequest: ${String(text).slice(0, 300)}` }],
+      schema: { type: 'object', properties: { choice: { type: 'string', enum: choices } }, required: ['choice'], additionalProperties: false },
+      hints,
+    }, { budgetMs, signal });
+    if (call.status !== 'ok') return fallback;
+    const out = call.out;
+    const choice = out && typeof out === 'object' && typeof out.choice === 'string' ? out.choice : null;
+    if (!choice || !choices.includes(choice)) return fallback;
+    if (choice === 'ask') return { action: 'ask', groups: rule, question: ASK_TEXT };
+    if (choice === 'decline') return { action: 'decline', groups: rule, question: DECLINE_TEXT };
+    const groups = ['core', choice];
+    Object.defineProperty(groups, 'confidence', { value: 'medium', enumerable: false });
+    return { action: 'act', groups };
   } catch { return fallback; }
 }
 
