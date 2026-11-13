@@ -35,7 +35,9 @@ const POLITE = /^(?:please\s+)?(?:(?:can|could|would|will)\s+you\b|please\b)/i;
 const asksFact = t => { const m = FACT.exec(t); return !!m && m[1] === undefined; };
 function looksUnsure(text, lastGroups) {
   const t = String(text || '').trim();
-  const question = !POLITE.test(t) && (/\?\s*$/.test(t) || asksFact(t));
+  // polite head: the '?' is courtesy, but what follows can still be a question ("can you explain how to delete...")
+  const rest = t.replace(POLITE, '').trim();
+  const question = rest !== t ? asksFact(rest) : /\?\s*$/.test(t) || asksFact(t);
   return question || NOT_CLAIM.test(t) || QUOTED.test(t) || !!clarify(t, { lastGroups });
 }
 
@@ -159,8 +161,8 @@ async function resolveSelection({ text, rule, history, lastGroups = [], hint, li
       decision.finalGroups = [...groups];
       return { action: 'act', groups, source: sameSet(groups, ruleGroups) ? 'rule' : 'model', intent, decision };
     }
-    // the model was unsure and named nothing: a rule pick that changes things asks rather than acts
-    if (intent.confidence < ACT_MIN && ruleGroups.some(id => id !== 'core' && RISKY.has(effectsOf(catalog, id)))) {
+    // the model named no area (and this is not confident chat): a rule pick that changes things asks rather than acts
+    if (ruleGroups.some(id => id !== 'core' && RISKY.has(effectsOf(catalog, id)))) {
       return { action: 'ask', groups: r, source: 'rule', ask: intent.ask || ASK_TEXT, intent, decision };
     }
     return asRule({ intent });

@@ -219,3 +219,18 @@ test('resolveSelection: a large catalog is shortlisted with the embed function',
   assert.match(prompt, /- g3 /);
   assert.ok(prompt.split('\n').filter(l => /^- g\d+ /.test(l)).length <= SHORTLIST);
 });
+
+test('fix: a polite head does not hide a question after it', async () => {
+  const p = fakeP(async () => ({ kind: 'chat', groups: [], confidence: 0.9 }));
+  await run('can you explain how to delete old files?', { provider: p });
+  assert.equal(p.constrained.length, 1);
+  const q = never();
+  await run('can you pause the music?', { provider: q });
+  assert.equal(q.constrained.length, 0);
+});
+
+test('fix: a confident non-chat reading with no groups on a risky rule pick asks', async () => {
+  const r = await run('should I delete the old files?', { provider: fakeP(async () => ({ kind: 'new', groups: [], confidence: 0.9 })) });
+  assert.equal(r.action, 'ask');
+  assert.ok(r.ask.length > 5);
+});
