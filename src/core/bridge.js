@@ -50,7 +50,12 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
   }
   // Any page on localhost (or a sandboxed frame, which sends Origin: null) may read this stream, so the words of the
   // conversation never go out on it: the wallpaper draws a spark per token, not the text.
-  const publicEvent = ev => (ev.type === 'token' && 'text' in ev ? { ...ev, text: '' } : ev);
+  // A tool event keeps its name and phase; its label (and args) quote what the user asked for, so they stay on the bus for the chat window.
+  function publicEvent(ev) {
+    if (ev.type === 'token' && 'text' in ev) return { ...ev, text: '' };
+    if (ev.type === 'tool') { const { label, args, ...rest } = ev; return rest; }
+    return ev;
+  }
   function write(res, ev) {
     const out = publicEvent(ev);
     send(res, `event: ${out.type}\ndata: ${JSON.stringify(out)}\n\n`);

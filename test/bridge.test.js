@@ -79,6 +79,35 @@ test('stream delivers bus events as SSE, with current state and provider on conn
   await br.close();
 });
 
+test('public stream tool events carry no label or args text', async () => {
+  const { bus, br } = await boot();
+  const got = stream(br.port, evs => evs.filter(e => e.event === 'tool').length >= 2);
+  await new Promise(r => setTimeout(r, 50));
+  bus.emit('tool', { id: 't1', name: 'web_search', label: 'search “secret”', args: { q: 'secret' }, phase: 'start' });
+  bus.emit('tool', { id: 't1', name: 'web_search', phase: 'end', ok: true });
+  const { events } = await got;
+  const start = events.find(e => e.event === 'tool' && e.data.phase === 'start').data;
+  assert.equal(start.name, 'web_search');
+  assert.equal(start.phase, 'start');
+  assert.equal(start.id, 't1');
+  assert.ok(!('label' in start), 'no label on the public stream');
+  assert.ok(!('args' in start), 'no args on the public stream');
+  assert.ok(!JSON.stringify(events).includes('secret'));
+  await br.close();
+});
+
+test('chat window still receives the label', async () => {
+  const { bus, br } = await boot();
+  const seen = [];
+  bus.on('tool', ev => seen.push(ev)); // the chat window listens on the bus, not the public stream
+  const got = stream(br.port, evs => evs.some(e => e.event === 'tool'));
+  await new Promise(r => setTimeout(r, 50));
+  bus.emit('tool', { id: 't1', name: 'web_search', label: 'search “secret”', phase: 'start' });
+  await got;
+  assert.equal(seen[0].label, 'search “secret”');
+  await br.close();
+});
+
 test('level throttled: 100 emits in 100 ms → ≤ 4 delivered', async () => {
   const { bus, br } = await boot();
   const got = stream(br.port, evs => evs.some(e => e.event === 'wake'));
