@@ -16,13 +16,15 @@ const GOAL_MAX = 160;
 const oneLine = (v, max) => String(v ?? '').replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max).trim();
 
 // Entities come from what was asked (args) and what came back (result text); never from a model's own summary.
-function entitiesOf(args, text) {
+// Text from outside (a page, a file) is never mined for entities: it could plant a path or link the next turn would trust.
+function entitiesOf(args, text, fromText = true) {
   const out = [];
   const add = (kind, raw) => {
     const value = oneLine(raw, VALUE_MAX).replace(/[.,;:)\]]+$/, '');
     if (value && out.length < ENTITIES_MAX && !out.some(e => e.value === value)) out.push({ kind, value });
   };
   if (args && typeof args === 'object') for (const [k, kind] of Object.entries(ARG_KINDS)) if (typeof args[k] === 'string') add(kind, args[k]);
+  if (!fromText) return out;
   const t = String(text ?? '');
   for (const m of t.matchAll(/[A-Za-z]:\\[^\s"'<>|*?\r\n]+/g)) add(FILE_LIKE.test(m[0]) ? 'file' : 'path', m[0]);
   for (const m of t.matchAll(/https?:\/\/[^\s"'<>)\]]+/g)) add('url', m[0]);
@@ -48,7 +50,7 @@ function createWorkMem({ ttlMs = 15 * 60 * 1000, maxEntries = 20, maxSessions = 
   function record(id, { tool, args, text, ok, untrusted } = {}, { speaker = 'owner' } = {}) {
     if (speaker !== 'owner' || !tool) return null;   // a guest's or unsure speaker's results never enter the owner's memory
     const t = String(text ?? '');
-    const e = { id: 'r' + (++n), tool: String(tool), summary: oneLine((ok === false && !/^error/i.test(t) ? 'failed: ' : '') + t, SUMMARY_MAX), text: t.slice(0, textCap), entities: entitiesOf(args, t), untrusted: !!untrusted, at: now() };
+    const e = { id: 'r' + (++n), tool: oneLine(tool, 60), summary: oneLine((ok === false && !/^error/i.test(t) ? 'failed: ' : '') + t, SUMMARY_MAX), text: t.slice(0, textCap), entities: entitiesOf(args, t, !untrusted), untrusted: !!untrusted, at: now() };
     const s = get(id, true);
     s.entries.push(e);
     if (s.entries.length > maxEntries) s.entries.splice(0, s.entries.length - maxEntries);
@@ -64,7 +66,7 @@ function createWorkMem({ ttlMs = 15 * 60 * 1000, maxEntries = 20, maxSessions = 
 
   function resolve(id, text) {
     // "what time is it" is a question about the world, not a pointer at a result
-    if (!DEICTIC.test(String(text ?? '').replace(/\b(?:is|was|isn't|wasn't)\s+(?:it|that|this)\b/gi, ''))) return null;
+    if (!DEICTIC.test(String(text ?? '').replace(/\b(?:is|was|isn't|wasn't)\s+it\b/gi, ''))) return null;
     const ents = recent(id, maxEntries).flatMap(e => e.entities.map(x => ({ ...x, from: e.id })));
     const want = KIND_FOR.find(([re]) => re.test(text))?.[1];
     const hit = (want ? ents.find(x => want.includes(x.kind)) : null) || (want ? null : ents[0]);
@@ -92,7 +94,8 @@ function createWorkMem({ ttlMs = 15 * 60 * 1000, maxEntries = 20, maxSessions = 
     let used = 0;
     for (const e of es) {
       const ents = e.entities.slice(0, 2).map(x => `[${x.kind}: ${x.value}]`).join(' ');
-      const line = `${e.id} ${e.tool}: ${e.summary}${ents ? ' ' + ents : ''}${e.untrusted ? ' [untrusted content]' : ''}`;
+      // untrusted text never reaches the next turn at user-message authority: name and entities only, no summary
+      const line = e.untrusted ? `${e.id} ${e.tool}${ents ? ' ' + ents : ''} [untrusted content]` : `${e.id} ${e.tool}: ${e.summary}${ents ? ' ' + ents : ''}`;
       if (used + line.length + 1 > room) break;
       lines.push(line); used += line.length + 1;
     }

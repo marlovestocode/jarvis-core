@@ -599,7 +599,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           else if (res.ok && !/^error/i.test(String(res.text)) && !softFail(res.text) && res.verified !== false && !res.untrusted && call.name !== 'more_skills') okTools++;   // loading a skill is not an action
           s.messages.push({ role: 'tool', content: capText(res.text, 6000), toolCallId: call.id, name: call.name, label });
           // what the owner's tools touched, for "that file" later; a question to the user, a skill load and a lookup of tools are not results
-          if (workmem && owner && !preset && !res.badArgs && !String(res.text).startsWith(NEEDS_OK) && call.name !== 'more_skills' && call.name !== 'find_tools') {
+          if (workmem && owner && !preset && !res.skipped && !res.ledger && !res.badArgs && res.text !== 'Error: aborted' && !String(res.text).startsWith(NEEDS_OK) && call.name !== 'more_skills' && call.name !== 'find_tools') {
             try { workmem.record(s.id, { tool: call.name, args: call.args, text: String(res.text ?? ''), ok: res.ok, untrusted: !!res.untrusted }, { speaker }); } catch { /* best effort */ }
           }
           if (learnTool && owner && res.ok && !res.untrusted && !softFail(res.text) && !String(res.text).startsWith(NEEDS_OK)) { try { learnTool(routeText, call.name); } catch { /* learning is a nicety */ } }
@@ -637,7 +637,11 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       }
 
       if (workmem && owner) {   // an unfinished turn keeps its goal open, so "continue" can pick it up; a plain answer closes it
-        try { workmem.setGoal(s.id, { text: routeText.slice(0, 160), open: !!(error || stopped || forceAnswer || question), note: error ? String(error).slice(0, 100) : '' }); } catch { /* best effort */ }
+        try {
+          // "continue" must not overwrite what it continues: the old goal text stays, only open and note move
+          const prior = isContinue(String(text)) || fu?.kind === 'continue' ? workmem.goal(s.id) : null;
+          workmem.setGoal(s.id, { text: prior ? prior.text : routeText.slice(0, 160), open: !!(error || stopped || forceAnswer || question), note: error ? String(error).slice(0, 100) : '' });
+        } catch { /* best effort */ }
       }
       // never leave a risky action armed behind a question the user did not hear
       if (question && !asked) { try { onQuestionLost(); } catch { /* best effort */ } }
