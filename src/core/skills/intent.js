@@ -6,7 +6,7 @@
 const KINDS = ['new', 'followup', 'correction', 'modify', 'chat'];
 const BUDGET_MS = 4000;
 const MAX_GROUPS = 3;
-const CAP = { text: 400, turn: 160, turns: 4, hint: 300, live: 200, field: 200, missing: 80, missingItems: 5 };
+const CAP = { text: 400, turn: 160, turns: 4, hint: 300, live: 200, wm: 240, field: 200, missing: 80, missingItems: 5 };
 
 const INTENT_SCHEMA = {
   type: 'object',
@@ -92,7 +92,7 @@ function cardLine(c) {
   return `- ${c.id} [${c.sideEffects}]: ${clean(c.summary, 120)}${ex ? ` e.g. ${ex}` : ''}`;
 }
 
-function buildMessages({ text, history, lastGroups, hint, live, cards }) {
+function buildMessages({ text, history, lastGroups, hint, live, memory, cards }) {
   const system = [
     'You classify one request for a voice assistant. Reply with the JSON object only.',
     'kind: new (fresh request), followup (continues the last turn), correction (fixes the last turn), modify (changes the last action), chat (talk, no tool needed).',
@@ -109,6 +109,7 @@ function buildMessages({ text, history, lastGroups, hint, live, cards }) {
     ...(turns.length ? ['recent turns:', ...turns] : []),
     ...(clean(hint, CAP.hint) ? [`context: ${clean(hint, CAP.hint)}`] : []),
     ...(clean(live, CAP.live) ? [`live: ${clean(live, CAP.live)}`] : []),
+    ...(clean(memory, CAP.wm) ? [`recent results: ${clean(memory, CAP.wm)}`] : []),   // entities of earlier tool results, so "that file" can be read
     'END DATA',
     `Request: ${clean(text, CAP.text)}`,
   ].join('\n');
@@ -141,8 +142,8 @@ async function callConstrain(provider, req, { budgetMs = BUDGET_MS, signal } = {
   finally { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); }
 }
 
-// interpret({ text, history?, lastGroups?, hint?, live?, catalog, provider, budgetMs?, signal?, hints?, now? }) -> intent record + ms.
-async function interpret({ text, history, lastGroups, hint, live, catalog, provider, budgetMs = BUDGET_MS, signal, hints, now = Date.now } = {}) {
+// interpret({ text, history?, lastGroups?, hint?, live?, memory?, catalog, provider, budgetMs?, signal?, hints?, now? }) -> intent record + ms.
+async function interpret({ text, history, lastGroups, hint, live, memory, catalog, provider, budgetMs = BUDGET_MS, signal, hints, now = Date.now } = {}) {
   const t0 = now();
   const done = r => ({ ...r, ms: Math.max(0, now() - t0) });
   try {
@@ -154,7 +155,7 @@ async function interpret({ text, history, lastGroups, hint, live, catalog, provi
       // no cards: availability is unknown (available:null) for every group, with the real side effects so
       // validateIntent can keep unknown write/external groups out (fail closed; the rule result still decides)
       if (!Array.isArray(cards) || !cards.length) cards = catalog.groups.map(g => ({ id: g.id, label: g.label, summary: g.label, examples: [], sideEffects: safeEffects(g), available: null, missingReason: null }));
-      return { messages: buildMessages({ text, history, lastGroups, hint, live, cards }), schema: schemaFor(ids), hints };
+      return { messages: buildMessages({ text, history, lastGroups, hint, live, memory, cards }), schema: schemaFor(ids), hints };
     }, { budgetMs, signal });
     if (call.status !== 'ok') return done(empty(call.status));
     return done(validateIntent(call.out, catalog, cards));

@@ -123,8 +123,8 @@ async function usable(catalog, ids) {
 const withConf =(arr, conf) => { Object.defineProperty(arr, 'confidence', { value: conf, enumerable: false }); return arr; };
 const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x));
 
-// resolveSelection({ text, rule?, history?, lastGroups?, hint?, live?, catalog, provider?, embed?, owner?, budgetMs?, signal?, hints?, now? })
-async function resolveSelection({ text, rule, history, lastGroups = [], hint, live, catalog, provider, embed, owner = false, budgetMs = BUDGET_MS, signal, hints, now = Date.now } = {}) {
+// resolveSelection({ text, rule?, history?, lastGroups?, hint?, live?, memory?, catalog, provider?, embed?, owner?, budgetMs?, signal?, hints?, now? })
+async function resolveSelection({ text, rule, history, lastGroups = [], hint, live, memory, catalog, provider, embed, owner = false, budgetMs = BUDGET_MS, signal, hints, now = Date.now } = {}) {
   const r = rule || selectGroups(text, { lastGroups }, catalog);
   const ruleGroups = [...r];
   const decision = { kind: null, confidence: null, reasoning: '', status: 'skipped', ms: 0, ruleGroups, finalGroups: ruleGroups, gated: true, why: '' };
@@ -152,7 +152,7 @@ async function resolveSelection({ text, rule, history, lastGroups = [], hint, li
     const ids = await shortlist(text, catalog, { embed, keep: [...ruleGroups.filter(id => id !== 'core'), ...prev], embedMs: Math.min(EMBED_MS, budgetMs / 4) });
     cat = view(catalog, ids);
   }
-  const intent = await interpret({ text, history, lastGroups, hint, live, catalog: cat, provider, budgetMs: Math.max(1, budgetMs - (now() - t0)), signal, hints, now });
+  const intent = await interpret({ text, history, lastGroups, hint, live, memory, catalog: cat, provider, budgetMs: Math.max(1, budgetMs - (now() - t0)), signal, hints, now });
   Object.assign(decision, { kind: intent.kind, confidence: intent.confidence, reasoning: intent.reasoning, status: intent.status, ms: Math.max(0, now() - t0) });
   if (intent.status !== 'ok') return asRule({ intent });   // graceful fallback: the rule result, unchanged
 

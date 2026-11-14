@@ -53,6 +53,7 @@ function forProvider(m) {
 const { repairCall } = require('./tools/constrain');
 const { unbackedClaim, stripClaims, softFail, ungroundedFigures, UNBACKED_FIX, NEEDS_OK } = require('./brain/guard');
 const { resolveFollowUp } = require('./livestate/followup');
+const { isContinue } = require('./context/workmem');
 const { liveContext } = require('./livestate/context');
 const { plan } = require('./brain/plan');
 const { instant } = require('./brain/instant');
@@ -105,7 +106,7 @@ const NUDGE_CAP = 'You have used all the tool rounds you are allowed. Answer the
 const NUDGE_NO_MATCH = 'No tool matches this request: do not invent one; answer from what you know or say you cannot do it.';
 const NUDGE_PLAIN ="Reply to the user's last message in one or two sentences.";
 
-function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, rankTools = null, learnTool = null, onQuestionLost = () => {}, memoryBlock = null, context: assembler = null, live = null, catalog = null, resolveSelection = resolveSelectionDefault, embed = null, toolIndex = null, intelligence = {}, ledger = null }) {
+function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, rankTools = null, learnTool = null, onQuestionLost = () => {}, memoryBlock = null, context: assembler = null, live = null, catalog = null, resolveSelection = resolveSelectionDefault, embed = null, toolIndex = null, intelligence = {}, ledger = null, workmem = null }) {
   let current = null; // AbortController of the running turn
   const lastGroupsAt = new Map(); // session id → when lastGroups was last set
   // the areas the last turn used, only while that turn is recent: "make it 10" an hour later does not mean the timer from back then
@@ -283,6 +284,17 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           return typeof pkg?.hint === 'string' ? pkg.hint : '';
         } catch { return ''; }
       })());
+      // working memory (owner only): the block is saved on the user message like the memo, so later turns send the same text (provider cache);
+      // the interpreter gets entities only. A guest or unsure turn reads nothing, and nothing from outside becomes an instruction.
+      let wmHint = '';
+      if (workmem && owner) {
+        try {
+          const goOn = isContinue(String(text)) || fu?.kind === 'continue';
+          const b = workmem.block(s.id, { speaker, cont: goOn });
+          if (b) { s.messages[turnStart].wm = b; sessions.save(s); }
+          wmHint = workmem.hint(s.id, { speaker });
+        } catch { /* working memory is a nicety */ }
+      }
       // intent (ADR A-002): discover.js decides whether the turn needs the interpreter at all (owner only, unsure or risky
       // matches; simple read-only commands never wait on a model) and may act, ask or decline. It only RECOMMENDS groups:
       // risk:'confirm', taint and GUEST_TOOLS still decide what runs. Any failure keeps the rule result.
@@ -295,7 +307,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           const hint = owner && memoryBlock ? await turnContext() : '';
           let liveText = '';
           if (owner) { try { liveText = liveContext(snap); } catch { liveText = ''; } }
-          d = await resolveSelection({ text: routeText, rule: picked, history: owner ? historyTail(s.messages, turnStart) : [], lastGroups: lastG, hint, live: liveText, catalog, provider: p, embed, owner, signal: ac.signal, hints });
+          d = await resolveSelection({ text: routeText, rule: picked, history: owner ? historyTail(s.messages, turnStart) : [], lastGroups: lastG, hint, live: liveText, memory: wmHint, catalog, provider: p, embed, owner, signal: ac.signal, hints });
         } catch { d = null; }
         // the record rides on the 'route' event only when the gate opened: a plain command's route event stays as it was
         if (d?.decision && d.decision.gated === false) decision = { ...d.decision, action: d.action, source: d.source };
@@ -432,9 +444,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
         // a guest sees this turn only: the owner's earlier chat stays in the saved session but is never sent
         const base = speaker === 'guest' ? turnStart : 0;
         let window = fitWindow(s.messages.slice(base).map((m, j) => (m.role === 'tool' ? { ...m, content: capText(m.content, base + j < turnStart ? TOOL_CHARS_OLD : TOOL_CHARS_NOW) }
-          : m.role === 'user' && m.memo && speaker !== 'guest' ? { ...m, content: `${m.content}
-
-${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min(REPLY_CHARS, Math.floor((st.contextMax || 0) * CHARS_PER_TOKEN * REPLY_SHARE)), stamp ? stamp(turnNow).length + 2 : 0).map(m => {
+          : m.role === 'user' && (m.memo || m.wm) && speaker !== 'guest' ? { ...m, content: [m.content, m.memo, m.wm].filter(Boolean).join('\n\n') } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min(REPLY_CHARS, Math.floor((st.contextMax || 0) * CHARS_PER_TOKEN * REPLY_SHARE)), stamp ? stamp(turnNow).length + 2 : 0).map(m => {
           const o = forProvider(m);
           if (stamp && m.role === 'user' && m.at) o.content = `${o.content}\n\n${stamp(new Date(m.at))}`;   // its own send time, the same text every turn
           return o;
@@ -588,6 +598,10 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
           if (res.ok && String(res.text).startsWith(NEEDS_OK)) question = String(res.text).slice(NEEDS_OK.length);
           else if (res.ok && !/^error/i.test(String(res.text)) && !softFail(res.text) && res.verified !== false && !res.untrusted && call.name !== 'more_skills') okTools++;   // loading a skill is not an action
           s.messages.push({ role: 'tool', content: capText(res.text, 6000), toolCallId: call.id, name: call.name, label });
+          // what the owner's tools touched, for "that file" later; a question to the user, a skill load and a lookup of tools are not results
+          if (workmem && owner && !preset && !res.badArgs && !String(res.text).startsWith(NEEDS_OK) && call.name !== 'more_skills' && call.name !== 'find_tools') {
+            try { workmem.record(s.id, { tool: call.name, args: call.args, text: String(res.text ?? ''), ok: res.ok, untrusted: !!res.untrusted }, { speaker }); } catch { /* best effort */ }
+          }
           if (learnTool && owner && res.ok && !res.untrusted && !softFail(res.text) && !String(res.text).startsWith(NEEDS_OK)) { try { learnTool(routeText, call.name); } catch { /* learning is a nicety */ } }
           directs.push(res.ok && !res.ledger && !res.untrusted && !turn.tainted && !String(res.text).startsWith(NEEDS_OK) && !softFail(res.text) ? ((scope || tools).direct?.(call.name, res.text) ?? null) : null);
         }   // no break on abort: every started call gets its end event and tool message (runRound answers the rest 'aborted')
@@ -622,6 +636,9 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
         if (lastGroups.size > LAST_GROUPS_MAX) { const old = lastGroups.keys().next().value; lastGroups.delete(old); lastGroupsAt.delete(old); }
       }
 
+      if (workmem && owner) {   // an unfinished turn keeps its goal open, so "continue" can pick it up; a plain answer closes it
+        try { workmem.setGoal(s.id, { text: routeText.slice(0, 160), open: !!(error || stopped || forceAnswer || question), note: error ? String(error).slice(0, 100) : '' }); } catch { /* best effort */ }
+      }
       // never leave a risky action armed behind a question the user did not hear
       if (question && !asked) { try { onQuestionLost(); } catch { /* best effort */ } }
       const last = s.messages.at(-1);

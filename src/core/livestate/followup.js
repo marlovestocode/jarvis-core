@@ -16,6 +16,8 @@ const SHAPES = [
   /^(do|try|play|run|say|send|make)\s+(it|that|this)\s+(again|once more|the same way|too)$/,
   /^(again|once more|one more time|another one|one more|the other one|the same|same again|same as before|do the same|do the same for the other one|undo|undo that|undo it|redo|redo that|redo it|revert that|put it back|put it back the way it was)$/,
   /^(skip|pause|stop|cancel|repeat|replay|resume|reverse)\s+(it|that|this)$/,
+  /^(continue|carry on|keep going|go on)$/,
+  /^(continue|carry on|finish) (it|that|this|the (task|job|previous task))$/,
 ];
 const QUESTION = /^(who|whom|whose|what|when|where|why|which|how|is|are|does|was|were|did|do you|can|could|would|will|should|have|you)\b/;
 const CHAT = /^(thanks|thank you|thx|ok|okay|cool|nice|great|awesome|perfect|bye|goodbye|good (morning|afternoon|evening|night)|hi|hello|hey|no worries|never ?mind|sure)\b/;
