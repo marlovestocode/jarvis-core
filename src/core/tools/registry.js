@@ -244,7 +244,7 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null, toolIndex =
     return out && out.length <= DIRECT_MAX && out.split('\n').length <= 6 ? out : null;
   };
   const resolves = name => byName.has(name) || !!resolveInvented(name, tools, groupList());
-  return { specs, run, turn, resolves, direct, stats: view.stats };
+  return { specs, run, turn, resolves, direct, stats: view.stats, get: n => byName.get(n) };   // get: the tool itself, for the round's parallel-safety check
 }
 
 module.exports = { createToolRunner, eligibility, MAX_EXTRA_LOADS };

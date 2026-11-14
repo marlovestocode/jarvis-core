@@ -58,6 +58,8 @@ const { plan } = require('./brain/plan');
 const { instant } = require('./brain/instant');
 const { resolveSelection: resolveSelectionDefault, looksUnsure } = require('./skills/discover');
 const { speakerReason } = require('./tools/speaker');
+const { runRound } = require('./tools/round');
+const { parallelSafe } = require('./skills/toolcards');
 
 // A model-written question or decline is spoken as it is: one line, no control characters, capped (discover.js already
 // cleans it; this is the last fence before speech). It is never passed to a tool.
@@ -542,6 +544,8 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
         toolRounds++;
         s.messages.push({ role: 'assistant', content: reply, toolCalls: round.toolCalls });
         const directs = [];   // each call's own result, when it can be the reply as it is
+        // prepare (sequential): repair, label, start event; calls that never run (blocked, repeated) get their result here
+        const jobs = [];
         for (const call of round.toolCalls) {
           // a call that names no tool, or whose arguments do not fit the tool's schema, is repaired by a short decode the model cannot get
           // wrong (see tools/constrain.js); a valid call costs nothing extra
@@ -551,24 +555,29 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
           }
           const label = toolLabel(call.name, call.args);
           bus.emit('tool', { id: call.id, name: call.name, label, phase: 'start' });
-          inTool = true;
-          let res;
-          let skipped = false;   // a synthetic result (the tool did not run): says nothing about the tool's health, so live state skips it
+          let preset = null;
           // the model re-sent a call it already made this turn: do not run it again, tell it to answer
           const sig = `${call.name}:${JSON.stringify(call.args ?? {})}`;
           if (blocked(failKey(call)) || blocked(call.name)) {
-            skipped = true;
-            res = { ok: false, text: `Error: ${failKey(call)} already failed ${FAIL_LIMIT} times this turn. Do not call it again: use a different tool, or tell the user what failed.` };
+            preset = { ok: false, text: `Error: ${failKey(call)} already failed ${FAIL_LIMIT} times this turn. Do not call it again: use a different tool, or tell the user what failed.` };
           } else if (!(ledger && owner) && seenCalls.has(sig)) {   // with a ledger it replaces this guard (exec checks it); without one this is the baseline
-            skipped = true;
-            res = { ok: false, text: 'Error: you already made this exact call this turn and got its result. Do not repeat it; answer the user with what you have, or say what failed.' };
-          } else {
-            if (!(ledger && owner)) seenCalls.add(sig);
-            try { res = await (scope || tools).run(call.name, call.args, { signal: ac.signal, turn, sessionId: s.id, ledger: owner ? ledger : null, turnId: s.id + ':' + turnStart, force: false }); }   // force: wired to the user's own repeat request later
-            finally { inTool = false; }
-          }
-          inTool = false;
-          if (res.skipped) skipped = true;   // a ledger answer: the tool did not run
+            preset = { ok: false, text: 'Error: you already made this exact call this turn and got its result. Do not repeat it; answer the user with what you have, or say what failed.' };
+          } else if (!(ledger && owner)) seenCalls.add(sig);
+          jobs.push({ call, label, preset });
+        }
+        // every call, parallel or not, goes through this one exec path; extraCtx lets a caller add to it (e.g. { fresh: true })
+        const run = (call, extraCtx = {}) => (scope || tools).run(call.name, call.args, { signal: ac.signal, turn, sessionId: s.id, ledger: owner ? ledger : null, turnId: s.id + ':' + turnStart, force: false, ...extraCtx });   // force: wired to the user's own repeat request later
+        // only a tool that is offered this turn, reads, and needs no confirmation or clean turn may share a batch (an unknown name runs alone)
+        const parallelSafeOf = n => { const t = tools.get?.(n); return !!t && !!useTools?.some(x => x.name === n) && parallelSafe(t); };
+        inTool = true;
+        let results;
+        try { results = await runRound({ jobs, run, turn, signal: ac.signal, parallelSafeOf, parallel: intelligence.parallel !== false }); }
+        finally { inTool = false; }
+        // finish (sequential, call order): events, accounting and messages never follow completion order
+        for (let i = 0; i < jobs.length; i++) {
+          const { call, label, preset } = jobs[i];
+          const res = results[i];
+          const skipped = !!(preset || res.skipped);   // a synthetic result or a ledger answer: the tool did not run, so live state skips it
           if (!res.ok && !res.badArgs) failed.set(failKey(call), (failed.get(failKey(call)) || 0) + 1);
           bus.emit('tool', { id: call.id, name: call.name, phase: 'end', ok: res.ok, soft: res.ok && softFail(res.text) || undefined, badArgs: res.badArgs || undefined, skipped: skipped || undefined });
           if (res.untrusted) turn.tainted = true;
