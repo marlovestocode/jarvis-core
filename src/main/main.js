@@ -29,6 +29,7 @@ const { NullProvider } = require('../core/providers/null-provider');
 const { createOllamaProvider } = require('../core/providers/ollama');
 const { createToolRunner, eligibility } = require('../core/tools/registry');
 const { createToolIndex } = require('../core/skills/toolindex');
+const { createLedger } = require('../core/tools/ledger');
 const brain = require('../core/brain');
 const skills = require('../core/skills');
 const { createHardwareProbe } = require('../core/brain/hardware');
@@ -315,6 +316,7 @@ ctx.toolList = ctx.catalog.tools;
 for (const m of ctx.catalog.missing) if (m.error) ctx.log(`skill group ${m.id} failed to load: ${m.error}`);
 // tool discovery: embeddings come from the memory system's embedder (none installed: lexical only, within 250 ms)
 const embedTexts = (texts, o) => ctx.memorySystem.embed(texts, o);
+ctx.ledger = createLedger({});
 ctx.toolIndex = createToolIndex({ catalog: ctx.catalog, embed: embedTexts, eligible: eligibility });
 ctx.tools = createToolRunner(ctx.toolList, { groups: ctx.catalog.groups, toolIndex: ctx.toolIndex });
 // which tool a request is about, ranked from the tools' own text and from the requests that worked before (this run): the model sees the likeliest tools first
@@ -347,7 +349,7 @@ const contextProviders = [liveProvider({ live: ctx.live })];
 if (ctx.tasks) contextProviders.push(taskProvider({ tasks: ctx.tasks }));
 ctx.context = createAssembler({ providers: contextProviders });
 ctx.orchestrator = createOrchestrator({
-  live: ctx.live, catalog: ctx.catalog, context: ctx.context, embed: embedTexts, toolIndex: ctx.toolIndex,   // catalog: plan() checks a pending confirm's group against it
+  live: ctx.live, catalog: ctx.catalog, context: ctx.context, embed: embedTexts, toolIndex: ctx.toolIndex, ledger: ctx.ledger,   // catalog: plan() checks a pending confirm's group against it
   bus: ctx.bus, sessions: ctx.sessions, providers: ctx.providers, tools: ctx.tools, getConfig: ctx.getConfig,
   systemPrompt: brain.systemPrompt, stamp: brain.nowLine, route: brain.route,
   selectGroups: (text, o) => skills.selectGroups(text, o, ctx.catalog),

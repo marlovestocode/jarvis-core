@@ -103,7 +103,7 @@ const NUDGE_CAP = 'You have used all the tool rounds you are allowed. Answer the
 const NUDGE_NO_MATCH = 'No tool matches this request: do not invent one; answer from what you know or say you cannot do it.';
 const NUDGE_PLAIN ="Reply to the user's last message in one or two sentences.";
 
-function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, rankTools = null, learnTool = null, onQuestionLost = () => {}, memoryBlock = null, context: assembler = null, live = null, catalog = null, resolveSelection = resolveSelectionDefault, embed = null, toolIndex = null, intelligence = {} }) {
+function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, rankTools = null, learnTool = null, onQuestionLost = () => {}, memoryBlock = null, context: assembler = null, live = null, catalog = null, resolveSelection = resolveSelectionDefault, embed = null, toolIndex = null, intelligence = {}, ledger = null }) {
   let current = null; // AbortController of the running turn
   const lastGroupsAt = new Map(); // session id → when lastGroups was last set
   // the areas the last turn used, only while that turn is recent: "make it 10" an hour later does not mean the timer from back then
@@ -559,15 +559,16 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
           if (blocked(failKey(call)) || blocked(call.name)) {
             skipped = true;
             res = { ok: false, text: `Error: ${failKey(call)} already failed ${FAIL_LIMIT} times this turn. Do not call it again: use a different tool, or tell the user what failed.` };
-          } else if (seenCalls.has(sig)) {
+          } else if (!(ledger && owner) && seenCalls.has(sig)) {   // with a ledger it replaces this guard (exec checks it); without one this is the baseline
             skipped = true;
             res = { ok: false, text: 'Error: you already made this exact call this turn and got its result. Do not repeat it; answer the user with what you have, or say what failed.' };
           } else {
-            seenCalls.add(sig);
-            try { res = await (scope || tools).run(call.name, call.args, { signal: ac.signal, turn }); }
+            if (!(ledger && owner)) seenCalls.add(sig);
+            try { res = await (scope || tools).run(call.name, call.args, { signal: ac.signal, turn, sessionId: s.id, ledger: owner ? ledger : null, turnId: s.id + ':' + turnStart, force: false }); }   // force: wired to the user's own repeat request later
             finally { inTool = false; }
           }
           inTool = false;
+          if (res.skipped) skipped = true;   // a ledger answer: the tool did not run
           if (!res.ok && !res.badArgs) failed.set(failKey(call), (failed.get(failKey(call)) || 0) + 1);
           bus.emit('tool', { id: call.id, name: call.name, phase: 'end', ok: res.ok, soft: res.ok && softFail(res.text) || undefined, badArgs: res.badArgs || undefined, skipped: skipped || undefined });
           if (res.untrusted) turn.tainted = true;

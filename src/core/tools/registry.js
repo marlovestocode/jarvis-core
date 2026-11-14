@@ -12,6 +12,8 @@ const { checkArgs } = require('./args');
 
 const { speakerReason } = require('./speaker');
 const { firstSentence } = require('./constrain');
+const { NEEDS_OK } = require('../brain/guard');
+const { toolContract } = require('../skills/toolcards');   // effect/idempotent/volatile decide how the ledger treats a call
 
 // Guest turns (turn.speaker 'guest': speaker recognition heard a voice that is not the owner's) are DEFAULT DENY: only these
 // tools run, everything else is refused with the guest text, before its arguments are checked or its group is loaded. Allowed:
@@ -29,10 +31,10 @@ const GUEST_TOOLS = new Map([
 // null = the tool may run for this turn; otherwise the refusal
 function guestRefusal(tool, args, ctx) {
   if (ctx.turn?.speaker !== 'guest') return null;
-  if (!GUEST_TOOLS.has(tool.name)) return { ok: false, text: `Error: ${speakerReason(ctx.turn)}` };
+  if (!GUEST_TOOLS.has(tool.name)) return { ok: false, denied: true, text: `Error: ${speakerReason(ctx.turn)}` };
   const need = GUEST_TOOLS.get(tool.name);
   const v = need && args && typeof args === 'object' ? args[need] : undefined;
-  if (need && !(typeof v === 'string' && v.trim())) return { ok: false, text: `Error: name the ${need}. For a guest I never use my owner's ${need === 'place' ? 'home' : 'teams'}.` };
+  if (need && !(typeof v === 'string' && v.trim())) return { ok: false, denied: true, text: `Error: name the ${need}. For a guest I never use my owner's ${need === 'place' ? 'home' : 'teams'}.` };
   return null;
 }
 
@@ -75,9 +77,9 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null, toolIndex =
   const groupList = () => (catalog ? catalog.groups.map(g => ({ id: g.id, label: g.label })) : []);
   // confirm tools need a known clean turn; durable-state tools (needsClean: memory) only refuse a turn known to be tainted
   const tainted = (tool, ctx) => (tool.risk === 'confirm' && (!ctx.turn || ctx.turn.tainted)) || (tool.needsClean === true && !!ctx.turn?.tainted);
-  const pageText = { ok: false, text: "Error: I won't start that from text I read. Ask me directly." };
+  const pageText = { ok: false, denied: true, text: "Error: I won't start that from text I read. Ask me directly." };
   // a turn tainted by who is speaking (speaker recognition: unsure or guest) says so; a page or file taint keeps the text above
-  const taintedText = ctx => { const r = speakerReason(ctx.turn); return r ? { ok: false, text: `Error: ${r}` } : pageText; };
+  const taintedText = ctx => { const r = speakerReason(ctx.turn); return r ? { ok: false, denied: true, text: `Error: ${r}` } : pageText; };
 
   function specs() {
     return tools.map(({ name, description, params }) => ({ name, description, params }));
@@ -94,15 +96,28 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null, toolIndex =
     const checked = checkArgs(tool, args);
     if (!checked.ok) return note(tool, { ok: false, text: checked.text, badArgs: true, ...flag });
     args = checked.args;
+    // Owner turns only: a guest is never served from, or recorded in, the owner's ledger. Sits after every refusal above, so a
+    // denied or badly-formed call never reaches it. ctx.force/fresh/turnId come from the orchestrator; the model's args.force is never read.
+    const led = ctx.ledger && ctx.sessionId && !ctx.turn?.speaker ? ctx.ledger : null;
+    const c = led ? toolContract(tool) : null;
+    if (led && ctx.fresh !== true) {
+      const hit = led.check(ctx.sessionId, name, args, { effect: c.effect, idempotent: c.idempotent, volatile: c.volatile, turnId: ctx.turnId, force: ctx.force === true });
+      if (hit?.hit === 'unknown') return { ok: false, text: `Error: the earlier ${name} did not report back, so I did not repeat it. Ask the user whether to try again.`, ledger: 'unknown', skipped: true };
+      if (hit) return { ok: true, text: `Already done (${Math.round(hit.ageMs / 1000)}s ago): ${hit.text}`, ledger: hit.hit, skipped: true, ...(hit.untrusted && { untrusted: true }) };
+    }
     let timer;
     try {
       const timeout = new Promise((_, rej) => {
-        timer = setTimeout(() => rej(new Error(`tool ${name} timed out`)), tool.timeoutMs || timeoutMs);
+        timer = setTimeout(() => rej(Object.assign(new Error(`tool ${name} timed out`), { timedOut: true })), tool.timeoutMs || timeoutMs);
       });
-      const text = await Promise.race([Promise.resolve().then(() => tool.run(args || {}, ctx)), timeout]);
-      return note(tool, { ok: true, text: String(text), ...flag });
+      const text = String(await Promise.race([Promise.resolve().then(() => tool.run(args || {}, ctx)), timeout]));
+      // a confirm proposal is a question, not an action: recording it would block the real run after the user says yes
+      if (led && !text.startsWith(NEEDS_OK)) led.record(ctx.sessionId, name, args, { effect: c.effect, ok: true, text, untrusted: flag.untrusted, turnId: ctx.turnId });
+      return note(tool, { ok: true, text, ...flag });
     } catch (err) {
-      return note(tool, { ok: false, text: `Error: ${err?.message || err}`, ...flag });
+      // a write that timed out may still have happened: remember it as unknown
+      if (led && err?.timedOut && c.effect !== 'read') led.record(ctx.sessionId, name, args, { effect: c.effect, ok: false, unknown: true, text: String(err.message), turnId: ctx.turnId });
+      return note(tool, { ok: false, text: `Error: ${err?.message || err}`, ...(err?.timedOut && { timedOut: true }), ...flag });
     } finally {
       clearTimeout(timer);
     }
