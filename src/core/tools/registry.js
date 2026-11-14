@@ -147,7 +147,10 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null, toolIndex =
       if (!id) return { ok: false, text: `Unknown group. Groups: ${catalog.ids.join(', ')}.` };
       const g = group(id);
       const list = g.tools.map(t => t.name).join(', ');
-      if (loaded.includes(id)) return { ok: true, text: `Already loaded ${g.label}: ${list}.` };
+      if (loaded.includes(id)) {
+        if (offered) for (const t of g.tools) offered.add(t.name);   // narrowed by discovery: asking for the group shows it whole
+        return { ok: true, text: `Already loaded ${g.label}: ${list}.` };
+      }
       if (extra >= MAX_EXTRA_LOADS) return { ok: false, text: `Cannot load more skills this turn (limit ${MAX_EXTRA_LOADS}). Answer with what you have.` };
       extra++;
       add(id);
@@ -165,7 +168,7 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null, toolIndex =
         if (!tool || eligibility(tool, turn || {})) continue;
         const gid = catalog.groupOf(tool.name);
         if (gid && !loaded.includes(gid)) {
-          if (charge && extra >= MAX_EXTRA_LOADS) continue;   // over the cap: skipped, never an error
+          if (charge && extra >= MAX_EXTRA_LOADS - 1) continue;   // auto-offer keeps one unit for the model's own find_tools/more_skills
           if (charge) extra++;
           add(gid);
         }
@@ -182,7 +185,8 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null, toolIndex =
       if (extra >= MAX_EXTRA_LOADS) throw new Error(`Cannot load more skills this turn (limit ${MAX_EXTRA_LOADS}). Answer with what you have.`);
       extra++;
       const t = ctx.turn || {};
-      const r = await toolIndex.find(String(query ?? ''), { groups: null, speaker: t.speaker || 'owner', tainted: !!t.tainted });
+      const r = await toolIndex.find(String(query ?? ''), { groups: null, speaker: t.speaker || 'owner', tainted: !!t.tainted, exclude: offered ? new Set(offered) : new Set() });
+      if (r.outcome === 'unavailable') throw new Error('Tool search is busy. Use the tools you have.');
       if (r.outcome === 'none') return 'No tool can do that. Do not invent one; say you cannot.';
       if (r.outcome === 'not_permitted') return 'I am not allowed to do that in this turn.';
       if (!offered) { offered = new Set(META); for (const id of loaded) for (const x of group(id).tools) offered.add(x.name); }

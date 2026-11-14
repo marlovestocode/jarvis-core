@@ -328,7 +328,8 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           const r = await toolIndex.find(routeText, { groups: picked.confidence === 'low' ? null : scope.loaded(), speaker, tainted: !owner, effectHint, lexicalOnly: picked.confidence === 'high' });
           const offerTurn = owner ? { source, tainted: false } : { source, tainted: true, speaker };
           if (r.outcome === 'tools') scope.offer(r.tools.map(t => t.name), { turn: offerTurn });
-          else if (r.outcome === 'none') { scope.offer([], { turn: offerTurn }); noMatchNudge = NUDGE_NO_MATCH; }
+          // zero overlap on a simple command or without embeddings proves nothing ("make it louder"): only a hybrid miss or an unmatched rule narrows to nothing
+          else if (r.outcome === 'none' && (r.mode === 'hybrid' || picked.confidence === 'low')) { scope.offer([], { turn: offerTurn }); noMatchNudge = NUDGE_NO_MATCH; }
           else if (r.outcome === 'not_permitted' && !owner) {
             const say = spoken(speakerReason(offerTurn) || 'I only do that for my owner.');
             bus.emit('route', { tier: 'skill', think: false, reason: 'skill', model: null });

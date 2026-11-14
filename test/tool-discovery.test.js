@@ -101,3 +101,63 @@ test('a tool outside the offered top-K still runs by name, and a confirm tool st
   assert.equal((await scope.run('get_time', {}, { turn: { tainted: false } })).ok, true);
   assert.equal((await scope.run('delete_file', {}, { turn: { tainted: true } })).ok, false);
 });
+
+test('a slow status probe means no index this turn, within the cap', async () => {
+  const { catalog } = small();
+  const slow = { ...catalog, toolCardsNow: () => new Promise(r => setTimeout(r, 2000)) };
+  const idx = createToolIndex({ catalog: slow, embedMs: 50 });
+  const t0 = Date.now();
+  const r = await idx.find('read the file', { lexicalOnly: true });
+  assert.ok(Date.now() - t0 < 400);
+  assert.equal(r.outcome, 'unavailable');
+  assert.deepEqual(r.tools, []);
+});
+
+test('tool vectors are embedded once per catalog and a failed batch is retried', async () => {
+  const { catalog } = small();
+  const fake = createFakeEmbedder({});
+  let docs = 0, fail = true;
+  const embed = async (t, o) => { if (o.role === 'doc') { docs++; if (fail) throw new Error('down'); } return fake.embed(t, o); };
+  const idx = createToolIndex({ catalog, embed });
+  assert.equal((await idx.find('read the file')).mode, 'lexical');
+  assert.equal(docs, 1);
+  fail = false;
+  await new Promise(r => setTimeout(r, 5));
+  assert.equal((await idx.find('read the file')).mode, 'hybrid');
+  assert.equal(docs, 2);
+  await idx.find('play music'); await idx.find('delete the file');
+  assert.equal(docs, 2, 'cached after the first good batch');
+});
+
+test('auto-offer keeps one extra load for the model', async () => {
+  const { groups, catalog } = small();
+  const all = [createCore({}), ...groups.filter(g => g.id !== 'core')];
+  const runner = createToolRunner(all.flatMap(g => g.tools), { groups: all, toolIndex: createToolIndex({ catalog: buildCatalog(all) }) });
+  const scope = runner.turn(['core']);
+  const got = scope.offer(['read_file', 'media_control'], { turn: { tainted: false } });
+  assert.deepEqual(got, ['read_file']);
+  assert.equal((await scope.run('more_skills', { group: 'media' }, { turn: { tainted: false } })).ok, true);
+});
+
+test('more_skills on a narrowed loaded group shows it whole; find_tools skips what is offered', async () => {
+  const { groups, catalog } = small();
+  const all = [createCore({}), ...groups.filter(g => g.id !== 'core')];
+  const runner = createToolRunner(all.flatMap(g => g.tools), { groups: all, toolIndex: createToolIndex({ catalog: buildCatalog(all) }) });
+  const scope = runner.turn(['core', 'files']);
+  scope.offer(['read_file'], { turn: { tainted: false } });
+  assert.ok(!scope.specs().some(s => s.name === 'delete_file'));
+  await scope.run('more_skills', { group: 'files' }, { turn: { tainted: false } });
+  assert.ok(scope.specs().some(s => s.name === 'delete_file'));
+  const r = await scope.run('find_tools', { query: 'read the file' }, { turn: { tainted: false } });
+  assert.ok(!/read_file:/.test(r.text), r.text);
+});
+
+test('exec still refuses a tainted confirm tool and a guest on a non-allowlisted tool after discovery loaded their group', async () => {
+  const { groups, catalog } = small();
+  const all = [createCore({}), ...groups.filter(g => g.id !== 'core')];
+  const runner = createToolRunner(all.flatMap(g => g.tools), { groups: all, toolIndex: createToolIndex({ catalog: buildCatalog(all), eligible: eligibility }) });
+  const scope = runner.turn(['core']);
+  assert.ok((await scope.run('find_tools', { query: 'read the file' }, { turn: { tainted: false } })).ok);
+  assert.equal((await scope.run('delete_file', {}, { turn: { tainted: true } })).ok, false);
+  assert.equal((await scope.run('read_file', {}, { turn: { tainted: true, speaker: 'guest' } })).ok, false);
+});

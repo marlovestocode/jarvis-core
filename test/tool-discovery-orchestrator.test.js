@@ -22,12 +22,12 @@ const { createFakeProvider } = require('./helpers/fake-provider');
 const say = text => [{ type: 'token', text }, { type: 'done' }];
 const P = { type: 'object', properties: { action: { type: 'string' }, path: { type: 'string' } } };
 
-function setup(script) {
+function setup(script, { embed: useEmbed = true, slowCards = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jc-tdisc-'));
   const confirm = createConfirm({});
   const groups = [
     { id: 'core', label: 'Core', triggers: [], tools: [{ name: 'get_time', description: 'time', params: P, sideEffects: 'read', async run() { return 'NOON'; } }] },
-    { id: 'media', label: 'Media', triggers: [{ words: ['play', 'pause', 'music', 'jazz', 'volume'], w: 3 }], tools: [
+    { id: 'media', label: 'Media', triggers: [{ words: ['play', 'pause', 'music', 'jazz', 'volume', 'louder'], w: 3 }], tools: [
       { name: 'media_control', description: 'Pause, play or skip the music.', params: P, sideEffects: 'write', async run() { return 'done'; } },
       { name: 'media_volume', description: 'Set the music volume.', params: P, sideEffects: 'write', async run() { return 'done'; } },
     ] },
@@ -41,7 +41,8 @@ function setup(script) {
   c.bus = createBus();
   const providers = createRegistry(); providers.add(NullProvider); providers.add(c.fp);
   c.sessions = createSessionStore(dir);
-  const toolIndex = createToolIndex({ catalog, embed, eligible: eligibility });
+  const idxCatalog = slowCards ? { ...catalog, toolCardsNow: () => new Promise(r => setTimeout(r, 3000)) } : catalog;
+  const toolIndex = createToolIndex({ catalog: idxCatalog, embed: useEmbed ? embed : null, embedMs: 50, eligible: eligibility });
   c.orc = createOrchestrator({
     bus: c.bus, sessions: c.sessions, providers, tools: createToolRunner(groups.flatMap(g => g.tools), { groups, toolIndex }), catalog, toolIndex,
     getConfig: () => ({ ...DEFAULTS, provider: c.fp.id }),
@@ -78,5 +79,25 @@ test('a request no tool matches tells the model not to invent one', async () => 
   assert.equal(c.fp.calls.length >= 1, true);
   const msgs = c.fp.calls[0].messages;
   assert.match(msgs[msgs.length - 1].content, /do not invent one/);
+  c.done();
+});
+
+test('zero lexical overlap on a simple command keeps the rule-picked group offered', async () => {
+  for (const opts of [{}, { embed: false }]) {
+    const c = setup([say('OK.')], opts);
+    await c.orc.send(c.s.id, 'make it louder');
+    assert.ok(c.offered(0).includes('media_control'), JSON.stringify(opts));
+    const m = c.fp.calls[0].messages;
+    assert.ok(!/do not invent one/.test(m[m.length - 1].content));
+    c.done();
+  }
+});
+
+test('a slow status probe keeps the whole loaded group offered', async () => {
+  const c = setup([say('OK.')], { slowCards: true });
+  const t0 = Date.now();
+  await c.orc.send(c.s.id, 'pause the music');
+  assert.ok(Date.now() - t0 < 1500);
+  assert.ok(c.offered(0).includes('media_control') && c.offered(0).includes('media_volume'));
   c.done();
 });

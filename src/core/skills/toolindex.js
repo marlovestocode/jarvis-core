@@ -17,14 +17,12 @@ function createToolIndex({ catalog, embed = null, embedMs = 250, eligible = () =
   // keyed on the catalog: the card text and the tool vectors are built once, not per turn
   const built = new WeakMap();   // catalog -> Promise<{ rows, ranker }>
   const vecs = new WeakMap();    // catalog -> Promise<Map<name, vector>>; a failed batch is retried next turn
-  let lastCards = null;
 
   function state() {
     let p = built.get(catalog);
     if (!p) {
       p = (async () => {
         const cards = await catalog.toolCardsNow();
-        lastCards = cards;
         const rows = [...cards.values()].filter(c => !META.has(c.name)).map(card => {
           const tool = catalog.byName.get(card.name)?.tool || { name: card.name };
           return { card, tool, text: cardText(card, tool) };
@@ -51,7 +49,8 @@ function createToolIndex({ catalog, embed = null, embedMs = 250, eligible = () =
     return p;
   }
 
-  // availability can change between turns; a slow or failing status keeps what was last known
+  // availability can change between turns; a slow or failing status keeps what was last known. Skipped on lexicalOnly (simple
+  // command) turns: they must not wait on any status probe, and the rule-picked group is tried either way.
   async function availability(st, lexicalOnly) {
     if (lexicalOnly) return;
     try {
@@ -62,8 +61,10 @@ function createToolIndex({ catalog, embed = null, embedMs = 250, eligible = () =
 
   async function find(text, { groups = null, speaker = 'owner', tainted = false, exclude = new Set(), effectHint = null, lexicalOnly = false, k } = {}) {
     const none = { outcome: 'none', tools: [], ineligible: [], mode: 'lexical' };
+    // a slow status probe must not stall the turn (simple commands included): no index this turn, the caller keeps its loaded set
     let st;
-    try { st = await state(); } catch { return none; }
+    try { st = await within(state(), embedMs); } catch { st = null; }
+    if (!st) return { ...none, outcome: 'unavailable' };
     await availability(st, lexicalOnly);
     const gset = groups ? new Set(groups) : null;
     const cand = st.rows.filter(r => r.card.available !== false && !exclude.has(r.card.name) && (!gset || gset.has(r.card.groupId)));
