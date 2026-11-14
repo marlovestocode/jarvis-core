@@ -462,6 +462,7 @@ function createFilesTools({ roots, actionLog = null, confirm = null }) {
   // --- copy_files ---
   const copyFiles = {
     name: 'copy_files', risk: 'safe',
+    verify: { tool: 'file_info', args: a => ({ path: a.to }), expect: { nonEmpty: true } },   // the destination folder exists
     hint: 'copy_files: see rename_files.',
     description: `Copy files into a folder (it is created if missing). from: paths or a pattern like "Downloads/*.pdf"; to: a folder. Never overwrites. Undoable.`,
     params: obj({ from: { description: 'file path, pattern like "Downloads/*.pdf", or a list of them', anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] }, to: { description: 'destination folder', type: 'string' } }, ['from', 'to']),
@@ -495,6 +496,8 @@ function createFilesTools({ roots, actionLog = null, confirm = null }) {
   // --- make_folder ---
   const makeFolder = {
     name: 'make_folder', risk: 'safe',
+    idempotent: true,   // the end state (the folder exists) is the same on a repeat
+    verify: { tool: 'file_info', args: a => ({ path: a.path }), expect: { nonEmpty: true } },
     hint: 'make_folder: see rename_files.',
     description: 'Create a new folder (and missing parents) inside Desktop, Documents, Downloads or Projects. Undoable.',
     params: obj({ path: { description: 'new folder path, e.g. "Documents/Taxes"', type: 'string' } }, ['path']),

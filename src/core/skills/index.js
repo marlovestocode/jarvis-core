@@ -2,6 +2,7 @@
 // Group = { id, label, triggers, hint?, tools, status?, summary?, examples?, sideEffects? }   (last three: capability.js)
 // status() → { ok, detail } (may be async): whether the group can work right now (extension connected, sysmon up...).
 const { buildCardsNow } = require('./capability');
+const { buildToolCard } = require('./toolcards');
 const ORDER = ['core', 'media', 'ytmusic', 'timers', 'monitors', 'knowledge', 'system', 'pc', 'math', 'memory', 'windows', 'audio-display', 'connectivity', 'clipboard-capture', 'files', 'browser', 'self', 'web', 'lyrics'];
 
 // The groups that loaded, in ORDER. The array also carries .missing: [{ id, error? }], the groups left out:
@@ -21,9 +22,11 @@ function loadGroups(deps = {}) {
 function buildCatalog(groups) {
   const byName = new Map();
   const tools = [];
+  const byGroup = new Map();
   for (const g of groups) {
     for (const tool of g.tools) {
       tools.push(tool);
+      byGroup.set(tool.name, g.id);
       byName.set(tool.name, { tool, groupId: g.id });
     }
   }
@@ -34,6 +37,11 @@ function buildCatalog(groups) {
   return {
     groups, tools, ids: groups.map(g => g.id), missing: groups.missing || [], byName, groupOf: name => byName.get(name)?.groupId ?? null,
     cardsNow: () => buildCardsNow(groups),
+    // toolCardsNow(): one card per tool, awaiting each group's status() once; a tool inherits its group's availability.
+    toolCardsNow: async () => {
+      const byId = new Map((await buildCardsNow(groups)).map(c => [c.id, c]));
+      return new Map(tools.map(t => [t.name, buildToolCard(t, byGroup.get(t.name), byId.get(byGroup.get(t.name)))]));
+    },
   };
 }
 

@@ -34,6 +34,7 @@ function createMediaTool({ fetch = globalThis.fetch, timeoutMs = 3000, service }
   if (!service) {
     return {
       name: 'media_control',
+      verify: { tool: 'media_status', args: () => ({}), expect: { nonEmpty: true } },
       examples: ['pause resume skip next previous track','volume louder quieter mute','go back to the previous song'],   // wording the ranker matches requests against (skills/rank.js)
       hint: MEDIA_CONTROL_HINT,
       mistakes: MEDIA_MISTAKES,
@@ -44,6 +45,7 @@ function createMediaTool({ fetch = globalThis.fetch, timeoutMs = 3000, service }
   }
   return {
     name: 'media_control',
+    verify: { tool: 'media_status', args: () => ({}), expect: { nonEmpty: true } },
     hint: MEDIA_CONTROL_HINT,
     mistakes: MEDIA_MISTAKES,
     description: 'Control what is playing on this PC and confirm it worked. Actions: play, pause, toggle, stop, next, prev, seek (to or by seconds), volume (set 0-100 or by -100..100 percent points; system volume unless app is given), mute, unmute, shuffle (on), repeat (mode none|track|list), queue (not supported by Windows; returns why). app targets one player, e.g. "Spotify" or "Chrome".',
@@ -88,6 +90,7 @@ function createMediaTool({ fetch = globalThis.fetch, timeoutMs = 3000, service }
 function createMediaStatusTool({ service }) {
   return {
     name: 'media_status',
+    volatile: true,   // what is playing changes every few seconds
     examples: ['what song is playing right now','who sings this track','is anything playing','current track artist'],   // wording the ranker matches requests against (skills/rank.js)
     hint: 'media_status: what is playing now, where, position, volume. Read it before answering about media.',
     description: 'What is playing on this PC right now: title, artist, album or show, app, playing/paused, position and duration, shuffle/repeat, system and app volume. Windows does not expose the queue.',

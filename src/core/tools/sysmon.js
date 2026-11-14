@@ -26,6 +26,7 @@ function summarize(s) {
 function createSysmonTool({ fetch = globalThis.fetch, timeoutMs = 3000 } = {}) {
   return {
     name: 'get_system_stats',
+    volatile: true,
     examples: ['how hot is my graphics card','cpu gpu ram usage load','computer performance temperature'],   // wording the ranker matches requests against (skills/rank.js)
     hint: 'get_system_stats: live CPU/GPU load, temperatures, memory in use, VRAM, network, disk. Use it for any "how much memory/CPU/GPU is used" question, including JARVIS own use.',
     description: 'Get current PC stats from the local system monitor: CPU, GPU, RAM, network, disk.',

@@ -5,6 +5,7 @@
 const { READ_ONLY } = require('../tasks/effects');
 
 const SIDE_EFFECTS = ['none', 'read', 'write', 'external'];
+const EFFECT_VALUES = ['read', 'write', 'external'];
 const CARD_FIELDS = ['id', 'label', 'summary', 'examples', 'sideEffects', 'available', 'missingReason'];
 
 // Default summary + example requests per group id. A group file may override with its own summary/examples.
@@ -35,6 +36,7 @@ const RANK = { none: 0, read: 1, write: 2, external: 3 };
 
 // Tool level: declared value, else confirm tools write, else READ_ONLY tools read, else write (it changes something).
 function toolSideEffects(tool) {
+  if (EFFECT_VALUES.includes(tool.effect)) return tool.effect;   // the tool author's own declaration (tool contract)
   if (SIDE_EFFECTS.includes(tool.sideEffects)) return tool.sideEffects;
   if (tool.risk === 'confirm') return 'write';
   return READ_ONLY.has(tool.name) ? 'read' : 'write';
@@ -99,6 +101,14 @@ function validateToolMeta(t) {
   if (t.category !== undefined && (typeof t.category !== 'string' || !t.category)) errs.push('category must be a string');
   if (t.sideEffects !== undefined && !SIDE_EFFECTS.includes(t.sideEffects)) errs.push(`sideEffects must be one of ${SIDE_EFFECTS.join('|')}`);
   if (t.requires !== undefined && (!Array.isArray(t.requires) || t.requires.some(r => typeof r !== 'string' || !r))) errs.push('requires must be a string[]');
+  // tool contract (toolcards.js): effect, idempotent, reversible, volatile, verify
+  if (t.effect !== undefined && !EFFECT_VALUES.includes(t.effect)) errs.push(`effect must be one of ${EFFECT_VALUES.join('|')}`);
+  if (t.effect === 'read' && t.risk === 'confirm') errs.push('a confirm tool cannot be effect read');
+  for (const k of ['idempotent', 'reversible', 'volatile']) if (t[k] !== undefined && typeof t[k] !== 'boolean') errs.push(`${k} must be a boolean`);
+  if (t.verify !== undefined) {
+    const v = t.verify;
+    if (!v || typeof v.tool !== 'string' || !v.tool || typeof v.args !== 'function' || !v.expect || typeof v.expect !== 'object') errs.push('verify must be { tool: string, args: function, expect: object }');
+  }
   return errs;
 }
 
