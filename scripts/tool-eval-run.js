@@ -81,7 +81,7 @@ async function runRow(row, mode, o, ctx) {
   bus.on('tool', e => { if (e.phase === 'end') ends.push(e); });
   const orc = createOrchestrator({
     bus, sessions: ctx.sessions, providers, tools: createToolRunner(groups.flatMap(g => g.tools), { groups, ...(toolIndex ? { toolIndex } : {}) }), catalog,
-    ...(baseline ? { intelligence: false } : { toolIndex, ledger: createLedger({}), workmem: createWorkMem() }),
+    ...(baseline ? { intelligence: false } : { intelligence: o.flags || {}, toolIndex, ledger: createLedger({}), workmem: createWorkMem() }),
     getConfig: () => ({ ...DEFAULTS, provider: 'oracle' }), selectGroups: (t, x) => selectGroups(t, x, catalog),
     route: () => ({ tier: 'deep', think: false, tools: true, steps: Math.min(3, (row.want.tools || []).length || 1), reason: 'eval' }),
   });
@@ -140,12 +140,13 @@ function metrics(rows) {
   };
 }
 
-async function runSet({ rows, mode = 'new', modelDelayMs = 30, noise = 0, seed = 1, embedder = 'fake', set = 'v1' }) {
+// flags: switch single Phase 2B features off in 'new' mode (intelligence flags), for latency attribution
+async function runSet({ rows, mode = 'new', modelDelayMs = 30, noise = 0, seed = 1, embedder = 'fake', set = 'v1', flags = null }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tool-eval-'));
   const caches = new Map();
   const ctx = { sessions: createSessionStore(dir), cache: reg => { if (!caches.has(reg)) caches.set(reg, baseGroups(reg, set)); return caches.get(reg); } };
   const out = [];
-  try { for (const row of rows) out.push({ ...(await runRow(row, mode, { modelDelayMs, noise, seed, embedder }, ctx)), simple: !!row.simple }); }
+  try { for (const row of rows) out.push({ ...(await runRow(row, mode, { modelDelayMs, noise, seed, embedder, flags }, ctx)), simple: !!row.simple }); }
   finally { fs.rmSync(dir, { recursive: true, force: true }); }
   return { rows: out, metrics: metrics(out) };
 }

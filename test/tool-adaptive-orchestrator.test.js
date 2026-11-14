@@ -244,11 +244,25 @@ test('budget: rounds that only call the discovery tools do not use up the round 
   c.done();
 });
 
-test('budget: discovery-only rounds are still bounded (twice the cap in total)', async () => {
-  const route = () => ({ tier: 'deep', think: false, tools: true, steps: 1, reason: 'test' });
-  const c = setup([call('find_tools', { query: 'x' })], { route, meta: true });
+test('budget: discovery-only rounds are still bounded: exactly twice the cap, then a forced answer', async () => {
+  const route = () => ({ tier: 'deep', think: false, tools: true, steps: 1, reason: 'test' });   // cap 3, so 6 rounds
+  const script = Array.from({ length: 12 }, (_, i) => call(i % 2 ? 'more_skills' : 'find_tools', { query: 'q' + i, group: 'g' + i }, 'c' + i));
+  const c = setup(script, { route, meta: true });
   const r = await c.orc.send(c.s.id, 'look through my budget notes');
-  assert.ok(c.fp.calls.length <= 8, String(c.fp.calls.length));
-  assert.ok(r.reply !== undefined);
+  assert.equal(c.fp.calls.length, 8, '6 discovery rounds, the call that hits the cap, and the forced-answer call that still asks for a tool');
+  assert.equal(r.error, 'Too many tool rounds');
+  c.done();
+});
+
+test('intelligence:false keeps the old cap: discovery-only rounds still count', async () => {
+  const route = () => ({ tier: 'deep', think: false, tools: true, steps: 1, reason: 'test' });   // old cap 5
+  const script = [call('find_tools', { query: 'budget' }), call('more_skills', { group: 'notes' }, 'c2'), call('search_notes', { q: 'a' }, 'c3'), call('search_notes', { q: 'b' }, 'c4'), call('search_notes', { q: 'c' }, 'c5'), call('get_time', {}, 'c6'), say('Done.')];
+  let c = setup(script, { route, meta: true, intelligence: false });
+  await c.orc.send(c.s.id, 'look through my budget notes');
+  assert.deepEqual(c.ran, ['search_notes', 'search_notes', 'search_notes'], 'the 6th round never ran');
+  c.done();
+  c = setup([script[0], script[1], script[2], script[3], call('get_time', {}, 'c6'), say('Done.')], { route, meta: true });   // new loop: the two discovery rounds are free, so the 5th round (3rd real call) runs
+  await c.orc.send(c.s.id, 'look through my budget notes');
+  assert.ok(c.ran.includes('get_time'));
   c.done();
 });

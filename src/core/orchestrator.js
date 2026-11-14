@@ -430,7 +430,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       let stopped = false;
       let toolRounds = 0, metaRounds = 0;
       // a round that only asks for tools (find_tools, more_skills) is not work: it does not use the cap (MAX_EXTRA_LOADS bounds it); 2x is the hard stop
-      const capped = () => toolRounds - metaRounds >= roundCap || toolRounds >= 2 * roundCap;
+      const capped = () => intelligence.budget === false ? toolRounds >= roundCap : toolRounds - metaRounds >= roundCap || toolRounds >= 2 * roundCap;   // budget off: the old cap exactly
       let nudge = noMatchNudge;        // set when the model answered nothing: one more try with this added (and, first round, when no tool matched)
       let emptyRetries = 0;
       let claimRetried = false;
