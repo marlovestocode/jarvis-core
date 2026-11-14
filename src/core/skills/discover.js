@@ -193,4 +193,4 @@ async function resolveSelection({ text, rule, history, lastGroups = [], hint, li
   return { action: 'act', groups, source, intent, decision };
 }
 
-module.exports = { resolveSelection, gate, shortlist, looksUnsure, SHORTLIST, MULTI_MAX, ACT_MIN };
+module.exports = { resolveSelection, gate, shortlist, looksUnsure, cosine, within, SHORTLIST, MULTI_MAX, ACT_MIN };

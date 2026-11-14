@@ -11,6 +11,7 @@ const { resolveInvented, closest } = require('./invented');
 const { checkArgs } = require('./args');
 
 const { speakerReason } = require('./speaker');
+const { firstSentence } = require('./constrain');
 
 // Guest turns (turn.speaker 'guest': speaker recognition heard a voice that is not the owner's) are DEFAULT DENY: only these
 // tools run, everything else is refused with the guest text, before its arguments are checked or its group is loaded. Allowed:
@@ -35,11 +36,19 @@ function guestRefusal(tool, args, ctx) {
   return null;
 }
 
+// Why discovery should not offer a tool this turn, or null. ADVISORY: it hides tools the model could not run anyway;
+// exec() and guestRefusal() above still decide, so a wrong answer here can never grant anything.
+function eligibility(tool, turn = {}) {
+  if (turn.speaker === 'guest' && !GUEST_TOOLS.has(tool.name)) return 'guest';
+  if (turn.tainted && (tool.risk === 'confirm' || tool.needsClean === true)) return 'tainted';
+  return null;
+}
+
 const DIRECT_MAX = 300;     // a result longer than this still goes through the model
 const MAX_EXTRA_LOADS = 2;   // more_skills and auto-load share this cap per turn
 const norm = s => String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_').replace(/_?(?:skills?|group)$/, '');
 
-function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
+function createToolRunner(tools, { timeoutMs = 10000, groups = null, toolIndex = null } = {}) {
   const byName = new Map(tools.map(t => [t.name, t]));
   const names = [...byName.keys()];
   for (const t of tools) for (const a of t.aliases || []) if (!byName.has(a)) byName.set(a, t);
@@ -120,6 +129,10 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
     for (const id of ids) if (catalog.ids.includes(id)) add(id);
     let extra = 0;
     const group = id => catalog.groups.find(g => g.id === id);
+    // offered: once discovery ran, specs() shows only these tools plus the meta tools. Narrowing lives in specs() alone:
+    // authorization (scopedRun, exec) never looks at it, so a tool outside it still runs by name under the same checks.
+    let offered = null;
+    const META = ['find_tools', 'more_skills'];
     const inScope = tool => loaded.some(id => group(id).tools.includes(tool));
 
     function resolveGroup(want) {
@@ -138,7 +151,43 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
       if (extra >= MAX_EXTRA_LOADS) return { ok: false, text: `Cannot load more skills this turn (limit ${MAX_EXTRA_LOADS}). Answer with what you have.` };
       extra++;
       add(id);
+      if (offered) for (const t of g.tools) offered.add(t.name);   // asked for by the model: its tools are shown whole
       return { ok: true, text: `Loaded ${g.label}: ${list}.` };
+    }
+
+    // discovery narrows from "everything in the loaded groups" to what was found
+    const startOffer = () => { if (!offered) offered = new Set(META); return offered; };
+    function offerNames(names, turn, charge) {
+      const set = startOffer();
+      const out = [];
+      for (const n of names) {
+        const tool = byName.get(n);
+        if (!tool || eligibility(tool, turn || {})) continue;
+        const gid = catalog.groupOf(tool.name);
+        if (gid && !loaded.includes(gid)) {
+          if (charge && extra >= MAX_EXTRA_LOADS) continue;   // over the cap: skipped, never an error
+          if (charge) extra++;
+          add(gid);
+        }
+        set.add(tool.name);
+        out.push(tool.name);
+      }
+      return out;
+    }
+    const offer = (names, { turn } = {}) => offerNames(names, turn, true);
+
+    // find_tools: one unit of the same per-turn budget as more_skills; candidates come from the global index with the caller's own turn
+    async function find(query, ctx = {}) {
+      if (!toolIndex) throw new Error('Tool search is not available.');
+      if (extra >= MAX_EXTRA_LOADS) throw new Error(`Cannot load more skills this turn (limit ${MAX_EXTRA_LOADS}). Answer with what you have.`);
+      extra++;
+      const t = ctx.turn || {};
+      const r = await toolIndex.find(String(query ?? ''), { groups: null, speaker: t.speaker || 'owner', tainted: !!t.tainted });
+      if (r.outcome === 'none') return 'No tool can do that. Do not invent one; say you cannot.';
+      if (r.outcome === 'not_permitted') return 'I am not allowed to do that in this turn.';
+      if (!offered) { offered = new Set(META); for (const id of loaded) for (const x of group(id).tools) offered.add(x.name); }
+      const names = offerNames(r.tools.map(x => x.name), t, false);   // already paid for above
+      return names.map(n => `${n}: ${byName.get(n).summary || firstSentence(byName.get(n).description, 140)}`).join('\n');
     }
 
     async function scopedRun(name, args, ctx = {}) {
@@ -152,7 +201,7 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
         }
         return unknown(name);
       }
-      const c = { ...ctx, skills: { ...view, load, loaded: () => [...loaded] } };
+      const c = { ...ctx, skills: { ...view, load, loaded: () => [...loaded], find } };
       if (!inScope(tool)) {
         // refuse before loading anything: auto-load never gets around risk, taint or the guest allowlist
         const guest = guestRefusal(tool, args, c);
@@ -168,7 +217,8 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
     }
 
     return {
-      specs: () => loaded.flatMap(id => group(id).tools).map(({ name, description, params }) => ({ name, description, params })),
+      specs: () => loaded.flatMap(id => group(id).tools).filter(t => !offered || offered.has(t.name)).map(({ name, description, params }) => ({ name, description, params })),
+      offer,
       run: scopedRun,
       resolves,
       loaded: () => [...loaded],
@@ -188,4 +238,4 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
   return { specs, run, turn, resolves, direct, stats: view.stats };
 }
 
-module.exports = { createToolRunner, MAX_EXTRA_LOADS };
+module.exports = { createToolRunner, eligibility, MAX_EXTRA_LOADS };

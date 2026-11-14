@@ -56,7 +56,8 @@ const { resolveFollowUp } = require('./livestate/followup');
 const { liveContext } = require('./livestate/context');
 const { plan } = require('./brain/plan');
 const { instant } = require('./brain/instant');
-const { resolveSelection: resolveSelectionDefault } = require('./skills/discover');
+const { resolveSelection: resolveSelectionDefault, looksUnsure } = require('./skills/discover');
+const { speakerReason } = require('./tools/speaker');
 
 // A model-written question or decline is spoken as it is: one line, no control characters, capped (discover.js already
 // cleans it; this is the last fence before speech). It is never passed to a tool.
@@ -99,9 +100,10 @@ const NUDGE_AFTER_TOOL = 'Answer the user now, in one or two sentences, using th
 const NUDGE_CLAIM = 'Your last reply said something was done, or stated what is playing, without calling a tool. Call the tool that does it or checks it now, then answer only from its result. If no tool fits, say you cannot do that.';
 const nudgeGround = figs => `Your reply gave figures that appear in no tool result or message: ${figs.join(', ')}. Answer again using only the numbers the tools returned, or say you could not confirm them.`;
 const NUDGE_CAP = 'You have used all the tool rounds you are allowed. Answer the user now with what the tool results above gave you, and say plainly what you could not get.';
+const NUDGE_NO_MATCH = 'No tool matches this request: do not invent one; answer from what you know or say you cannot do it.';
 const NUDGE_PLAIN ="Reply to the user's last message in one or two sentences.";
 
-function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, rankTools = null, learnTool = null, onQuestionLost = () => {}, memoryBlock = null, context: assembler = null, live = null, catalog = null, resolveSelection = resolveSelectionDefault, embed = null }) {
+function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, rankTools = null, learnTool = null, onQuestionLost = () => {}, memoryBlock = null, context: assembler = null, live = null, catalog = null, resolveSelection = resolveSelectionDefault, embed = null, toolIndex = null, intelligence = {} }) {
   let current = null; // AbortController of the running turn
   const lastGroupsAt = new Map(); // session id → when lastGroups was last set
   // the areas the last turn used, only while that turn is recent: "make it 10" an hour later does not mean the timer from back then
@@ -316,6 +318,28 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       let toolsOn = !!(p.capabilities?.tools && tools && hints?.tools !== false);
       // skill groups: only the groups this request needs are offered; the scope can load more mid-turn
       let scope = toolsOn && picked ? tools.turn(picked) : null;
+      // tool discovery (spec 2): the tools that fit the request are OFFERED; exec() still decides what runs. A simple command
+      // (high confidence) is ranked lexically: no embedding call and no model call. Any failure keeps the whole loaded set.
+      let noMatchNudge = null;
+      if (scope && toolIndex && intelligence.index !== false && typeof scope.offer === 'function' && !ac.signal.aborted) {
+        try {
+          let effectHint = null;
+          try { effectHint = looksUnsure(routeText, []) ? 'read' : null; } catch { effectHint = null; }   // a question or discussion reads, it does not act
+          const r = await toolIndex.find(routeText, { groups: picked.confidence === 'low' ? null : scope.loaded(), speaker, tainted: !owner, effectHint, lexicalOnly: picked.confidence === 'high' });
+          const offerTurn = owner ? { source, tainted: false } : { source, tainted: true, speaker };
+          if (r.outcome === 'tools') scope.offer(r.tools.map(t => t.name), { turn: offerTurn });
+          else if (r.outcome === 'none') { scope.offer([], { turn: offerTurn }); noMatchNudge = NUDGE_NO_MATCH; }
+          else if (r.outcome === 'not_permitted' && !owner) {
+            const say = spoken(speakerReason(offerTurn) || 'I only do that for my owner.');
+            bus.emit('route', { tier: 'skill', think: false, reason: 'skill', model: null });
+            bus.emit('token', { text: say });
+            s.messages.push({ role: 'assistant', content: say });
+            sessions.save(s);
+            if (source !== 'voice') bus.emit('state', { state: 'idle' });
+            return { reply: say, stopped: false, sessionId: s.id, skill: true };
+          }
+        } catch (err) { bus.emit('log', { level: 'warn', text: `Tool discovery failed, offering the whole group: ${err?.message || err}` }); }
+      }
       const failed = new Map();     // tool or tool:action → how many times it failed this turn
       const failKey = call => call.name + (typeof call.args?.action === 'string' && call.args.action ? ':' + call.args.action : '');
       const blocked = key => (failed.get(key) || 0) >= FAIL_LIMIT;
@@ -366,7 +390,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       let error;
       let stopped = false;
       let toolRounds = 0;
-      let nudge = null;        // set when the model answered nothing: one more try with this added
+      let nudge = noMatchNudge;        // set when the model answered nothing: one more try with this added (and, first round, when no tool matched)
       let emptyRetries = 0;
       let claimRetried = false;
       let groundRetried = false;

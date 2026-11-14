@@ -27,7 +27,8 @@ const { createSessionStore } = require('../core/session');
 const { createRegistry } = require('../core/providers/provider');
 const { NullProvider } = require('../core/providers/null-provider');
 const { createOllamaProvider } = require('../core/providers/ollama');
-const { createToolRunner } = require('../core/tools/registry');
+const { createToolRunner, eligibility } = require('../core/tools/registry');
+const { createToolIndex } = require('../core/skills/toolindex');
 const brain = require('../core/brain');
 const skills = require('../core/skills');
 const { createHardwareProbe } = require('../core/brain/hardware');
@@ -312,7 +313,10 @@ const self = { getChecks: () => selfChecks(ctx), about: () => ({ version, electr
 ctx.catalog = brain.defaultCatalog({ self, analytics: { metrics: ctx.metrics, openDashboard: ctx.openDashboard }, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, getConfig: ctx.getConfig, applySettings: patch => { const { config, errors } = applyPatch(ctx.config, patch, { providers: ctx.providers, engines: ctx.engines }); ctx.saveConfig(config); return errors; }, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, lyrics: ctx.lyrics, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog }, ...(ctx.taskTools ? { tasks: ctx.taskTools } : {}) });
 ctx.toolList = ctx.catalog.tools;
 for (const m of ctx.catalog.missing) if (m.error) ctx.log(`skill group ${m.id} failed to load: ${m.error}`);
-ctx.tools = createToolRunner(ctx.toolList, { groups: ctx.catalog.groups });
+// tool discovery: embeddings come from the memory system's embedder (none installed: lexical only, within 250 ms)
+const embedTexts = (texts, o) => ctx.memorySystem.embed(texts, o);
+ctx.toolIndex = createToolIndex({ catalog: ctx.catalog, embed: embedTexts, eligible: eligibility });
+ctx.tools = createToolRunner(ctx.toolList, { groups: ctx.catalog.groups, toolIndex: ctx.toolIndex });
 // which tool a request is about, ranked from the tools' own text and from the requests that worked before (this run): the model sees the likeliest tools first
 const toolRanker = createRanker(ctx.toolList);
 // a request that names nothing to act on, or something JARVIS has no tool for, is answered here instead of guessed at by the model
@@ -343,7 +347,7 @@ const contextProviders = [liveProvider({ live: ctx.live })];
 if (ctx.tasks) contextProviders.push(taskProvider({ tasks: ctx.tasks }));
 ctx.context = createAssembler({ providers: contextProviders });
 ctx.orchestrator = createOrchestrator({
-  live: ctx.live, catalog: ctx.catalog, context: ctx.context,   // catalog: plan() checks a pending confirm's group against it
+  live: ctx.live, catalog: ctx.catalog, context: ctx.context, embed: embedTexts, toolIndex: ctx.toolIndex,   // catalog: plan() checks a pending confirm's group against it
   bus: ctx.bus, sessions: ctx.sessions, providers: ctx.providers, tools: ctx.tools, getConfig: ctx.getConfig,
   systemPrompt: brain.systemPrompt, stamp: brain.nowLine, route: brain.route,
   selectGroups: (text, o) => skills.selectGroups(text, o, ctx.catalog),
