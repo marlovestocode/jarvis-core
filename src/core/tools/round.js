@@ -26,40 +26,53 @@ const failure = e => ({ ok: false, text: `Error: ${e?.message || e}` });
 // again; nothing here widens what may run. A write that may have happened is never retried: it is verified or reported unknown.
 async function attemptCall({ call, run, contractOf = () => null, repair = null, sleep = ms => new Promise(r => setTimeout(r, ms)), signal }) {
   const go = async (c, extra) => { try { return await run(c, extra); } catch (e) { return failure(e); } };
-  const c = contractOf(call.name) || { effect: 'write', idempotent: false, verify: null };   // unknown contract: fail closed as a write
-  let res = await go(call);
+  const fallback = { effect: 'write', idempotent: false, verify: null };   // unknown contract: fail closed as a write
+  let cur = call;
+  let c = contractOf(cur.name) || fallback;
+  let res = await go(cur);
   const act = plan(classify(res), { effect: c.effect, idempotent: c.idempotent, attempt: 0 });
   if (act === 'retry' && !signal?.aborted) {
     await sleep(backoffMs(0));
-    res = { ...(await go(call)), retried: true };
+    if (!signal?.aborted) res = { ...(await go(cur)), retried: true };
   } else if (act === 'repair' && repair) {
     let fixed = null;
-    try { fixed = await repair(call, res); } catch { /* a failed repair leaves the original failure */ }
-    if (fixed && JSON.stringify(fixed.args ?? {}) !== JSON.stringify(call.args ?? {})) res = await go({ ...call, name: fixed.name || call.name, args: fixed.args });
+    try { fixed = await repair(cur, res); } catch { /* a failed repair leaves the original failure */ }
+    const name = fixed?.name || cur.name;
+    if (fixed && (name !== cur.name || JSON.stringify(fixed.args ?? {}) !== JSON.stringify(cur.args ?? {}))) {
+      cur = { ...cur, name, args: fixed.args };
+      c = contractOf(name) || fallback;   // the tool that actually runs owns the contract
+      res = await go(cur);
+    }
   } else if (act === 'rediscover') {
     return { ...res, rediscover: true, tool: call.name };
-  } else if (act === 'verify_or_unknown') {
-    return onTimeout(call, res, c, go);
   }
-  return afterSuccess(call, res, c, go);
+  // the second result (after a retry or repair) gets the same treatment as the first: a timed-out write is never repeated
+  if (classify(res) === 'timeout' && c.effect !== 'read') return onTimeout(cur, res, c, go);
+  return afterSuccess(cur, res, c, go);
 }
 
-// the verify read: through run (exec), fresh so the ledger cannot answer from before the write. -> { vres, expect } or null
+// the verify read: through run (exec), fresh so the ledger cannot answer from before the write. Only a real, ok answer from the
+// tool counts: a refusal (guest, taint), an error or a ledger answer is never confirmation. A throwing verify is unconfirmed.
+// -> { confirmed, why, vres }
 async function verifyRead(call, res, v, go) {
-  const args = typeof v.args === 'function' ? v.args(call.args, res) : (v.args ?? {});
-  const vres = await go({ id: call.id, name: v.tool, args }, { fresh: true });
-  const expect = typeof v.expect === 'function' ? v.expect(call.args, vres) : v.expect;
-  return { vres, expect };
+  try {
+    const args = typeof v.args === 'function' ? v.args(call.args, res) : (v.args ?? {});
+    const vres = await go({ id: call.id, name: v.tool, args }, { fresh: true });
+    if (!vres?.ok || vres.denied || vres.skipped || vres.ledger) return { confirmed: false, why: `the check could not run: ${String(vres?.text ?? '').slice(0, 120)}`, vres };
+    const expect = typeof v.expect === 'function' ? v.expect(call.args, vres) : v.expect;
+    if (expect === null) return { confirmed: false, nothing: true, why: 'nothing to check it against', vres };   // nothing checkable
+    const k = check(expect, vres);
+    return { confirmed: k.ok, why: k.why, vres };
+  } catch (e) {
+    return { confirmed: false, why: `the check failed: ${e?.message || e}` };
+  }
 }
 
 async function onTimeout(call, res, c, go) {
   const unknown = text => ({ ...res, ok: false, unknown: true, text });
   if (!c.verify) return unknown(`Error: ${call.name} timed out; the outcome is unknown and it was not retried. Tell the user it may or may not have happened.`);
-  const { vres, expect } = await verifyRead(call, res, c.verify, go);
-  // expect === null: nothing checkable for this call, which cannot confirm it
-  if (expect !== null && check(expect, vres).ok) {
-    return { ok: true, text: 'The action timed out, but I checked and it went through: ' + vres.text, verified: true, ...(vres.untrusted && { untrusted: true }) };
-  }
+  const v = await verifyRead(call, res, c.verify, go);
+  if (v.confirmed) return { ok: true, text: 'The action timed out, but I checked and it went through: ' + v.vres.text, verified: true, ...(v.vres.untrusted && { untrusted: true }) };
   return unknown('Error: it timed out and I could not confirm it happened. Do not say it was done.');
 }
 
@@ -67,11 +80,11 @@ async function onTimeout(call, res, c, go) {
 // flagged, and it never triggers a retry: the action may well have happened.
 async function afterSuccess(call, res, c, go) {
   if (!res.ok || res.skipped || res.ledger || !c.verify || c.effect === 'read' || softFail(res.text) || String(res.text).startsWith(NEEDS_OK)) return res;
-  const { vres, expect } = await verifyRead(call, res, c.verify, go);
-  if (expect === null) return res;
-  const v = check(expect, vres);
-  if (v.ok) return { ...res, verified: true };
-  return { ...res, verified: false, text: `${res.text} (I could not confirm it: ${v.why}.)` };
+  const v = await verifyRead(call, res, c.verify, go);
+  if (v.nothing) return res;
+  const taint = v.vres?.untrusted ? { untrusted: true } : {};
+  if (v.confirmed) return { ...res, verified: true };
+  return { ...res, ...taint, verified: false, text: `${res.text} (I could not confirm it: ${v.why}.)` };
 }
 
 async function runBatch(batch, run, rec) {

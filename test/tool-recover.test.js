@@ -209,3 +209,77 @@ test('orchestrator: a stop mid-round still ends every started call and keeps a t
   assert.deepEqual(sessions.load(s.id).messages.filter(m => m.role === 'tool').map(m => m.toolCallId), ['1', '2']);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// -- review fixes ---------------------------------------------------------------
+test('a verify read that was refused, errored or ledger-skipped never confirms', async () => {
+  const contract = { effect: 'write', idempotent: false, verify: { tool: 'v', args: () => ({}), expect: { nonEmpty: true } } };
+  for (const vres of [{ ok: false, denied: true, text: 'Error: not allowed' }, { ok: false, text: 'Error: unknown tool v' }, { ok: true, text: 'cached', skipped: true, ledger: 'cached' }]) {
+    const timeoutRun = async c => (c.name === 'x' ? { ok: false, timedOut: true, text: 'Error: tool x timed out' } : vres);
+    const t = await attemptCall({ call: { name: 'x', args: {} }, run: timeoutRun, contractOf: () => contract });
+    assert.equal(t.ok, false);
+    assert.equal(t.unknown, true);
+    const okRun = async c => (c.name === 'x' ? { ok: true, text: 'did' } : vres);
+    const s = await attemptCall({ call: { name: 'x', args: {} }, run: okRun, contractOf: () => contract });
+    assert.equal(s.ok, true);
+    assert.equal(s.verified, false);
+  }
+});
+
+test('a throwing verify args() or expect() is unconfirmed, never an escape', async () => {
+  for (const verify of [{ tool: 'v', args: () => { throw new Error('boom'); }, expect: { nonEmpty: true } }, { tool: 'v', args: () => ({}), expect: () => { throw new Error('boom'); } }]) {
+    const contract = { effect: 'write', idempotent: false, verify };
+    const s = await attemptCall({ call: { name: 'x', args: {} }, run: async () => ({ ok: true, text: 'did' }), contractOf: () => contract });
+    assert.equal(s.ok, true);
+    assert.equal(s.verified, false);
+    assert.match(s.text, /could not confirm/);
+    const t = await attemptCall({ call: { name: 'x', args: {} }, run: async c => (c.name === 'x' ? { ok: false, timedOut: true, text: 'Error: timed out' } : { ok: true, text: 'z' }), contractOf: () => contract });
+    assert.equal(t.unknown, true);
+  }
+});
+
+test('a repaired call that then times out is unknown and the ledger refuses a repeat', async () => {
+  let runs = 0;
+  const runner = createToolRunner([{ name: 'w', description: 'w', params: { type: 'object', properties: { n: { type: 'number' } }, required: ['n'] }, effect: 'write', timeoutMs: 20, async run() { runs++; await sleep(100); return 'x'; } }]);
+  const ledger = createLedger();
+  const mk = args => attemptCall({
+    call: { id: '1', name: 'w', args },
+    run: (c, x = {}) => runner.run(c.name, c.args, { turn: {}, sessionId: 's', ledger, turnId: 't', ...x }),
+    contractOf: n => toolContract(runner.get(n)),
+    repair: async () => ({ name: 'w', args: { n: 1 } }),
+  });
+  const res = await mk({ n: 'bad' });
+  assert.equal(res.unknown, true);
+  assert.match(res.text, /outcome is unknown/);
+  assert.equal(runs, 1);
+  assert.equal((await mk({ n: 1 })).ledger, 'unknown');
+  assert.equal(runs, 1);
+});
+
+test('idempotent write: retried on a transient error; a retry that times out is unknown', async () => {
+  const IDEM = { effect: 'write', idempotent: true, verify: null };
+  const counts = {};
+  const ok = await attemptCall({ call: { name: 'i', args: {} }, run: mkRun((c, e, n) => (n === 1 ? { ok: false, text: 'Error: ECONNRESET' } : { ok: true, text: 'fine' }), counts), contractOf: () => IDEM, sleep: async () => {} });
+  assert.equal(ok.retried, true);
+  assert.equal(counts.i, 2);
+  const c2 = {};
+  const t = await attemptCall({ call: { name: 'i', args: {} }, run: mkRun((c, e, n) => (n === 1 ? { ok: false, text: 'Error: ECONNRESET' } : { ok: false, timedOut: true, text: 'Error: i timed out' }), c2), contractOf: () => IDEM, sleep: async () => {} });
+  assert.equal(t.unknown, true);
+  assert.match(t.text, /outcome is unknown/);
+  assert.equal(c2.i, 2);
+});
+
+test('abort during the backoff stops the retry', async () => {
+  const ac = new AbortController(), counts = {};
+  const res = await attemptCall({ call: { name: 'r', args: {} }, run: mkRun(() => ({ ok: false, text: 'Error: ECONNRESET' }), counts), contractOf: () => READ, signal: ac.signal, sleep: async () => { ac.abort(); } });
+  assert.equal(counts.r, 1);
+  assert.equal(res.ok, false);
+});
+
+test('a repair that renames the tool verifies with the tool that ran, using the repaired args', async () => {
+  const seen = [];
+  const contracts = { a: { effect: 'write', idempotent: false, verify: null }, b: { effect: 'write', idempotent: false, verify: { tool: 'vb', args: x => ({ got: x.k }), expect: { contains: 'yes' } } } };
+  const run = async c => { seen.push(c.name + JSON.stringify(c.args)); return c.name === 'a' ? { ok: false, badArgs: true, text: 'Error: bad' } : c.name === 'b' ? { ok: true, text: 'did' } : { ok: true, text: 'yes' }; };
+  const res = await attemptCall({ call: { name: 'a', args: {} }, run, contractOf: n => contracts[n], repair: async () => ({ name: 'b', args: { k: 7 } }) });
+  assert.equal(res.verified, true);
+  assert.deepEqual(seen, ['a{}', 'b{"k":7}', 'vb{"got":7}']);
+});
