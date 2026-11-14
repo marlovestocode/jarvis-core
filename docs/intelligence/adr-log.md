@@ -39,6 +39,7 @@ Gap ids (G1..) are in `phase0-baseline.md` §4. Baseline numbers are in §6 ther
 - **Compat:** no registry change. Cache is derivable, safe to delete.
 - **Measure:** eval v1 indirect/slang/unusual, `orchestration-bench` tool top-3, added latency.
 - **Open question for user:** accept a dependency of discovery on the embed model being installed?
+- **Implemented (Phase 2B):** tool-level discovery embeds the tool cards through the existing embedder, wired in `src/main/main.js` (`createToolIndex({ embed: embedTexts })`). Embedding is capped at 250 ms per turn and never blocks: a slow or missing embed model falls back to lexical BM25, so the dependency is soft. The decision to depend on the embed model (question 2 below) is therefore not forced, but still needs the user's acknowledgement. Real-embedder recall is not measured (the eval uses a hashed fake embedder); see `phase2b-tool-intelligence.md`.
 
 ## A-004: Capability metadata as optional tool fields (Phase 2, 4, 5)
 - **Existing:** tool = `{name, description, params, run, hint, aliases, mistakes, risk, needsClean, untrusted, direct, timeoutMs, examples}`.
@@ -47,6 +48,7 @@ Gap ids (G1..) are in `phase0-baseline.md` §4. Baseline numbers are in §6 ther
 - **Compat:** fields optional. `test/tool-registry-consistency.test.js` extended to require `effect` on every tool once filled.
 - **Security:** `effect` is declared by the tool author, never by the model or content.
 - **Tests:** consistency test; classification review by user for the 98 tools (49 `safe` + 38 unset need a human look; list in baseline §4 G5).
+- **Implemented (Phase 2B, deviation from the six planned values):** the tool field is `effect: 'read'|'write'|'external'` plus optional `idempotent`, `reversible`, `volatile` and `verify` (`skills/capability.js` `EFFECT_VALUES`, `skills/toolcards.js`). The six-value form (`sensitive-read`, `write-reversible`, `destructive`, `admin`) was NOT built: `risk:'confirm'` already carries the destructive/admin distinction, and `READ_ONLY` in `tasks/effects.js` stays the one read list the derivation falls back to. A tool that declares `effect:'read'` but has `risk:'confirm'` is treated as `write`. Classification review by the user is still open (decision 4 below). Measured effect: `docs/intelligence/phase2b-tool-intelligence.md`.
 
 ## A-005: Event envelope extension, same bus (Phase 3)
 - **Existing:** `bus.js` (27 lines).

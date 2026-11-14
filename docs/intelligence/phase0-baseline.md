@@ -93,6 +93,8 @@ Maturity: **S** solid and tested, **P** partial, **N** none.
 | G14 | Intent decisions are not recorded: why a group/tool was picked or rejected is lost (only the route event and the metrics counters survive) | orchestrator | 2, 5 |
 | G15 | Cortex recall bench gates failed on this run (p95 19.0 ms vs 15; rss delta 71.8 MB vs 64) while the 2026-11-12 pass had them green (11.7 ms). Run was concurrent with other work (tests had just finished); **not re-run in isolation**, so noise vs regression is unresolved | bench output | 1 |
 
+Phase 2B (tool intelligence) status: G5/G6 are addressed by the optional `effect` field and its single derivation (see `adr-log.md` A-004); no security GAP test changed. Results and the final review checklist are in `phase2b-tool-intelligence.md`.
+
 Not gaps (preserve): corrections weaken recall; contradiction/duplicate/stale handling in recall; taint propagation into tasks; guest default-deny; crash-safe task steps; DNS-rebinding guard; bridge allowlist; claim guards; the instant/skill fast paths.
 
 ## 5. Security baseline (Roadmap §0.4)
