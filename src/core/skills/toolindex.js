@@ -10,6 +10,7 @@ const { callConstrain } = require('./intent');
 
 // Initial values; tuned on the dev fixtures only (Task 8).
 const TOOL_K = 6, K_MIN = 4, K_MAX = 8;
+const WHOLE_MAX = K_MAX;  // a loaded set this small is offered whole: narrowing saves almost nothing and lost recall on simple commands (dev eval: "pause the music" dropped media_control)
 const MIN_COS = 0.3;      // an embedding match this weak is no match
 const READ_DAMP = 0.6;    // a question about state: write/external tools count for less
 const META = new Set(['find_tools', 'more_skills']);   // how the model asks for tools, never a candidate itself
@@ -82,6 +83,7 @@ function createToolIndex({ catalog, embed = null, embedMs = 250, eligible = () =
       } catch { sem = null; }
     }
 
+    const whole = !!gset && cand.length <= WHOLE_MAX;
     const scored = [];
     for (const r of cand) {
       const l = lex.get(r.card.name) || 0, c = sem ? sem.get(r.card.name) || 0 : 0;
@@ -101,10 +103,11 @@ function createToolIndex({ catalog, embed = null, embedMs = 250, eligible = () =
       else ok.push(x);
     }
     if (!ok.length) return { outcome: 'not_permitted', tools: [], ineligible, mode };
+    if (whole) { const have = new Set(scored.map(x => x.r.card.name)); for (const r of cand) if (!have.has(r.card.name) && !eligible(r.tool, { speaker, tainted })) ok.push({ r, s: 0 }); }   // a small loaded set: the rest follow, ranked last
 
     // a clear winner needs few neighbours; a weak best match gets a wider net
     const norm = ok[0].s / (sem ? 2 : 1);
-    const n = k || (ok.length > 1 && ok[0].s >= 1.5 * ok[1].s ? K_MIN : norm < 0.6 ? K_MAX : TOOL_K);
+    const n = k || (whole ? ok.length : ok.length > 1 && ok[0].s >= 1.5 * ok[1].s ? K_MIN : norm < 0.6 ? K_MAX : TOOL_K);
     const tools = ok.slice(0, n).map(x => ({ name: x.r.card.name, groupId: x.r.card.groupId, score: Math.round(x.s * 1000) / 1000 }));
     return { outcome: 'tools', tools, ineligible, mode };
   }

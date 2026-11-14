@@ -6,15 +6,21 @@
 const VERBS = 'open close start stop pause resume delete create rename copy move send read write search list share save print mute scan sync lock record'.split(' ');
 const NOUNS = 'door window file folder album song photo video note alarm timer reminder contact message email calendar event tab page bookmark download setting profile account network printer speaker camera screen password backup report invoice ticket recipe playlist podcast channel widget script archive'.split(' ');
 
+// A second vocabulary for the held-out set: no verb or noun is shared with the dev set, so nothing tuned on dev words carries over.
+const VERBS_B = 'attach detach archive restore compress extract publish subscribe approve reject schedule cancel inspect export import verify rotate encrypt decrypt upload mirror pin tag flag merge'.split(' ');
+const NOUNS_B = 'ledger voucher parcel shipment roster dossier manifest ticketing license badge garden fountain bridge tunnel harbor lantern compass journal notebook ribbon pantry kettle locker pillow blanket helmet bicycle engine turbine sensor beacon cable router modem scanner monitor drone satellite cabinet shelf drawer'.split(' ');
+const VOCAB = { a: [VERBS, NOUNS], b: [VERBS_B, NOUNS_B] };
+
 function mulberry32(seed) {
   let a = seed >>> 0;
   return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 
-function makeSynthRegistry({ n = 300, seed = 1 } = {}) {
+function makeSynthRegistry({ n = 300, seed = 1, vocab = 'a' } = {}) {
   const rnd = mulberry32(seed);
+  const [verbs, nouns] = VOCAB[vocab];
   const pairs = [];
-  for (const v of VERBS) for (const o of NOUNS) pairs.push([v, o]);
+  for (const v of verbs) for (const o of nouns) pairs.push([v, o]);
   for (let i = pairs.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [pairs[i], pairs[j]] = [pairs[j], pairs[i]]; }
   const chosen = pairs.slice(0, Math.min(n, pairs.length));
   const synonyms = {}, other = new Map();
