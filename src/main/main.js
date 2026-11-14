@@ -30,6 +30,7 @@ const { createOllamaProvider } = require('../core/providers/ollama');
 const { createToolRunner, eligibility } = require('../core/tools/registry');
 const { createToolIndex } = require('../core/skills/toolindex');
 const { createLedger } = require('../core/tools/ledger');
+const { toolContract } = require('../core/skills/toolcards');
 const brain = require('../core/brain');
 const skills = require('../core/skills');
 const { createHardwareProbe } = require('../core/brain/hardware');
@@ -303,6 +304,8 @@ try {
     store: ctx.taskStore, bus: ctx.bus, log: ctx.log,
     tools: { run: (...a) => ctx.tools.run(...a), resolves: n => ctx.tools.resolves(n) },
     riskOf: n => ctx.toolList?.find(t => t.name === n || t.aliases?.includes(n))?.risk,
+    // a step is retried only when its tool reads or is idempotent: a write that may have happened is never repeated
+    canRetry: n => { const t = ctx.tools?.get?.(n); if (!t) return false; const c = toolContract(t); return c.effect === 'read' || c.idempotent; },
     confirmPending: () => ctx.confirm.pending(),
     onCancel: () => ctx.confirm.clear(),   // a cancelled task's question must not stay answerable
   });

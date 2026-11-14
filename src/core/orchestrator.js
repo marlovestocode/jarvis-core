@@ -8,7 +8,7 @@ const REPLY_CHARS = 4000;
 const FAIL_LIMIT = 2;           // a tool (or tool action) that failed this many times in one turn is not run again that turn
 const ASK_ANSWER_WORDS = 6;     // an answer to JARVIS's own question is at most this long to be read together with the question
 const ASK_DROPPED = /\b(?:never ?mind|forget it|cancel|nothing|no thanks?|stop)\b/i;
-const NO_RETRY = /not running|not in Ollama|not allowed|must be local|timed out|aborted/i;   // errors a second try cannot fix
+const { NO_RETRY } = require('./tools/recover');   // errors a second try cannot fix
 const NOT_MODEL = /not running|must be local|not allowed/i;   // errors that are not the model's fault (daemon down, config): no modelfail
 const GROUPS_TTL_MS = 15 * 60 * 1000;   // how long the last turn's skill areas count for follow-ups
 const LAST_GROUPS_MAX = 64;     // sessions whose last skill groups are remembered (follow-up bonus only)
@@ -59,7 +59,7 @@ const { instant } = require('./brain/instant');
 const { resolveSelection: resolveSelectionDefault, looksUnsure } = require('./skills/discover');
 const { speakerReason } = require('./tools/speaker');
 const { runRound } = require('./tools/round');
-const { parallelSafe } = require('./skills/toolcards');
+const { parallelSafe, toolContract } = require('./skills/toolcards');
 
 // A model-written question or decline is spoken as it is: one line, no control characters, capped (discover.js already
 // cleans it; this is the last fence before speech). It is never passed to a tool.
@@ -571,7 +571,11 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
         const parallelSafeOf = n => { const t = tools.get?.(n); return !!t && !!useTools?.some(x => x.name === n) && parallelSafe(t); };
         inTool = true;
         let results;
-        try { results = await runRound({ jobs, run, turn, signal: ac.signal, parallelSafeOf, parallel: intelligence.parallel !== false }); }
+        const contractOf = n => { const t = tools.get?.(n); return t ? toolContract(t) : null; };
+        // bad args are repaired by the same constrained decode as before the call; only when the provider can constrain
+        const repair = useTools?.length && p.constrain && getConfig().constrainTools !== false
+          ? c => repairCall({ provider: p, window, call: c, specs: useTools, resolves: n => (scope || tools).resolves?.(n) === true, signal: ac.signal, hints, log: text => bus.emit('log', { level: 'info', text }) }) : null;
+        try { results = await runRound({ jobs, run, turn, signal: ac.signal, parallelSafeOf, parallel: intelligence.parallel !== false, contractOf, repair }); }
         finally { inTool = false; }
         // finish (sequential, call order): events, accounting and messages never follow completion order
         for (let i = 0; i < jobs.length; i++) {
@@ -579,15 +583,14 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
           const res = results[i];
           const skipped = !!(preset || res.skipped);   // a synthetic result or a ledger answer: the tool did not run, so live state skips it
           if (!res.ok && !res.badArgs) failed.set(failKey(call), (failed.get(failKey(call)) || 0) + 1);
-          bus.emit('tool', { id: call.id, name: call.name, phase: 'end', ok: res.ok, soft: res.ok && softFail(res.text) || undefined, badArgs: res.badArgs || undefined, skipped: skipped || undefined });
+          bus.emit('tool', { id: call.id, name: call.name, phase: 'end', ok: res.ok, soft: res.ok && (softFail(res.text) || res.verified === false) || undefined, badArgs: res.badArgs || undefined, skipped: skipped || undefined });
           if (res.untrusted) turn.tainted = true;
           if (res.ok && String(res.text).startsWith(NEEDS_OK)) question = String(res.text).slice(NEEDS_OK.length);
-          else if (res.ok && !/^error/i.test(String(res.text)) && !softFail(res.text) && !res.untrusted && call.name !== 'more_skills') okTools++;   // loading a skill is not an action
+          else if (res.ok && !/^error/i.test(String(res.text)) && !softFail(res.text) && res.verified !== false && !res.untrusted && call.name !== 'more_skills') okTools++;   // loading a skill is not an action
           s.messages.push({ role: 'tool', content: capText(res.text, 6000), toolCallId: call.id, name: call.name, label });
           if (learnTool && owner && res.ok && !res.untrusted && !softFail(res.text) && !String(res.text).startsWith(NEEDS_OK)) { try { learnTool(routeText, call.name); } catch { /* learning is a nicety */ } }
           directs.push(res.ok && !res.ledger && !res.untrusted && !turn.tainted && !String(res.text).startsWith(NEEDS_OK) && !softFail(res.text) ? ((scope || tools).direct?.(call.name, res.text) ?? null) : null);
-          if (ac.signal.aborted) break;
-        }
+        }   // no break on abort: every started call gets its end event and tool message (runRound answers the rest 'aborted')
         sessions.save(s);
         if (ac.signal.aborted) { stopped = true; reply = ''; break; }
         // every call was a simple tool whose result already reads as the answer (a timer set, a conversion): that is the reply; the model is not asked to repeat it

@@ -7,7 +7,7 @@ const { NEEDS_OK } = require('../brain/guard');
 const { isReadOnly } = require('./effects');
 const { speakerReason } = require('../tools/speaker');
 
-const NO_RETRY = /not running|not in Ollama|not allowed|must be local|timed out|aborted/i;
+const { NO_RETRY } = require('../tools/recover');
 const LINE_CAP = 160;
 const MAX_REPLANS = 2;
 const FINISHED = ['done', 'cancelled', 'failed'];
@@ -52,7 +52,7 @@ function reportFailed(task, step, why) {
   return `${head}\n${lines}\nUse task_control with action replan to fix the remaining steps, or cancel to drop the task.`;
 }
 
-function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirmPending = () => null, onCancel = null, now = Date.now, log = () => {}, retryDelayMs = 0 }) {
+function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirmPending = () => null, onCancel = null, now = Date.now, log = () => {}, retryDelayMs = 0, canRetry = null }) {
   const emit = (type, payload) => { try { bus?.emit(type, payload); } catch { /* observers must not break a run */ } };
   const toolId = (task, step) => `${task.id}:${step.id}`;
 
@@ -71,7 +71,7 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
     while (step.attempts < 2) {
       step.attempts++;
       try { result = await tools.run(step.tool, args, ctx); } catch (err) { result = { ok: false, text: String(err?.message || err) }; }
-      if (result?.ok || NO_RETRY.test(String(result?.text ?? '')) || signal?.aborted || step.attempts >= 2) break;
+      if (result?.ok || (canRetry && !canRetry(step.tool)) || NO_RETRY.test(String(result?.text ?? '')) || signal?.aborted || step.attempts >= 2) break;
       await sleep(retryDelayMs);
     }
     return result || { ok: false, text: 'tool returned nothing' };
