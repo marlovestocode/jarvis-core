@@ -25,6 +25,8 @@ const { makeSynthRegistry } = require('../test/helpers/synth-registry');
 const { createOracleProvider } = require('../test/helpers/oracle-provider');
 
 const REPAIR = /You tried to call|Give only its arguments/;
+// a string hash per row, so the noise draws of different rows are not correlated by id length
+const hash = s => { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 const names = e => (typeof e === 'string' ? [e] : e.oneOf);
 const quant = (xs, q) => { const s = [...xs].sort((a, b) => a - b); return s.length ? Math.round(s[Math.min(s.length - 1, Math.floor(q * s.length))]) : 0; };
 const mean = xs => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
@@ -72,7 +74,7 @@ async function runRow(row, mode, o, ctx) {
   const catalog = buildCatalog(groups);
   const fake = createFakeEmbedder({ synonyms });
   const embed = o.embedder === 'none' ? null : (t, x) => { rec.embeds++; return fake.embed(t, x); };
-  const provider = createOracleProvider({ noise: o.noise, seed: o.seed + (row.id.length || 0), delayMs: o.modelDelayMs, groupOf: n => catalog.groupOf(n), ids: catalog.ids });
+  const provider = createOracleProvider({ noise: o.noise, seed: hash(o.seed + ':' + row.id), delayMs: o.modelDelayMs, groupOf: n => catalog.groupOf(n), ids: catalog.ids });
   const providers = createRegistry(); providers.add(NullProvider); providers.add(provider);
   const toolIndex = baseline ? null : createToolIndex({ catalog, embed, embedMs: 250, eligible: eligibility });
   const bus = createBus(), ends = [];

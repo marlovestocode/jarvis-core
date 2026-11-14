@@ -22,12 +22,12 @@ const say = text => [{ type: 'token', text }, { type: 'done' }];
 const call = (name, args = {}, id = 'c1') => [{ type: 'tool_call', id, name, args }, { type: 'done' }];
 const P = { type: 'object', properties: { q: { type: 'string' }, to: { type: 'string' }, text: { type: 'string' }, n: { type: 'number' } } };
 
-function setup(script, { constrain, route, intelligence, provider, extra, resolve } = {}) {
+function setup(script, { constrain, route, intelligence, provider, extra, resolve, meta } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jc-adapt-'));
   const ran = [];
   const mk = (name, description, sideEffects, out) => ({ name, description, params: P, sideEffects, async run(a) { ran.push(name); return typeof out === 'function' ? out(a) : out; } });
   const groups = [
-    { id: 'core', label: 'Core', triggers: [], tools: [mk('get_time', 'Tell the time.', 'read', 'NOON')] },
+    { id: 'core', label: 'Core', triggers: [], tools: [mk('get_time', 'Tell the time.', 'read', 'NOON'), ...(meta ? [{ name: 'more_skills', description: 'Load a group.', params: { type: 'object', properties: { group: { type: 'string' } } }, risk: 'safe', async run(a, ctx) { return ctx.skills.load(a.group).text; } }, { name: 'find_tools', description: 'Find tools.', params: { type: 'object', properties: { query: { type: 'string' } } }, risk: 'safe', effect: 'read', async run(a, ctx) { return ctx.skills.find(a.query, ctx); } }] : [])] },
     { id: 'files', label: 'Files', triggers: [{ words: ['files'], w: 3 }], tools: [{ ...mk('search_files', 'Search files by name.', 'read', ''), ...(extra ? { untrusted: true } : {}) }] },   // extra: the read taints the turn
     { id: 'notes', label: 'Notes', triggers: [], tools: [mk('search_notes', 'Search notes and budget memos.', 'read', 'note: budget draft'), ...(extra ? [{ ...mk('delete_notes', 'Delete notes and budget memos.', 'write', 'deleted'), risk: 'confirm' }] : [])] },
     { id: 'rivals', label: 'Rivals', triggers: [], tools: [mk('send_email', 'Send a text to someone.', 'write', 'sent'), mk('send_sms', 'Send a text to someone.', 'write', 'sent')] },
@@ -232,4 +232,23 @@ test('intelligence:false is the old loop: no notes, no rediscovery, no stop, no 
   await d.orc.send(d.s.id, 'send it again');
   assert.equal(d.ran.filter(n => n === 'send_message').length, 1);   // force stays false: the ledger answers
   d.done();
+});
+
+test('budget: rounds that only call the discovery tools do not use up the round cap', async () => {
+  const route = () => ({ tier: 'deep', think: false, tools: true, steps: 1, reason: 'test' });   // cap 3
+  const c = setup([call('find_tools', { query: 'budget notes' }), call('more_skills', { group: 'notes' }, 'c2'), call('search_notes', { q: 'budget' }, 'c3'), call('get_time', {}, 'c4'), say('Done.')], { route, meta: true });
+  const r = await c.orc.send(c.s.id, 'look through my budget notes and tell me the time');
+  assert.deepEqual(c.ran, ['search_notes', 'get_time']);
+  assert.equal(r.reply, 'Done.');
+  assert.equal(r.error, undefined);
+  c.done();
+});
+
+test('budget: discovery-only rounds are still bounded (twice the cap in total)', async () => {
+  const route = () => ({ tier: 'deep', think: false, tools: true, steps: 1, reason: 'test' });
+  const c = setup([call('find_tools', { query: 'x' })], { route, meta: true });
+  const r = await c.orc.send(c.s.id, 'look through my budget notes');
+  assert.ok(c.fp.calls.length <= 8, String(c.fp.calls.length));
+  assert.ok(r.reply !== undefined);
+  c.done();
 });

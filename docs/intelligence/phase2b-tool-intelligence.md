@@ -24,36 +24,39 @@ Group-selection gates (existing eval, fake oracle, noise 0): v1 **62/71** (gate 
 | Metric | Dev baseline | Dev new | Held-out baseline | Held-out new |
 |---|---|---|---|---|
 | rows | 72 | 72 | 36 | 36 |
-| selectionAccuracy | 100.0% | 100.0% | 96.9% | **93.8%** |
-| completion | 98.6% | 100.0% | 94.4% | 94.4% |
+| selectionAccuracy | 100.0% | 100.0% | 96.9% | 96.9% |
+| completion | 98.6% | 100.0% | 94.4% | 97.2% |
 | unnecessaryCalls | 8 | 5 | 4 | 2 |
 | duplicate writes executed | 3 | 0 | 2 | 0 |
-| executionFailures | 7 | 5 | 6 | 1 |
-| latency p50/p95 ms | 109/170 | 124/188 | 120/218 | 125/387 |
-| modelCalls per row (chat + constrain) | 2.8 | 2.7 | 2.9 | 2.8 |
-| specTokens per round | 1464 | 783 | 1206 | 765 |
-| promptTokens per row | 3196 | 1837 | 3025 | 1732 |
+| executionFailures | 8 | 5 | 3 | 1 |
+| latency p50/p95 ms (median of 3 runs) | 109/169 | 123/235 | 109/172 | 124/405 |
+| modelCalls per row (chat + constrain) | 2.6 | 2.6 | 2.8 | 2.6 |
+| specTokens per round | 1462 | 783 | 1245 | 806 |
+| promptTokens per row | 3246 | 1839 | 2782 | 1812 |
 | unsafeExecs | 0 | 0 | 0 | 0 |
 | extraCallsMax (non-simple) | 1 | 1 | 1 | 1 |
 
-Spec tokens by registry (dev, new / baseline): real 881/1593 (0.55), synth100 295/806 (0.37), **synth300 272/782 (0.35)**, **synth500 273/827 (0.33)**. Baseline offers whole groups (about 12 tools each for synthetic groups); new offers about 4 to 8.
+Counts are deterministic for a given seed (the noise seed is a hash of the row id). Latency figures are single-run measurements and vary run to run (dev p95 new 203 to 249 ms, held-out p95 new 395 to 421 ms over 3 runs); they are the median of 3 runs and compare round counts, not inference time. The held-out p95 is dominated by the one `timeout` row (40 ms tool timeout plus verify and retry).
+
+Spec tokens by registry (dev, new / baseline): real 881/1589 (0.55), synth100 295/806 (0.37), **synth300 272/782 (0.35)**, **synth500 273/827 (0.33)**. Baseline offers whole groups (about 12 tools each for synthetic groups); new offers about 4 to 8.
 
 Honest reading:
-- **Held-out selection is below baseline by one row** (h-multi-tool-1, "how much space is left in my Documents and what is the time"): the request needs `find_tools`, then `more_skills`, then the call, and the adaptive round budget for a 2-step turn ends one round early (baseline gets 5 rounds). Held-out rows are never tuned on, so this gate is a `todo` in `test/tool-eval-gates.test.js` (reported, not hidden). It is a real finding about the Task 7 budget, not noise (same at noise 0).
-- Per category on dev, completion: no category is worse; equal in unfamiliar, reference, large-registry, multi-tool, seq-vs-parallel, wrong-tool, missing-capability, malformed-args, partial-failure and simple. Better in approval-required (83.3 to 100: the tainted read-then-delete row) and duplicate (3 executed duplicate writes down to 0). Held-out: multi-tool 100 to 66.7 (the row above), approval-required 66.7 to 100.
-- Latency: new is slower at p95 (188 vs 170 ms dev, 387 vs 218 ms held-out). The fixed 30 ms model delay dominates; the extra rounds and the first index build are the difference. The simple-command rule path is unchanged (existing 1 ms guard in `intelligence-eval-model.js`).
+- **Held-out selection now equals baseline (96.9%) and completion is higher (97.2% vs 94.4%).** Before the round-cap fix it was 93.8% (one row, h-multi-tool-1, "how much space is left in my Documents and what is the time"): rounds that only called `find_tools` / `more_skills` used up the adaptive round cap, so the real call never ran. That row was observed before the fix, so **held-out is no longer a blind set for this behaviour**. The fix was written and tested from a new synthetic scenario (`test/tool-adaptive-orchestrator.test.js`), no row or threshold changed. The test gate was a `todo` and is now a real assertion. `node scripts/tool-intelligence-eval.js --set heldout` exited 1 while the gate was red and exits 0 now.
+- Per category completion, dev: no category worse, all equal except approval-required (83.3 to 100, the tainted read-then-delete row) and duplicates (3 executed duplicate writes down to 0). Held-out: equal except approval-required (66.7 to 100). seq-vs-parallel stays at 66.7 on held-out in both modes (the "look up X and then read the article" row is answered with a clarifying question in both).
+- Latency: new is slower at p95 (see table). The fixed 30 ms model delay dominates; extra rounds and the first index build are the difference. The simple-command rule path is unchanged (existing 1 ms guard in `intelligence-eval-model.js`).
 - Many categories tie because the oracle is generous to the baseline: it knows each tool's group and calls `more_skills` correctly. A real model is worse at that, so the baseline's real-world cost is probably higher than shown. Not measured.
 - Recovery rows tie where the old loop already repaired the call (bad arguments are repaired before the run in both modes). Transient reads, timeouts and `unavailable` showed no completion gap in these rows.
 
 ### Gates (test/tool-eval-gates.test.js)
-Passing: completion new >= baseline (dev and held-out), selection new >= baseline (dev), synth300 and synth500 specTokens below baseline (ratio 0.35 and 0.33; the test also requires < 0.6), `unsafeExecs` 0, duplicate writes 0 in new, `extraCallsMax` <= 1, simple rows add no model question and no embed call in either mode (noise 0), group eval 62/71 and 27/31, held-out hash pinned, schema / tool-name / category checks, deterministic synthetic registry.
-Deviations from the brief: (1) simple rows still make the loop's own chat call, so the gate is "no extra (constrain) call and zero embeds", not `modelCalls === 0`; (2) the simple gate runs at noise 0, because a noisy wrong call legitimately sends the loop into recovery (find_tools embeds); (3) held-out selection is a `todo`, see above.
+Passing: completion and selection new >= baseline (dev and held-out), synth300 and synth500 specTokens below baseline (ratio 0.35 and 0.33; the test also requires < 0.6), `unsafeExecs` 0, duplicate writes 0 in new, `extraCallsMax` <= 1, simple rows add no model question and no embed call in either mode (noise 0), group eval 62/71 and 27/31, held-out hash pinned, schema / tool-name / category checks, deterministic synthetic registry.
+Deviations from the brief: (1) simple rows still make the loop's own chat call, so the gate is "no extra (constrain) call and zero embeds", not `modelCalls === 0`; (2) the simple gate runs at noise 0, because a noisy wrong call legitimately sends the loop into recovery (find_tools embeds); (3) the held-out selection gate was a `todo` until the round-cap fix and is a real assertion now.
 
 ## Tuning log (dev only)
 - `TOOL_K`, `K_MIN`, `K_MAX`, `MIN_COS`, `READ_DAMP` unchanged (6, 4, 8, 0.3, 0.6).
-- Added `WHOLE_MAX = K_MAX` in `toolindex.js`: when the rule layer loaded a set of at most 8 tools, the index offers it whole (matches first, the rest ranked last). Reason from dev: "pause the music" and "next song" were narrowed to `youtube_music`, dropping `media_control` (its card text has no "pause"), a recall regression on simple commands. Existing tests stay green.
+- Post-plan product change, `WHOLE_MAX = K_MAX` in `toolindex.js` (accepted as a generic robustness rule): when the rule layer loaded a set of at most 8 tools, the index offers it whole (matches first, the rest ranked last), so it never narrows a small set below what the baseline offers. Reason from dev: "pause the music" and "next song" were narrowed to `youtube_music`, dropping `media_control`. Root cause also fixed: the verified `media_control` definition had no `examples`, so its card text lacked pause / skip / next / mute / louder (`tools/media.js`); `test/tool-discovery.test.js` now checks that these requests rank `media_control` in the top 4 over all groups, without the small-set rule (RED before the examples were added).
+- Post-plan product change, round cap (`orchestrator.js`): a round whose calls are all `find_tools` / `more_skills` does not count toward the adaptive round cap; total rounds are hard-bounded at 2x the cap (and discovery itself by `MAX_EXTRA_LOADS`). Found by held-out row h-multi-tool-1 (see Results); fixed from a new synthetic scenario, RED first.
 - Fixture and judge changes made after seeing dev results (so dev numbers are not a clean holdout): real-registry `unfamiliar` rows replaced by synthetic ones (a hashed bag-of-words fake embedder cannot bridge real words; synthetic synonym pairs are the explicit bridge); two `wrong-tool` rows reworded to share words with their target; the wrong pick is always a read tool (a wrong write with a `direct` result ends the turn by design); simple rows are limited to requests the rule layer rates `high`; the registry environment is "all services up" like `intelligence-eval-model.js`. Oracle and judge artifacts fixed: turn boundary after the loop's own status notes, arguments that differ per request, ledger "Already done" counts as done, verify reads (`ctx.fresh`) are not counted as unnecessary calls.
-- Held-out: run for reporting after the dev tuning above; nothing (rows, oracle, judge, thresholds) changed after its first run.
+- Held-out: run for reporting after the dev tuning above; no row, threshold or fixture was changed because of it. Only the loop fix above came out of it (see Results), and the oracle noise seed was changed from `seed + id length` to a hash of the row id (all numbers above were re-recorded).
 
 ## Known limits
 - Real-model quality is unmeasured. `--model ollama` only runs the group-selection eval; a tool-level live run is not built.
@@ -85,4 +88,4 @@ Deviations from the brief: (1) simple rows still make the loop's own chat call, 
 - An `unsure` speaker is non-owner in every place checked (`speakerOf`, `workmem.record`, the ledger gate); held-out row `h-approval-required-3` refuses a confirm tool for `unsure`.
 - Abort mid-batch: covered by `tool-round.test.js` and `tool-recover.test.js` (every started call gets its end event, the rest answer "aborted"); not re-audited here.
 - Flags `denied`, `timedOut`, `ledger`, `verified`, `unknown`, `rediscover` each have a consumer (`recover.js classify`, `round.js`, `progress.js`, `orchestrator.js`).
-- Open point: a 2-step turn that needs discovery can exhaust the round budget (held-out finding above), and the junk tools `find_tools` sometimes returns also spend the 2-load cap.
+- Open point: the junk tools `find_tools` sometimes returns still spend the 2-load cap (`MAX_EXTRA_LOADS`); the round-cap problem itself is fixed.

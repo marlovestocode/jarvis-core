@@ -7,7 +7,7 @@
 // Exit code 1 when a gate fails (new worse than baseline on selection or completion, an unsafe exec, extra model calls).
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { runSet } = require('./tool-eval-run');
+const { runSet, metrics } = require('./tool-eval-run');
 
 const FILES = { v1: '../test/fixtures/tool-eval-v1.json', heldout: '../test/fixtures/tool-eval-heldout.json' };
 const arg = (argv, k, d) => { const i = argv.indexOf(`--${k}`); return i >= 0 ? argv[i + 1] : d; };
@@ -69,8 +69,8 @@ async function main(argv) {
   const cats = [...new Set(res.rows.map(r => r.cat))];
   const out = { set, noise, seed, overall: { baseline: res.baseline.metrics, new: res.nw.metrics }, byCategory: {}, byRegistry: {} };
   const sub = (run, f) => ({ rows: run.rows.filter(f) });
-  for (const c of cats) out.byCategory[c] = { baseline: require('./tool-eval-run').metrics(sub(res.baseline, r => r.cat === c).rows), new: require('./tool-eval-run').metrics(sub(res.nw, r => r.cat === c).rows) };
-  for (const g of registries) out.byRegistry[g] = { baseline: require('./tool-eval-run').metrics(sub(res.baseline, r => r.registry === g).rows), new: require('./tool-eval-run').metrics(sub(res.nw, r => r.registry === g).rows) };
+  for (const c of cats) out.byCategory[c] = { baseline: metrics(sub(res.baseline, r => r.cat === c).rows), new: metrics(sub(res.nw, r => r.cat === c).rows) };
+  for (const g of registries) out.byRegistry[g] = { baseline: metrics(sub(res.baseline, r => r.registry === g).rows), new: metrics(sub(res.nw, r => r.registry === g).rows) };
   const fails = gatesFor({ baseline: res.baseline, nw: res.nw });
   if (json) { console.log(JSON.stringify({ ...out, fails })); return fails.length ? 1 : 0; }
   console.log(`tool intelligence eval, set=${set}, noise ${noise}, seed ${seed}, model=fake oracle`);

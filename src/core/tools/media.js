@@ -52,6 +52,7 @@ function createMediaTool({ fetch = globalThis.fetch, timeoutMs = 3000, service }
   }
   return {
     name: 'media_control',
+    examples: ['pause resume skip next previous track', 'volume louder quieter mute', 'go back to the previous song', 'play pause the music'],   // natural action words the tool ranker matches requests against
     // only actions whose effect media_status shows are verified; the rest return null (nothing checkable)
     verify: { tool: 'media_status', args: () => ({}), expect: mediaExpect },
     hint: MEDIA_CONTROL_HINT,

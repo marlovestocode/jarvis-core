@@ -428,7 +428,9 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       let reply = '';
       let error;
       let stopped = false;
-      let toolRounds = 0;
+      let toolRounds = 0, metaRounds = 0;
+      // a round that only asks for tools (find_tools, more_skills) is not work: it does not use the cap (MAX_EXTRA_LOADS bounds it); 2x is the hard stop
+      const capped = () => toolRounds - metaRounds >= roundCap || toolRounds >= 2 * roundCap;
       let nudge = noMatchNudge;        // set when the model answered nothing: one more try with this added (and, first round, when no tool matched)
       let emptyRetries = 0;
       let claimRetried = false;
@@ -563,19 +565,20 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           s.messages.push({ role: 'assistant', content: reply });
           break;
         }
-        if (toolRounds >= roundCap && !forceAnswer) {
+        if (capped() && !forceAnswer) {
           // out of rounds: no more tools, one last round to answer with what the results already gave
           forceAnswer = true;
           nudge = NUDGE_CAP;
           bus.emit('log', { level: 'warn', text: 'Tool-round limit reached; answering with what the tools returned' });
           continue;
         }
-        if (toolRounds >= roundCap || forceAnswer) {   // forceAnswer alone: the loop ended itself early and the model still asked for a tool
+        if (capped() || forceAnswer) {   // forceAnswer alone: the loop ended itself early and the model still asked for a tool
           error = 'Too many tool rounds';
           s.messages.push({ role: 'assistant', content: reply, error });
           break;
         }
         toolRounds++;
+        if (round.toolCalls.every(c => c.name === 'find_tools' || c.name === 'more_skills')) metaRounds++;
         s.messages.push({ role: 'assistant', content: reply, toolCalls: round.toolCalls });
         const directs = [];   // each call's own result, when it can be the reply as it is
         // prepare (sequential): repair, label, start event; calls that never run (blocked, repeated) get their result here

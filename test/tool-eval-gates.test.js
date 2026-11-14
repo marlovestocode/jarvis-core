@@ -80,9 +80,9 @@ test('dev: new selectionAccuracy >= baseline', async () => {
   assert.ok(nw.metrics.selectionAccuracy >= baseline.metrics.selectionAccuracy, `${nw.metrics.selectionAccuracy} < ${baseline.metrics.selectionAccuracy}`);
 });
 
-// Honest open gate: on held-out, new is one row (h-multi-tool-1: a two-step request needing find_tools + more_skills runs out of rounds)
-// below baseline. Held-out rows are never tuned on, so this stays a todo (reported, not hidden) until the loop itself is fixed.
-test('held-out: new selectionAccuracy >= baseline', { todo: 'new 93.8% < baseline 96.9% (h-multi-tool-1, round budget); see docs/intelligence/phase2b-tool-intelligence.md' }, async () => {
+// This gate was red (h-multi-tool-1: discovery-only rounds used up the round cap) before the cap fix; the row was observed first,
+// so held-out is not a blind set for that behaviour any more. No threshold or row was changed.
+test('held-out: new selectionAccuracy >= baseline', async () => {
   const { baseline, nw } = await both('heldout', held.rows);
   assert.ok(nw.metrics.selectionAccuracy >= baseline.metrics.selectionAccuracy, `${nw.metrics.selectionAccuracy} < ${baseline.metrics.selectionAccuracy}`);
 });

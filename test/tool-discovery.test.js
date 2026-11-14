@@ -161,3 +161,14 @@ test('exec still refuses a tainted confirm tool and a guest on a non-allowlisted
   assert.equal((await scope.run('delete_file', {}, { turn: { tainted: true } })).ok, false);
   assert.equal((await scope.run('read_file', {}, { turn: { tainted: true, speaker: 'guest' } })).ok, false);
 });
+
+test('real catalog: a media request ranks media_control in the top-K without the small-set rule (all groups searched)', async () => {
+  const { toolDeps } = require('./helpers/tool-deps');
+  const { loadGroups, buildCatalog } = require('../src/core/skills');
+  const catalog = buildCatalog(loadGroups(toolDeps()));
+  const idx = createToolIndex({ catalog, embed: null, eligible: eligibility });
+  for (const text of ['pause the music', 'next song', 'make it louder', 'mute the sound']) {
+    const r = await idx.find(text, { groups: null });
+    assert.ok(r.tools.slice(0, 4).some(t => t.name === 'media_control'), `${text}: ${r.tools.map(t => t.name).join()}`);
+  }
+});
