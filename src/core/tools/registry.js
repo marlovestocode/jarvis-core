@@ -12,8 +12,7 @@ const { checkArgs } = require('./args');
 
 const { speakerReason } = require('./speaker');
 const { firstSentence } = require('./constrain');
-const { NEEDS_OK } = require('../brain/guard');
-const { toolContract } = require('../skills/toolcards');   // effect/idempotent/volatile decide how the ledger treats a call
+const { ledgerGate, ledgerRecord, ledgerTimeout } = require('./ledger');
 
 // Guest turns (turn.speaker 'guest': speaker recognition heard a voice that is not the owner's) are DEFAULT DENY: only these
 // tools run, everything else is refused with the guest text, before its arguments are checked or its group is loaded. Allowed:
@@ -96,27 +95,18 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null, toolIndex =
     const checked = checkArgs(tool, args);
     if (!checked.ok) return note(tool, { ok: false, text: checked.text, badArgs: true, ...flag });
     args = checked.args;
-    // Owner turns only: a guest is never served from, or recorded in, the owner's ledger. Sits after every refusal above, so a
-    // denied or badly-formed call never reaches it. ctx.force/fresh/turnId come from the orchestrator; the model's args.force is never read.
-    const led = ctx.ledger && ctx.sessionId && !ctx.turn?.speaker ? ctx.ledger : null;
-    const c = led ? toolContract(tool) : null;
-    if (led && ctx.fresh !== true) {
-      const hit = led.check(ctx.sessionId, name, args, { effect: c.effect, idempotent: c.idempotent, volatile: c.volatile, turnId: ctx.turnId, force: ctx.force === true });
-      if (hit?.hit === 'unknown') return { ok: false, text: `Error: the earlier ${name} did not report back, so I did not repeat it. Ask the user whether to try again.`, ledger: 'unknown', skipped: true };
-      if (hit) return { ok: true, text: `Already done (${Math.round(hit.ageMs / 1000)}s ago): ${hit.text}`, ledger: hit.hit, skipped: true, ...(hit.untrusted && { untrusted: true }) };
-    }
+    // after every refusal above, so a denied or badly-formed call never reaches the ledger (owner turns only; see ledger.js)
+    const g = ledgerGate(tool, name, args, ctx); if (g.res) return g.res;
     let timer;
     try {
       const timeout = new Promise((_, rej) => {
         timer = setTimeout(() => rej(Object.assign(new Error(`tool ${name} timed out`), { timedOut: true })), tool.timeoutMs || timeoutMs);
       });
       const text = String(await Promise.race([Promise.resolve().then(() => tool.run(args || {}, ctx)), timeout]));
-      // a confirm proposal is a question, not an action: recording it would block the real run after the user says yes
-      if (led && !text.startsWith(NEEDS_OK)) led.record(ctx.sessionId, name, args, { effect: c.effect, ok: true, text, untrusted: flag.untrusted, turnId: ctx.turnId });
+      ledgerRecord(g, ctx, name, args, text, flag.untrusted);
       return note(tool, { ok: true, text, ...flag });
     } catch (err) {
-      // a write that timed out may still have happened: remember it as unknown
-      if (led && err?.timedOut && c.effect !== 'read') led.record(ctx.sessionId, name, args, { effect: c.effect, ok: false, unknown: true, text: String(err.message), turnId: ctx.turnId });
+      ledgerTimeout(g, ctx, name, args, err);
       return note(tool, { ok: false, text: `Error: ${err?.message || err}`, ...(err?.timedOut && { timedOut: true }), ...flag });
     } finally {
       clearTimeout(timer);
