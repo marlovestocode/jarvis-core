@@ -57,9 +57,10 @@ const { isContinue } = require('./context/workmem');
 const { liveContext } = require('./livestate/context');
 const { plan } = require('./brain/plan');
 const { instant } = require('./brain/instant');
-const { resolveSelection: resolveSelectionDefault, looksUnsure } = require('./skills/discover');
+const { resolveSelection: resolveSelectionDefault, looksUnsure, ACT_MIN } = require('./skills/discover');
 const { speakerReason } = require('./tools/speaker');
 const { runRound } = require('./tools/round');
+const { budgetFor, isDeliberateRepeat, createProgress, closeRivals, OFF } = require('./tools/progress');
 const { parallelSafe, toolContract } = require('./skills/toolcards');
 
 // A model-written question or decline is spoken as it is: one line, no control characters, capped (discover.js already
@@ -107,6 +108,8 @@ const NUDGE_NO_MATCH = 'No tool matches this request: do not invent one; answer 
 const NUDGE_PLAIN ="Reply to the user's last message in one or two sentences.";
 
 function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, rankTools = null, learnTool = null, onQuestionLost = () => {}, memoryBlock = null, context: assembler = null, live = null, catalog = null, resolveSelection = resolveSelectionDefault, embed = null, toolIndex = null, intelligence = {}, ledger = null, workmem = null }) {
+  if (intelligence === false) intelligence = OFF;   // the old loop, exactly
+  else if (!intelligence) intelligence = {};
   let current = null; // AbortController of the running turn
   const lastGroupsAt = new Map(); // session id → when lastGroups was last set
   // the areas the last turn used, only while that turn is recent: "make it 10" an hour later does not mean the timer from back then
@@ -299,6 +302,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       // matches; simple read-only commands never wait on a model) and may act, ask or decline. It only RECOMMENDS groups:
       // risk:'confirm', taint and GUEST_TOOLS still decide what runs. Any failure keeps the rule result.
       let decision = null;
+      let intentRec = null;   // the interpreter's reading, when it ran (deliberate-repeat check)
       if (picked && catalog && hints?.tools !== false && tools?.turn && !ac.signal.aborted) {
         let d = null;
         try {
@@ -323,7 +327,14 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           if (source !== 'voice') bus.emit('state', { state: 'idle' });
           return { reply: say, stopped: false, sessionId: s.id, skill: true };
         }
+        intentRec = d?.intent || null;
+        // a confident reading of plain conversation needs no tool: offering them only invites a pretend action (the escalation below still catches a claim)
+        if (intelligence.needTool !== false && d?.action === 'act' && intentRec?.kind === 'chat' && intentRec.confidence >= ACT_MIN && !d.groups?.some(id => id !== 'core' && id !== 'knowledge')) {
+          hints = { ...hints, tools: false, reason: 'intent chat' };
+        }
       }
+      // "send it again" is a deliberate repeat: the ledger lets that one action run again. Set here, from the user's words, never from model arguments.
+      const forceRepeat = intelligence.repeat !== false && owner && isDeliberateRepeat({ text: String(text), intent: intentRec, fu });
       // a short command ("take a screenshot") can look like chat to the router while a skill group clearly matches:
       // quick chat has no tools and would only pretend to act, so the match wins
       if (hints?.tools === false && picked?.some(id => id !== 'core' && id !== 'knowledge')) {
@@ -341,7 +352,17 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           try { effectHint = looksUnsure(routeText, []) ? 'read' : null; } catch { effectHint = null; }   // a question or discussion reads, it does not act
           const r = await toolIndex.find(routeText, { groups: picked.confidence === 'low' ? null : scope.loaded(), speaker, tainted: !owner, effectHint, lexicalOnly: picked.confidence === 'high' });
           const offerTurn = owner ? { source, tainted: false } : { source, tainted: true, speaker };
-          if (r.outcome === 'tools') scope.offer(r.tools.map(t => t.name), { turn: offerTurn });
+          if (r.outcome === 'tools') {
+            let names = r.tools.map(t => t.name);
+            // two write tools that fit equally well: one constrained question, only when no model call was made for this turn yet
+            const rivals = intelligence.disambiguate !== false && owner && !decision && picked.confidence !== 'high'
+              ? closeRivals(r.tools, n => { const t = tools.get?.(n); return t ? toolContract(t).effect : 'read'; }) : null;
+            if (rivals) {
+              const pick = await toolIndex.disambiguate({ provider: p, text: routeText, candidates: rivals.map(n => ({ name: n, summary: tools.get?.(n)?.description })), signal: ac.signal });
+              if (pick) names = names.filter(n => !rivals.includes(n) || n === pick);
+            }
+            scope.offer(names, { turn: offerTurn });
+          }
           // zero overlap on a simple command or without embeddings proves nothing ("make it louder"): only a hybrid miss or an unmatched rule narrows to nothing
           else if (r.outcome === 'none' && (r.mode === 'hybrid' || picked.confidence === 'low')) { scope.offer([], { turn: offerTurn }); noMatchNudge = NUDGE_NO_MATCH; }
           else if (r.outcome === 'not_permitted' && !owner) {
@@ -359,15 +380,18 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       const failKey = call => call.name + (typeof call.args?.action === 'string' && call.args.action ? ':' + call.args.action : '');
       const blocked = key => (failed.get(key) || 0) >= FAIL_LIMIT;
       let forceAnswer = false;      // the tool-round limit was hit: one last round with no tools
+      const progress = createProgress({ request: routeText });   // what the rounds achieved, and which tools proved wrong this turn
       const currentSpecs = () => {
         if (!toolsOn || forceAnswer) return undefined;
-        let sp = (scope ? scope.specs() : tools.specs()).filter(t => !blocked(t.name));
+        let sp = (scope ? scope.specs() : tools.specs()).filter(t => !blocked(t.name) && !progress.excluded.has(t.name));
         if (avoidTools?.size) { try { const keep = sp.filter(t => !avoidTools.has(t.name)); if (keep.length) sp = keep; } catch { /* the cooldown is a nicety */ } }
         if (rankTools) { try { sp = rankTools(routeText, sp) || sp; } catch { /* ordering is a nicety */ } }   // the likeliest tools first
         return sp.length ? sp : undefined;
       };
       let useTools = currentSpecs();
-      const roundCap = maxToolRounds + (hints?.steps >= 3 ? 2 : 0);   // a request that asks for several things gets a little more room
+      // a request that asks for several things gets a little more room, a lookup or simple command less; unknown steps keep the configured cap
+      const bud = intelligence.budget !== false ? budgetFor({ steps: hints?.steps ?? 2, simple: picked?.confidence === 'high', maxToolRounds, contextMax: st.contextMax || 0 }) : { rounds: maxToolRounds + (hints?.steps >= 3 ? 2 : 0), tokenCap: Infinity };
+      const roundCap = bud.rounds;
       let retriedModel = false;
       let escalated = false;
       let loadedKey = scope ? scope.loaded().join() : '';
@@ -546,7 +570,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           bus.emit('log', { level: 'warn', text: 'Tool-round limit reached; answering with what the tools returned' });
           continue;
         }
-        if (toolRounds >= roundCap) {
+        if (toolRounds >= roundCap || forceAnswer) {   // forceAnswer alone: the loop ended itself early and the model still asked for a tool
           error = 'Too many tool rounds';
           s.messages.push({ role: 'assistant', content: reply, error });
           break;
@@ -576,7 +600,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           jobs.push({ call, label, preset });
         }
         // every call, parallel or not, goes through this one exec path; extraCtx lets a caller add to it (e.g. { fresh: true })
-        const run = (call, extraCtx = {}) => (scope || tools).run(call.name, call.args, { signal: ac.signal, turn, sessionId: s.id, ledger: owner ? ledger : null, turnId: s.id + ':' + turnStart, force: false, ...extraCtx });   // force: wired to the user's own repeat request later
+        const run = (call, extraCtx = {}) => (scope || tools).run(call.name, call.args, { signal: ac.signal, turn, sessionId: s.id, ledger: owner ? ledger : null, turnId: s.id + ':' + turnStart, force: forceRepeat, ...extraCtx });   // force: only the user's own repeat request (isDeliberateRepeat), never a call argument
         // only a tool that is offered this turn, reads, and needs no confirmation or clean turn may share a batch (an unknown name runs alone)
         const parallelSafeOf = n => { const t = tools.get?.(n); return !!t && !!useTools?.some(x => x.name === n) && parallelSafe(t); };
         inTool = true;
@@ -622,6 +646,25 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           s.messages.push({ role: 'assistant', content: reply, pending: true });
           asked = true;
           break;
+        }
+        // adaptive: read the round heuristically (no model call). The same signal twice, or the token cap, ends the tool use; otherwise a short
+        // status note rides the next call, and a dead end (nothing found, wrong tool) widens what is offered through the same discovery path.
+        const a = intelligence.adaptive !== false ? progress.step({ calls: round.toolCalls, results }) : null;
+        if (a?.stop || promptTokens + completionTokens > bud.tokenCap) {
+          forceAnswer = true;
+          nudge = NUDGE_CAP;
+          bus.emit('log', { level: 'warn', text: a?.stop ? `Same problem twice (${a.signal}); answering with what the tools returned` : 'Token budget reached; answering with what the tools returned' });
+        } else if (a) {
+          if (a.note && !nudge) nudge = a.note;
+          const before = currentSpecs()?.map(t => t.name).join();
+          if (a.rediscover && toolIndex && scope && typeof scope.offer === 'function' && intelligence.index !== false) {
+            try {
+              const r = await toolIndex.find(routeText, { groups: null, exclude: progress.excluded, speaker, tainted: !owner || turn.tainted });
+              if (r.outcome === 'tools') scope.offer(r.tools.map(t => t.name), { turn });
+            } catch (err) { bus.emit('log', { level: 'warn', text: `Tool rediscovery failed: ${err?.message || err}` }); }
+          }
+          useTools = currentSpecs();
+          if (systemPrompt && useTools?.map(t => t.name).join() !== before) sys = buildSys();   // the prompt lists the offered tools
         }
       }
 

@@ -5,9 +5,9 @@
 
 // errors a second try cannot fix (shared by the orchestrator and the task runner)
 const NO_RETRY = /not running|not in Ollama|not allowed|must be local|timed out|aborted/i;
-const UNAVAILABLE = /not connected|not running|unavailable|extension/i;
+const UNAVAILABLE = /not connected|not running|unavailable|chrome extension|extension (?:is )?not/i;
 const UNKNOWN_TOOL = /^Error: unknown tool/;
-const TRANSIENT = /ECONN|ETIMEDOUT|EAI_AGAIN|HTTP 5\d\d|temporar|try again|rate limit|busy/i;
+const TRANSIENT = /ECONN|ETIMEDOUT|EAI_AGAIN|HTTP 5\d\d|temporar|try again|rate limit|server busy|busy, try again/i;
 
 function classify(res) {
   if (res?.ok) return 'ok';
