@@ -26,7 +26,7 @@ function createTimerTools({ scheduler, now = Date.now }) {
   const setTimer = {
     name: 'set_timer',
     // read back that it is scheduled; 'No timers set.' has no 'timer:' entry so an empty list fails
-    verify: { tool: 'list_timers', args: () => ({}), expect: a => (a.label ? { contains: `${a.label} timer:` } : { matches: 'timer: [^\n]*left' }) },
+    verify: { tool: 'list_timers', args: () => ({}), expect: a => (a.label ? { contains: `${a.label} timer:` } : { matches: '(^|\n)Timer: [^\n]*left' }) },
     examples: ['count down minutes','timer for cooking','start a stopwatch countdown'],   // wording the ranker matches requests against (skills/rank.js)
     direct: true,   // its result is already a sentence: it is the reply, no second model call
     hint: 'set_timer: a countdown ("10 minutes"). set_alarm: a clock time. set_reminder: text plus at or in. list_timers / cancel_timer: see or cancel them. Read back the time the tool gives.',
@@ -45,7 +45,7 @@ function createTimerTools({ scheduler, now = Date.now }) {
 
   const setAlarm = {
     name: 'set_alarm',
-    verify: { tool: 'list_timers', args: () => ({}), expect: a => ({ contains: `${a.label ? a.label + ' alarm' : 'alarm'}: at` }) },
+    verify: { tool: 'list_timers', args: () => ({}), expect: a => (a.label ? { contains: `${a.label} alarm: at` } : { matches: '(^|\n)Alarm: at' }) },
     examples: ['wake me up in the morning','alarm clock at a time of day'],   // wording the ranker matches requests against (skills/rank.js)
     direct: true,   // its result is already a sentence: it is the reply, no second model call
     hint: 'set_alarm: see set_timer.',

@@ -107,3 +107,13 @@ test('contract: a confirm tool declaring effect read is write at runtime', () =>
   assert.equal(toolSideEffects(t), 'write');
   assert.equal(toolContract(t).effect, 'write');
 });
+
+test('verify: unlabeled rows need the real unlabeled line, a labeled-only list does not satisfy them', () => {
+  const only = { ok: true, text: 'Timer: 10 minutes left, at 3:10 pm.' + NL + 'Alarm: at 7:30 am.' };
+  const labeled = { ok: true, text: 'Pasta timer: 5 minutes left, at 3:05 pm.' + NL + 'Wake alarm: at 8 am.' };
+  for (const name of ['set_timer', 'set_alarm']) {
+    assert.equal(check(expectOf(tool(name), {}), only).ok, true, name + ' unlabeled passes on its own line');
+    assert.equal(check(expectOf(tool(name), {}), labeled).ok, false, name + ' unlabeled must not pass on a labeled entry');
+    assert.equal(check(expectOf(tool(name), {}), EMPTY).ok, false);
+  }
+});
