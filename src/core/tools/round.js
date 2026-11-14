@@ -24,8 +24,9 @@ const failure = e => ({ ok: false, text: `Error: ${e?.message || e}` });
 
 // One call with its recovery policy (see recover.js). `run` is always the exec path, so a retry or a verify read is authorized
 // again; nothing here widens what may run. A write that may have happened is never retried: it is verified or reported unknown.
-async function attemptCall({ call, run, contractOf = () => null, repair = null, sleep = ms => new Promise(r => setTimeout(r, ms)), signal }) {
+async function attemptCall({ call, run, contractOf = () => null, repair = null, sleep = ms => new Promise(r => setTimeout(r, ms)), signal, recover = true }) {
   const go = async (c, extra) => { try { return await run(c, extra); } catch (e) { return failure(e); } };
+  if (!recover) return go(call);   // intelligence off: the call as it was before recovery existed (no retry, repair, verify or unknown)
   const fallback = { effect: 'write', idempotent: false, verify: null };   // unknown contract: fail closed as a write
   let cur = call;
   let c = contractOf(cur.name) || fallback;
@@ -105,8 +106,8 @@ async function runBatch(batch, run, rec) {
 
 // -> results in job order. Taint from an untrusted result lands on `turn` (the object exec reads) after each batch and before the
 // next one starts, so a confirm call that follows an untrusted read in the same round is refused instead of run.
-async function runRound({ jobs, run, turn, signal, parallelSafeOf, parallel = true, contractOf, repair, sleep }) {
-  const rec = { contractOf, repair, sleep, signal };
+async function runRound({ jobs, run, turn, signal, parallelSafeOf, parallel = true, contractOf, repair, sleep, recover = true }) {
+  const rec = { contractOf, repair, sleep, signal, recover };
   const batches = parallel ? partition(jobs, parallelSafeOf) : jobs.map(j => [j]);
   const out = [];
   for (const batch of batches) {

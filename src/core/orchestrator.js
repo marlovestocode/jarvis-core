@@ -380,7 +380,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       const failKey = call => call.name + (typeof call.args?.action === 'string' && call.args.action ? ':' + call.args.action : '');
       const blocked = key => (failed.get(key) || 0) >= FAIL_LIMIT;
       let forceAnswer = false;      // the tool-round limit was hit: one last round with no tools
-      const progress = createProgress({ request: routeText });   // what the rounds achieved, and which tools proved wrong this turn
+      const progress = createProgress({ request: routeText, effectOf: n => { const t = tools.get?.(n); return t ? toolContract(t).effect : 'write'; } });   // what the rounds achieved, and which tools proved wrong this turn
       const currentSpecs = () => {
         if (!toolsOn || forceAnswer) return undefined;
         let sp = (scope ? scope.specs() : tools.specs()).filter(t => !blocked(t.name) && !progress.excluded.has(t.name));
@@ -609,7 +609,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
         // bad args are repaired by the same constrained decode as before the call; only when the provider can constrain
         const repair = useTools?.length && p.constrain && getConfig().constrainTools !== false
           ? c => repairCall({ provider: p, window, call: c, specs: useTools, resolves: n => (scope || tools).resolves?.(n) === true, signal: ac.signal, hints, log: text => bus.emit('log', { level: 'info', text }) }) : null;
-        try { results = await runRound({ jobs, run, turn, signal: ac.signal, parallelSafeOf, parallel: intelligence.parallel !== false, contractOf, repair }); }
+        try { results = await runRound({ jobs, run, turn, signal: ac.signal, parallelSafeOf, parallel: intelligence.parallel !== false, contractOf, repair, recover: intelligence.recover !== false }); }
         finally { inTool = false; }
         // finish (sequential, call order): events, accounting and messages never follow completion order
         for (let i = 0; i < jobs.length; i++) {
