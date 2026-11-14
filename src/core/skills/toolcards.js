@@ -38,7 +38,7 @@ function buildToolCard(tool, groupId, groupCard) {
     params: paramsDigest(tool.params),
     effect: c.effect, idempotent: c.idempotent, reversible: c.reversible, volatile: c.volatile,
     // verify.args is a function: it stays on the tool, the card is plain data.
-    verify: c.verify ? { tool: c.verify.tool, expect: c.verify.expect } : null,
+    verify: c.verify ? { tool: c.verify.tool, expect: typeof c.verify.expect === 'function' ? null : c.verify.expect } : null,   // null: derived per call
     requires: c.requires,
     available: groupCard ? groupCard.available : true,
     missingReason: groupCard ? groupCard.missingReason : null,
@@ -59,7 +59,7 @@ function validateToolCard(c) {
   if (typeof c.params !== 'string') errs.push('params must be a string');
   if (!EFFECTS.includes(c.effect)) errs.push(`effect must be one of ${EFFECTS.join('|')}`);
   for (const k of ['idempotent', 'reversible', 'volatile']) if (typeof c[k] !== 'boolean') errs.push(`${k} must be boolean`);
-  if (c.verify !== null && (!c.verify || typeof c.verify.tool !== 'string' || !c.verify.expect || typeof c.verify.expect !== 'object')) errs.push('verify must be null or { tool, expect }');
+  if (c.verify !== null && (!c.verify || typeof c.verify.tool !== 'string' || (c.verify.expect !== null && typeof c.verify.expect !== 'object'))) errs.push('verify must be null or { tool, expect }');
   if (!Array.isArray(c.requires) || c.requires.some(r => typeof r !== 'string')) errs.push('requires must be a string[]');
   if (c.available !== null && typeof c.available !== 'boolean') errs.push('available must be boolean or null');
   if (c.available === false && !c.missingReason) errs.push('an unavailable card needs missingReason');

@@ -25,7 +25,8 @@ function createTimerTools({ scheduler, now = Date.now }) {
 
   const setTimer = {
     name: 'set_timer',
-    verify: { tool: 'list_timers', args: () => ({}), expect: { contains: 'timer' } },   // read back that it is scheduled
+    // read back that it is scheduled; 'No timers set.' has no 'timer:' entry so an empty list fails
+    verify: { tool: 'list_timers', args: () => ({}), expect: a => (a.label ? { contains: `${a.label} timer:` } : { matches: 'timer: [^\n]*left' }) },
     examples: ['count down minutes','timer for cooking','start a stopwatch countdown'],   // wording the ranker matches requests against (skills/rank.js)
     direct: true,   // its result is already a sentence: it is the reply, no second model call
     hint: 'set_timer: a countdown ("10 minutes"). set_alarm: a clock time. set_reminder: text plus at or in. list_timers / cancel_timer: see or cancel them. Read back the time the tool gives.',
@@ -44,7 +45,7 @@ function createTimerTools({ scheduler, now = Date.now }) {
 
   const setAlarm = {
     name: 'set_alarm',
-    verify: { tool: 'list_timers', args: () => ({}), expect: { contains: 'alarm' } },
+    verify: { tool: 'list_timers', args: () => ({}), expect: a => ({ contains: `${a.label ? a.label + ' alarm' : 'alarm'}: at` }) },
     examples: ['wake me up in the morning','alarm clock at a time of day'],   // wording the ranker matches requests against (skills/rank.js)
     direct: true,   // its result is already a sentence: it is the reply, no second model call
     hint: 'set_alarm: see set_timer.',
@@ -59,7 +60,7 @@ function createTimerTools({ scheduler, now = Date.now }) {
 
   const setReminder = {
     name: 'set_reminder',
-    verify: { tool: 'list_timers', args: () => ({}), expect: { contains: 'reminder' } },
+    verify: { tool: 'list_timers', args: () => ({}), expect: a => ({ contains: `Reminder to ${String(a.text || '').trim().replace(/^to\s+/i, '')}:` }) },
     direct: true,   // its result is already a sentence: it is the reply, no second model call
     hint: 'set_reminder: see set_timer.',
     description: 'Remind the user of something. text is what to remind; give at (a clock time) or in (a delay like "20 minutes").',

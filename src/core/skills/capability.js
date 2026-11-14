@@ -36,7 +36,8 @@ const RANK = { none: 0, read: 1, write: 2, external: 3 };
 
 // Tool level: declared value, else confirm tools write, else READ_ONLY tools read, else write (it changes something).
 function toolSideEffects(tool) {
-  if (EFFECT_VALUES.includes(tool.effect)) return tool.effect;   // the tool author's own declaration (tool contract)
+  // a confirm tool never reads, whatever it declares (validateToolMeta lints the contradiction)
+  if (EFFECT_VALUES.includes(tool.effect)) return tool.effect === 'read' && tool.risk === 'confirm' ? 'write' : tool.effect;   // the tool author's own declaration (tool contract)
   if (SIDE_EFFECTS.includes(tool.sideEffects)) return tool.sideEffects;
   if (tool.risk === 'confirm') return 'write';
   return READ_ONLY.has(tool.name) ? 'read' : 'write';
@@ -107,7 +108,7 @@ function validateToolMeta(t) {
   for (const k of ['idempotent', 'reversible', 'volatile']) if (t[k] !== undefined && typeof t[k] !== 'boolean') errs.push(`${k} must be a boolean`);
   if (t.verify !== undefined) {
     const v = t.verify;
-    if (!v || typeof v.tool !== 'string' || !v.tool || typeof v.args !== 'function' || !v.expect || typeof v.expect !== 'object') errs.push('verify must be { tool: string, args: function, expect: object }');
+    if (!v || typeof v.tool !== 'string' || !v.tool || typeof v.args !== 'function' || !v.expect || !['object', 'function'].includes(typeof v.expect)) errs.push('verify must be { tool: string, args: function, expect: object | function }');
   }
   return errs;
 }

@@ -30,11 +30,18 @@ const MEDIA_ACTION = { pause: 'pause', stop: 'stop', play: 'play', resume: 'play
 const MEDIA_MISTAKES = [{ match: /^(?:ytm|ytmusic|youtube_music|music|media|player|chrome)_(pause|stop|play|resume|next|skip|previous|prev)$/, args: m => ({ action: MEDIA_ACTION[m[1]] }) }];
 const MEDIA_CONTROL_HINT = 'media_control: play, pause, stop, skip, previous, seek, volume, mute, shuffle, repeat on the right player; it confirms the result.';   // one guidance line for both variants of the tool
 
+function mediaExpect(a = {}) {
+  if (a.action === 'pause') return { contains: 'Paused:' };
+  if (a.action === 'mute') return { contains: 'muted' };
+  if (a.action === 'shuffle') return { contains: `Shuffle ${a.on === false ? 'off' : 'on'}` };
+  if (a.action === 'repeat') return { contains: `Repeat ${a.mode || 'track'}` };
+  return null;
+}
+
 function createMediaTool({ fetch = globalThis.fetch, timeoutMs = 3000, service } = {}) {
   if (!service) {
     return {
       name: 'media_control',
-      verify: { tool: 'media_status', args: () => ({}), expect: { nonEmpty: true } },
       examples: ['pause resume skip next previous track','volume louder quieter mute','go back to the previous song'],   // wording the ranker matches requests against (skills/rank.js)
       hint: MEDIA_CONTROL_HINT,
       mistakes: MEDIA_MISTAKES,
@@ -45,7 +52,8 @@ function createMediaTool({ fetch = globalThis.fetch, timeoutMs = 3000, service }
   }
   return {
     name: 'media_control',
-    verify: { tool: 'media_status', args: () => ({}), expect: { nonEmpty: true } },
+    // only actions whose effect media_status shows are verified; the rest return null (nothing checkable)
+    verify: { tool: 'media_status', args: () => ({}), expect: mediaExpect },
     hint: MEDIA_CONTROL_HINT,
     mistakes: MEDIA_MISTAKES,
     description: 'Control what is playing on this PC and confirm it worked. Actions: play, pause, toggle, stop, next, prev, seek (to or by seconds), volume (set 0-100 or by -100..100 percent points; system volume unless app is given), mute, unmute, shuffle (on), repeat (mode none|track|list), queue (not supported by Windows; returns why). app targets one player, e.g. "Spotify" or "Chrome".',

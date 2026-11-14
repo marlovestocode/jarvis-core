@@ -68,3 +68,42 @@ test('verify: reads back through a read tool with valid args', () => {
   }
   assert.deepEqual(tool('make_folder').verify.args({ path: 'C:/x' }), { path: 'C:/x' });
 });
+
+const { check } = require('../src/core/tasks/plan');
+const { toolSideEffects } = require('../src/core/skills/capability');
+const expectOf = (t, args, result) => (typeof t.verify.expect === 'function' ? t.verify.expect(args, result) : t.verify.expect);
+const NL = String.fromCharCode(10);
+const EMPTY = { ok: true, text: 'No timers set.' };
+const LIST = { ok: true, text: ['Timer: 10 minutes left, at 3:10 pm.', 'Pasta timer: 5 minutes left, at 3:05 pm.', 'Alarm: at 7:30 am.', 'Wake alarm: at 8 am.', 'Reminder to call mum: at 5 pm.'].join(NL) };
+
+test('verify: an empty list_timers fails every timer verify, a real one passes', () => {
+  const rows = [['set_timer', {}], ['set_timer', { label: 'pasta' }], ['set_alarm', {}], ['set_alarm', { label: 'wake' }], ['set_reminder', { text: 'to call mum' }]];
+  for (const [name, args] of rows) {
+    const t = tool(name);
+    assert.equal(check(expectOf(t, args), EMPTY).ok, false, `${name} ${JSON.stringify(args)} must fail on an empty list`);
+    assert.equal(check(expectOf(t, args), LIST).ok, true, `${name} ${JSON.stringify(args)} must pass on a real list`);
+  }
+  assert.equal(check(expectOf(tool('set_alarm'), { label: 'gym' }), LIST).ok, false);
+  assert.equal(check(expectOf(tool('set_reminder'), { text: 'water plants' }), LIST).ok, false);
+});
+
+test('verify: media_control expectation follows the action, null when nothing is checkable', () => {
+  const t = tool('media_control');
+  assert.equal(t.verify.expect({ action: 'next' }), null);
+  assert.equal(check(t.verify.expect({ action: 'pause' }), { ok: true, text: 'Paused: A song. On Spotify.' }).ok, true);
+  assert.equal(check(t.verify.expect({ action: 'pause' }), { ok: true, text: 'A song. On Spotify.' }).ok, false);
+});
+
+test('verify: the keys-only media_control declares no verify (media_status is not registered without the service)', () => {
+  const noSvc = buildCatalog(loadGroups(toolDeps({ media: undefined })));
+  const mc = noSvc.byName.get('media_control')?.tool;
+  if (mc && !noSvc.byName.has('media_status')) assert.equal(mc.verify, undefined);
+  const { createMediaTool } = require('../src/core/tools/media');
+  assert.equal(createMediaTool({}).verify, undefined);
+});
+
+test('contract: a confirm tool declaring effect read is write at runtime', () => {
+  const t = { name: 'x', risk: 'confirm', effect: 'read', run() {} };
+  assert.equal(toolSideEffects(t), 'write');
+  assert.equal(toolContract(t).effect, 'write');
+});
