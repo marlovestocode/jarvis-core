@@ -75,7 +75,15 @@ const NEEDS_OK = 'Needs your OK: ';
 const plain = t => String(t || '').toLowerCase().replace(/^\s*(?:(?:hey |ok(?:ay)? )?jarvis[,.!]?\s*)/, '').replace(/[.!,]+/g, ' ').replace(/\s+/g, ' ').trim();
 const YES = new Set(['yes', 'yeah', 'yep', 'yup', 'sure', 'confirm', 'confirmed', 'do it', 'go ahead', 'yes please', 'yes do it', 'ok do it', 'okay do it', 'yes go ahead', 'please do', 'do it now']);
 const NO = new Set(['no', 'nope', 'cancel', 'stop', "don't", 'do not', 'never mind', 'nevermind', 'no thanks', 'forget it']);
-const isYes = t => YES.has(plain(t));
+// A natural yes: starts with a yes word, at most six words, no negation or change of plan ("yes, shut it down" yes; "yes but not that" no).
+const YES_WORD = /^(?:yes|yeah|yep|yup|sure|confirm|confirmed|ok|okay|please)\b/;
+const NEGATION = /\b(?:no|not|nope|never|cancel|stop|wait|but|however|except|instead|unless|don'?t|do not|dont|won'?t|can'?t)\b|n't\b/;
+const isYes = t => {
+  const p = plain(t);
+  if (YES.has(p)) return true;
+  const words = p.split(' ').filter(Boolean);
+  return words.length <= 6 && YES_WORD.test(p) && !NEGATION.test(p);
+};
 const isNo = t => NO.has(plain(t));
 
 module.exports = { ungroundedFigures, softFail, unbackedClaim, stripClaims, UNBACKED_FIX, isYes, isNo, isUntrustedTool, NEEDS_OK };
