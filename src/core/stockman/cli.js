@@ -96,6 +96,15 @@ async function data(args, out) {
         out(runs.health().summary);
         break;
       }
+      case 'spreads': {
+        // data spreads [round [n] [--force] | report [from] [to]]: the cost sampler (one round now, or the measured figures)
+        const { spreads } = layer.api;
+        const force = rest.includes('--force'), args2 = rest.filter(a => !a.startsWith('--'));
+        if (args2[0] === 'round') out(JSON.stringify(await spreads.round({ force, limit: Number(args2[1]) || spreads.options.perRound }), null, 2));
+        else out(JSON.stringify(spreads.summary({ from: args2[1] || undefined, to: args2[2] || undefined }), null, 2));
+        out(spreads.health().summary);
+        break;
+      }
       case 'status': out(JSON.stringify(runs.health(), null, 2)); break;
       case 'flags': out(JSON.stringify(earnings.flags({ symbol: rest[0], entryDay: rest[1], exitDay: rest[2] }), null, 2)); break;
       default: out('usage: stockman data <cycle | history [steps] | status | flags SYMBOL ENTRY EXIT>'); return 2;
