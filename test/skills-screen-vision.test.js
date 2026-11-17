@@ -51,7 +51,8 @@ test('screen_look: window mode finds the window by words, and the front one when
   const b = setup({ hostOpts: { foreground: 1 } });
   await b.run({ mode: 'window' });
   assert.equal(b.host.calls.find(c => c[0] === 'screenshot')[1].hwnd, 1);
-  await assert.rejects(() => a.run({ mode: 'window', target: 'zzzzqq' }), /No open window/);
+  await a.run({ mode: 'window', target: 'zzzzqq' });   // a made-up target falls back to the whole screen
+  assert.equal(a.host.calls.filter(c => c[0] === 'screenshot').pop()[1].mode, 'screen');
 });
 
 test('screen_look: resize hook shrinks the image; a failing hook falls back to the original', async () => {

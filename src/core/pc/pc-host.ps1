@@ -558,7 +558,7 @@ function Do-Screenshot($m) {
       @{ clipboard = $true; w = $w; h = $h }
     } else {
       $p = [string]$m.path
-      $dir = Split-Path -LiteralPath $p -Parent
+      $dir = [IO.Path]::GetDirectoryName($p)
       if (-not (Test-Path -LiteralPath $dir)) { [void](New-Item -ItemType Directory -Path $dir) }
       $bmp.Save($p, [Drawing.Imaging.ImageFormat]::Png)
       @{ path = $p; w = $w; h = $h }
