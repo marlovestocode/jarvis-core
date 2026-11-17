@@ -49,11 +49,11 @@ const noBackfill = { runs: { backfill: false } };
 
 test('data layer: migrations 2 to 7 sit above the framework, every table exists, and health carries data_quality', async () => {
   const { app } = await layerApp();
-  assert.equal(app.db.version, 7);
+  assert.equal(app.db.version, 11);
   const tables = app.db.stmt("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all().map(r => r.name);
   for (const t of ['meta', 'engine_event', 'universe_snapshot', 'universe_member', 'bar', 'bar_gap', 'coverage', 'market_day', 'catchup_gap', 'run', 'run_stage', 'bar_history', 'earnings_fetch', 'earnings_event']) assert.ok(tables.includes(t), t);
   assert.ok(typeof app.health().dataQuality.runs.summary === 'string');
-  assert.deepEqual(app.health().features, ['universe', 'bars', 'calendar', 'earnings', 'runs']);
+  assert.deepEqual(app.health().features, ['universe', 'bars', 'calendar', 'earnings', 'runs', 'scoring', 'shadow', 'calibration']);
   await app.stop();
 });
 
