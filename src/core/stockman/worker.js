@@ -16,6 +16,7 @@ const { loadConfig } = require('./config');
 const { createFetcher } = require('../net/fetcher');
 const { createPolicy } = require('../net/policy');
 const { createDataLayer } = require('./features');
+const { createTradingLayer } = require('./trading');
 
 const HEALTH_EVERY_MS = 5000;
 const FATAL_EXIT = 2;
@@ -55,6 +56,8 @@ function run() {
       // the data layer (universe, bars, calendar, runs). Runs by itself only with the real provider; STOCKMAN_AUTORUN=off stops the automatic cycles.
       const layer = createDataLayer({ fetcher, autoRun: config.provider.name === 'yahoo' && !/^(off|false|0|no)$/i.test(process.env.STOCKMAN_AUTORUN || '') });
       for (const f of layer.features) app.use(f);
+      // the paper ledger and backtest tables (migrations 8 and 9). Registered here so this build can open a database they have touched.
+      for (const f of createTradingLayer({ data: layer.api }).features) app.use(f);
       await app.start();
     } catch (err) {
       send({ type: 'fatal', error: String(err?.message || err) });

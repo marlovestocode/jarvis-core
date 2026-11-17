@@ -9,6 +9,8 @@
 //   node src/core/stockman/cli.js data history [steps]        history steps until nothing is pending or `steps` ran (default 200) (LIVE, slow)
 //   node src/core/stockman/cli.js data status                 the data_quality object as JSON (no network)
 //   node src/core/stockman/cli.js data flags SYMBOL ENTRY EXIT    earnings flags for one paper trade window (no network)
+//   node src/core/stockman/cli.js backtest run [variant|all] [--holdout]   run the reversal backtest on the TUNING period (the holdout is locked: --holdout, once per variant)
+//   node src/core/stockman/cli.js backtest status | show [variant]         what has run, the variant count; the last stored result
 // The data commands use the same fetcher setup as the worker (allowlist, switches, size cap) and never start the automatic cycles.
 // Options via environment: STOCKMAN_DATA_DIR, STOCKMAN_PROVIDER (yahoo | mock), STOCKMAN_LOG_LEVEL. See README.md.
 const { createStockman } = require('./app');
@@ -18,13 +20,51 @@ function buildDataApp() {
   const { createFetcher } = require('../net/fetcher');
   const { createPolicy } = require('../net/policy');
   const { createDataLayer } = require('./features');
+  const { createTradingLayer } = require('./trading');
   const config = loadConfig({});
   const getConfig = () => ({ online: { enabled: true, finance: true } });
   const fetcher = createFetcher({ policy: createPolicy(getConfig), cacheDir: config.cacheDir, timeoutMs: config.provider.timeoutMs });
   const app = createStockman({ config, getConfig, fetcher });
   const layer = createDataLayer({ fetcher, autoRun: false });
   for (const f of layer.features) app.use(f);
-  return { app, layer };
+  const trading = createTradingLayer({ data: layer.api });
+  for (const f of trading.features) app.use(f);
+  return { app, layer, trading };
+}
+
+// backtest run [variant|all] [--holdout]   backtest status   backtest show [variant] [--holdout]   (no network; reads and writes stockman.db)
+async function backtest(args, out) {
+  const { formatResult } = require('./trading/report');
+  const { ALL_VARIANTS } = require('./trading/engine');
+  const flags = args.filter(a => a.startsWith('--')), [sub, name] = args.filter(a => !a.startsWith('--'));
+  const holdout = flags.includes('--holdout');
+  for (const f of flags) if (f !== '--holdout') { out(`unknown option ${f}`); return 2; }
+  const { app, trading } = buildDataApp();
+  await app.start();
+  const bt = trading.api.backtest;
+  try {
+    switch (sub) {
+      case 'run': {
+        if (holdout && (!name || name === 'all')) { out('the holdout runs one named variant at a time, once: backtest run <variant> --holdout'); return 2; }
+        const keys = !name ? ['rev-L5-vol'] : name === 'all' ? ALL_VARIANTS.map(v => v.key) : [name];
+        for (const key of keys) {
+          const t0 = Date.now();
+          const r = bt.run({ variant: key, period: holdout ? 'holdout' : 'tuning', allowHoldout: holdout });
+          out(formatResult(r));
+          out(`(${((Date.now() - t0) / 1000).toFixed(1)} s)\n`);
+        }
+        break;
+      }
+      case 'status': out(JSON.stringify(bt.status(), null, 2)); break;
+      case 'show': {
+        const r = bt.lastResult(name || 'rev-L5-vol', holdout ? 'holdout' : 'tuning');
+        out(r ? formatResult(r) : 'no finished run for that variant and period');
+        break;
+      }
+      default: out('usage: stockman backtest <run [variant|all] [--holdout] | status | show [variant] [--holdout]>\nvariants: ' + ALL_VARIANTS.map(v => v.key).join(', ') + '\nThe holdout is locked: it runs only with --holdout, once per variant.'); return 2;
+    }
+    return 0;
+  } finally { await app.stop(); }
 }
 
 async function data(args, out) {
@@ -57,11 +97,14 @@ async function data(args, out) {
 async function main(argv, out = console.log) {
   const [cmd, ...args] = argv;
   if (!cmd || cmd === 'help' || cmd === '--help') {
-    out('usage: stockman <migrate | status | events [n] | quote SYMBOL... | history SYMBOL [range] [interval] | data ...>');
+    out('usage: stockman <migrate | status | events [n] | quote SYMBOL... | history SYMBOL [range] [interval] | data ... | backtest ...>');
     return cmd ? 0 : 1;
   }
   if (cmd === 'data') {
     try { return await data(args, out); } catch (err) { out(`error [${err.code || 'UNKNOWN'}]: ${err.message}`); return 1; }
+  }
+  if (cmd === 'backtest') {
+    try { return await backtest(args, out); } catch (err) { out(`error [${err.code || 'UNKNOWN'}]: ${err.message}`); return 1; }
   }
   const app = createStockman({});
   await app.start();

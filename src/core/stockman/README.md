@@ -109,6 +109,25 @@ Five features registered in `worker.js` through `app.use()`; `features/index.js`
 - **Switches:** the worker runs the cycles only with the real provider (`yahoo`); `STOCKMAN_AUTORUN=off` stops them. All requests use the one fetcher, so `online.finance` and the allowlist apply. No host was added.
 - **Tests:** `test/stockman-{calendar-rules,universe,bars,data-layer,history}.test.js`; fixtures are excerpts of real responses in `test/fixtures/stockman-data/` (see its README).
 
+## Paper ledger, cost model and backtest (trading/, vault Phase 1 ledger part and Phase 5, CL-0037)
+
+Paper only. Nothing here can place an order (vault D1, D14); the broker route (Alpaca paper, D23) is approved and NOT built. Registered by `worker.js` and `cli.js` after the data layer (`trading/index.js` → `createTradingLayer({ data })`).
+
+| Part | File | What it does |
+|---|---|---|
+| `ledger` (8) | `trading/ledger.js` | Tables `paper_position` and `paper_fill`. One row per position: `source` (`backtest` / `paper-internal` / `broker-paper`), scoring build id, run id, basket, sleeve, entry and exit days, expected and fill prices, gross return, cost, net return, benchmark return. `attachFillSource(port)` is the one door for fills (a port with `subscribe(handler)`); a port with an order-placing method is refused. A fill's source must match its position's. |
+| costs | `trading/costs.js` | 10 bps round trip is the base case (an assumption); every result at 5, 10 and 25 bps. Fill price with per-side cost, slippage in bps. |
+| `backtest` (9) | `trading/backtest.js`, `engine.js`, `stats.js`, `report.js` | The rule from vault note 06 (D21). Tables `backtest_variant`, `backtest_run`, `backtest_day`. Writes every trade to the ledger as `backtest`. |
+
+- **Rule:** score = -r_L / (vol20 * sqrt(L)); eligible = point-in-time member, 60+ bars, close above USD 5, no bar gap in 25 sessions, no earnings flag; top 20 equal weight; entry next open, exit 5th close; five overlapping sleeves; SPY benchmark over the same dates. Open prices are put on the adjusted basis with the same day's adjusted/raw close ratio.
+- **Periods:** backtest 2020-03 to 2026-11-13; holdout = last 100 non-overlapping 5-session windows ending 2026-11-13; tuning = before. A tuning run never reads a bar after the first holdout window; a basket spanning the border is in neither.
+- **Holdout lock:** `run({ period: 'holdout' })` throws `HOLDOUT_LOCKED` unless `allowHoldout: true`; the run is recorded before it computes, and a unique index refuses a second holdout row for the same variant (even if the first failed).
+- **Variants:** six exist (lookback 3, 5, 10; with or without volatility scaling), keyed `rev-L5-vol` and so on. Each one run is logged; the count of variants tried is stored with every run and printed beside every result.
+- **Statistics:** mean excess return per trade after cost over the non-overlapping windows (the baskets on the window grid), 95% interval by moving-block bootstrap over windows (block 4, 5000 resamples, fixed seed). Brier skill is not computed: the rule makes a ranking, not probabilities.
+- **Survivorship gap (G24):** per signal day, point-in-time members with no bars at all, stored in `backtest_day` and summarised by year. The result is biased in the rule's favour by the missing delisted names, by an unknown amount.
+- **CLI:** `node src/core/stockman/cli.js backtest run [variant|all]` (tuning only), `backtest run <variant> --holdout` (locked; once), `backtest status`, `backtest show [variant]`. It reads and writes `stockman.db` in `STOCKMAN_DATA_DIR`; point it at a copy when the live worker owns the real file.
+- **Tests:** `test/stockman-ledger.test.js`, `test/stockman-backtest.test.js` (synthetic data, no network).
+
 ## What is verified and what is not
 
 Verified: the Yahoo response shape for quote and history, the unknown-symbol HTTP 404, and that this phase passes the full jarvis suite. **Not verified:** quote delay and behaviour during US market hours, the rate-limit threshold (HTTP 429 did occur under a burst of probes), the error JSON body for an unknown symbol, and intervals other than `1d` and `1m` (so only those are offered). The Yahoo endpoint is unofficial and may change.
