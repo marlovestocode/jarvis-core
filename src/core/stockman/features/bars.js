@@ -236,9 +236,12 @@ function createBars({ now = Date.now, sleep = ms => new Promise(r => setTimeout(
       if (history.stale) { res.failed++; setHistory(symbol, { status: 'failed', from, note: 'STALE: only an old cached copy was available' }); continue; }
       const r = store(symbol, history, target, null, { from, deep: true });
       const missing = r.firstDay ? tradingDays(r.firstDay, r.lastDay).length - r.written : 0;
+      // an answer with no usable bars at all (seen live 2026-11-17: BK, K, CTRA, WBD and others, relisted or renamed tickers) is the same
+      // survivorship gap as an unknown symbol: recorded as not_found so reports count it, never as a symbol with history
+      if (!r.written) { setHistory(symbol, { status: 'not_found', from, name: history.name, note: 'the provider returned no finished bars in range' }); res.notFound++; continue; }
       setHistory(symbol, {
         status: 'ok', from, firstDay: r.firstDay, lastDay: r.lastDay, n: r.written, missing, name: history.name,
-        note: !r.written ? 'the provider returned no finished bars in range' : r.firstDay > from ? `series starts ${r.firstDay}, after ${from}: listed later, or the provider's history is shorter` : null,
+        note: r.firstDay > from ? `series starts ${r.firstDay}, after ${from}: listed later, or the provider's history is shorter` : null,
       });
       res.ok++; res.barsWritten += r.written;
       try { onProgress?.({ done: res.attempted, of: todo.length, symbol }); } catch { /* informational */ }

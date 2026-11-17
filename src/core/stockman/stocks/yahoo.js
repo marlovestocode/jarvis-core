@@ -83,12 +83,16 @@ function createYahooProvider({ http, now = Date.now, baseUrl = BASE } = {}) {
       const symbol = normalizeSymbol(rawSymbol);
       const { result, stale, ageMs } = await chart(symbol, range, interval, opts);
       const ts = result.timestamp, q = result.indicators?.quote?.[0], adj = result.indicators?.adjclose?.[0]?.adjclose;
-      if (ts === undefined && q === undefined) return checkHistory({ symbol, currency: String(result.meta.currency || ''), range, interval, source: 'yahoo', fetchedAt: now(), stale, ageMs, bars: [], skipped: 0 }, 'yahoo');
+      // no bars: seen live 2026-11-17 as no `timestamp` with `quote: [{}]` (BK, K, CTRA: meta.firstTradeDate in 2026, a relisted or
+      // changed ticker). An empty history is data ("nothing here"), not a malformed answer.
+      if (ts === undefined && (q === undefined || Object.keys(q).length === 0)) return checkHistory({ symbol, currency: String(result.meta.currency || ''), range, interval, source: 'yahoo', fetchedAt: now(), stale, ageMs, bars: [], skipped: 0 }, 'yahoo');
       if (!Array.isArray(ts) || !q || ![q.open, q.high, q.low, q.close, q.volume].every(Array.isArray)) throw new ProviderDataError(`yahoo: history for ${symbol} is not in the expected shape`);
       const bars = []; let skipped = 0;
       for (let i = 0; i < ts.length; i++) {
         const o = num(q.open[i]), h = num(q.high[i]), l = num(q.low[i]), c = num(q.close[i]), v = num(q.volume[i]);
-        if (o === null || h === null || l === null || c === null || v === null) { skipped++; continue; }
+        // a bar with a missing or non-positive price is skipped and counted, never repaired (seen live 2026-11-17: WBD open 0 on 2026-10-05);
+        // one bad bar must not throw away the whole series
+        if (o === null || h === null || l === null || c === null || v === null || o <= 0 || h <= 0 || l <= 0 || c <= 0 || h < l) { skipped++; continue; }
         bars.push({ t: ts[i] * 1000, open: o, high: h, low: l, close: c, adjClose: Array.isArray(adj) ? num(adj[i]) : null, volume: v });
       }
       const h = { symbol, currency: String(result.meta.currency || ''), range, interval, source: 'yahoo', fetchedAt: now(), stale, ageMs, bars, skipped };
