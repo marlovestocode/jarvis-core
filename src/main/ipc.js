@@ -72,6 +72,7 @@ function registerIpc(ctx) {
   // ---- settings window ----
   const describeNow = async () => describe({ config: ctx.config, providers: ctx.providers, engines: ctx.engines, hotkeyFailures: ctx.hotkeys.failed, library: await ctx.kiwix.info() });
   h('settings:get', () => describeNow());
+  h('settings:health', () => ctx.serviceHealth?.() ?? {});
   h('settings:places', async query => {
     if (typeof query !== 'string' || !query.trim() || query.length > 200) return { places: [], error: 'Enter a city (max 200 characters)' };
     try { return { places: (await searchPlaces(ctx.fetcher, query)).slice(0, 10).map(toPlace) }; }

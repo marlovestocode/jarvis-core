@@ -153,7 +153,9 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
       res.writeHead(200, { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       return res.end(JSON.stringify(body));
     }
-    if (dashboard && (url === '/ai/dashboard' || url === '/ai/dashboard.js' || url === '/ai/dashboard.css' || url === '/ai/metrics')) {
+    // the shared HUD kit (src/ui/hud.*, palette.css) is served beside the page; a missing file is a 404, never a guess
+    const KIT = { '/ai/hud.css': ['text/css; charset=utf-8', 'hudCss'], '/ai/hud.js': ['text/javascript; charset=utf-8', 'hudJs'], '/ai/palette.css': ['text/css; charset=utf-8', 'palette'] };
+    if (dashboard && (url === '/ai/dashboard' || url === '/ai/dashboard.js' || url === '/ai/dashboard.css' || url === '/ai/metrics' || (KIT[url] && dashboard.files[KIT[url][1]]))) {
       // only this page itself (no Origin, or its own origin) may read the numbers: another localhost page cannot
       if (origin && origin !== `http://${HOST}:${port}` && origin !== `http://localhost:${port}`) { res.writeHead(403, cors); return res.end(); }
       const q = new URLSearchParams(query);
@@ -166,7 +168,7 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
         res.writeHead(200, { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
         return res.end(JSON.stringify(body));
       }
-      const asset = url === '/ai/dashboard' ? ['text/html; charset=utf-8', dashboard.files.html] : url === '/ai/dashboard.js' ? ['text/javascript; charset=utf-8', dashboard.files.js] : ['text/css; charset=utf-8', dashboard.files.css];
+      const asset = KIT[url] ? [KIT[url][0], dashboard.files[KIT[url][1]]] : url === '/ai/dashboard' ? ['text/html; charset=utf-8', dashboard.files.html] : url === '/ai/dashboard.js' ? ['text/javascript; charset=utf-8', dashboard.files.js] : ['text/css; charset=utf-8', dashboard.files.css];
       res.writeHead(200, { 'Content-Type': asset[0], 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
         'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" });
       return res.end(asset[1]);

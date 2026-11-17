@@ -140,10 +140,8 @@ ctx.bus = createBus({ onError: err => ctx.log('listener error:', err?.message) }
 // analytics dashboard (core/bridge.js serves it) and by the analytics_summary tool. No conversation text is stored.
 const seenUp = {};   // a connection that never came up (no extension, no wallpaper) is "not in use", not "down": it is sampled only after its first time up
 const upSample = (name, up) => { if (up === null || up === undefined) return undefined; if (up) seenUp[name] = true; return seenUp[name] ? !!up : undefined; };
-function metricsSample() {
-  const out = {};
-  try { const c = ctx.cortex?.stats?.(); if (c) { out.cortexNodes = c.nodes; out.cortexBytes = c.bytes; } } catch { /* the store may be closed */ }
-  try { out.plays = ctx.playLog?.count?.(); } catch { /* not ready */ }
+// which linked services are up right now (undefined = never came up, so "not in use"); the metrics sample and the settings health strip share it
+function serviceHealth() {
   const svc = {
     ollama: upSample('ollama', ctx.providers.get('ollama')?.health?.().ok),
     ytmusic: upSample('ytmusic', ctx.ytmLink?.connected),
@@ -152,11 +150,22 @@ function metricsSample() {
     mediaHost: ctx.mediaHost ? !ctx.mediaHost.health().gaveUp : undefined,
     pcHost: ctx.pcHostProc ? !ctx.pcHostProc.health().gaveUp : undefined,
   };
-  for (const [k, v] of Object.entries(svc)) if (v !== undefined) (out.svc ||= {})[k] = v;
+  const out = {};
+  for (const [k, v] of Object.entries(svc)) if (v !== undefined) out[k] = v;
+  return out;
+}
+ctx.serviceHealth = serviceHealth;
+function metricsSample() {
+  const out = {};
+  try { const c = ctx.cortex?.stats?.(); if (c) { out.cortexNodes = c.nodes; out.cortexBytes = c.bytes; } } catch { /* the store may be closed */ }
+  try { out.plays = ctx.playLog?.count?.(); } catch { /* not ready */ }
+  const svc = serviceHealth();
+  if (Object.keys(svc).length) out.svc = svc;
   return out;
 }
 ctx.metrics = createMetrics({ dir: path.join(DATA_DIR, 'metrics'), bus: ctx.bus, log: ctx.log, groupOf: name => ctx.catalog?.groupOf?.(name) ?? null, sample: metricsSample });
 const DASH = path.join(__dirname, '../ui/dashboard');
+const readUi = f => { try { return fs.readFileSync(path.join(DASH, '..', f)); } catch { return null; } };
 const readDash = f => { try { return fs.readFileSync(path.join(DASH, f)); } catch { return Buffer.from(''); } };
 ctx.openDashboard = async ({ range = 'day' } = {}) => {
   if (!ctx.bridge) return null;
@@ -542,7 +551,7 @@ app.whenReady().then(async () => {
     brain: { view: o => ctx.cortex.view(o), labels: ids => ctx.cortex.labels(ids), labelsOn: () => ctx.getConfig().cortex?.wallpaperLabels !== false,
       // the skill groups (and their tool names) are neurons too: a tool call fires its group
       skills: () => ctx.catalog.groups.map(g => ({ id: g.id, label: g.label, tools: g.tools.map(t => t.name) })) },
-    dashboard: { query: o => ctx.metrics.query(o), files: { html: readDash('index.html'), js: readDash('dashboard.js'), css: readDash('dashboard.css') } },
+    dashboard: { query: o => ctx.metrics.query(o), files: { html: readDash('index.html'), js: readDash('dashboard.js'), css: readDash('dashboard.css'), hudCss: readUi('hud.css'), hudJs: readUi('hud.js'), palette: readUi('palette.css') } },
     onOpen: mode => { ctx.log(`open from wallpaper: ${mode}`); if (mode === 'voice') ctx.startVoice(); else ctx.windows?.showChat(); },
   });
   bridgeStarting.catch(() => {});
