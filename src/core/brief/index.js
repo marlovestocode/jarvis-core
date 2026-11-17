@@ -27,7 +27,7 @@ function appsPart(text) {
   return apps.length ? `Open apps: ${apps.join(', ')}.` : '';
 }
 
-function createBrief({ tools, getConfig, now = () => new Date(), timeoutMs = 4000 }) {
+function createBrief({ tools, getConfig, now = () => new Date(), timeoutMs = 8000 }) {
   const ctx = () => ({ turn: { source: 'brief', tainted: false } });
   async function part(name, args, shape) {
     let timer;
