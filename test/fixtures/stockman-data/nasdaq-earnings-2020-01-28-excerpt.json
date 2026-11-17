@@ -1,0 +1,79 @@
+{
+ "data": {
+  "asOf": "Tue, Jan 28, 2020",
+  "headers": {
+   "time": "Time",
+   "symbol": "Symbol",
+   "name": "Company Name",
+   "eps": "EPS",
+   "surprise": "% Surprise",
+   "marketCap": "Market Cap",
+   "fiscalQuarterEnding": "Fiscal Quarter Ending",
+   "epsForecast": "Consensus EPS* Forecast",
+   "noOfEsts": "# of Ests"
+  },
+  "rows": [
+   {
+    "eps": "$4.99",
+    "surprise": "9.91",
+    "time": "time-not-supplied",
+    "symbol": "AAPL",
+    "name": "Apple Inc.",
+    "marketCap": "$5,126,663,200,000",
+    "fiscalQuarterEnding": "Dec/2019",
+    "epsForecast": "$4.54",
+    "noOfEsts": "11"
+   },
+   {
+    "eps": "$0.27",
+    "surprise": "3.85",
+    "time": "time-not-supplied",
+    "symbol": "AMD",
+    "name": "Advanced Micro Devices, Inc.",
+    "marketCap": "$827,063,210,000",
+    "fiscalQuarterEnding": "Dec/2019",
+    "epsForecast": "$0.26",
+    "noOfEsts": "10"
+   },
+   {
+    "eps": "$0.55",
+    "surprise": "-3.51",
+    "time": "time-not-supplied",
+    "symbol": "PFE",
+    "name": "Pfizer, Inc.",
+    "marketCap": "$164,497,785,000",
+    "fiscalQuarterEnding": "Dec/2019",
+    "epsForecast": "$0.57",
+    "noOfEsts": "4"
+   },
+   {
+    "eps": "$5.29",
+    "surprise": "6.01",
+    "time": "time-not-supplied",
+    "symbol": "LMT",
+    "name": "Lockheed Martin Corporation",
+    "marketCap": "$135,186,227,000",
+    "fiscalQuarterEnding": "Dec/2019",
+    "epsForecast": "$4.99",
+    "noOfEsts": "7"
+   },
+   {
+    "eps": "$1.33",
+    "surprise": "24.3",
+    "time": "time-not-supplied",
+    "symbol": "XRX",
+    "name": "Xerox Holdings Corporation",
+    "marketCap": "$126,347,384",
+    "fiscalQuarterEnding": "Dec/2019",
+    "epsForecast": "$1.07",
+    "noOfEsts": "2"
+   }
+  ]
+ },
+ "message": null,
+ "status": {
+  "rCode": 200,
+  "bCodeMessage": null,
+  "developerMessage": null
+ }
+}

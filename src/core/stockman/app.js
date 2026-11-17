@@ -6,7 +6,8 @@
 //            fetcher | fetch | http, provider, dbFile, openDbImpl }
 //
 // A FEATURE (how later phases plug in) is a plain object:
-//   { id, migrations?: [{ version, name, up(raw) }], start?(ctx), stop?(ctx), tools?(ctx) → Tool[] }
+//   { id, migrations?: [{ version, name, up(raw) }], start?(ctx), stop?(ctx), tools?(ctx) → Tool[], health?() → object }
+//   health(): a cheap, JSON-safe summary; app.health().dataQuality[id] carries it, and jarvis's status tool prints dataQuality.<id>.summary if a string.
 //   id: lower case, unique. migrations: versions above the framework's, unique across features.
 //   tools: names must start with "stockman_" (jarvis's tool registry is one flat namespace).
 //   ctx = { db, events, stocks, link, log, config, secrets, now }
@@ -88,7 +89,7 @@ function createStockman(deps = {}) {
       if (started) throw new StockmanError('app.use() must be called before start()');
       if (!feature || typeof feature !== 'object' || !FEATURE_ID.test(feature.id || '')) throw new TypeError('a feature needs an id: lower case letters, digits and dashes, 2 to 31 characters');
       if (features.some(f => f.id === feature.id)) throw new StockmanError(`feature "${feature.id}" is already registered`);
-      for (const k of ['start', 'stop', 'tools']) if (feature[k] !== undefined && typeof feature[k] !== 'function') throw new TypeError(`feature "${feature.id}": ${k} must be a function`);
+      for (const k of ['start', 'stop', 'tools', 'health']) if (feature[k] !== undefined && typeof feature[k] !== 'function') throw new TypeError(`feature "${feature.id}": ${k} must be a function`);
       features.push(feature);
       return app;
     },
@@ -134,8 +135,14 @@ function createStockman(deps = {}) {
     health() {
       let dbOk = false, version = null;
       if (db) { try { db.stmt('SELECT 1').get(); dbOk = true; version = db.version; } catch { dbOk = false; } }
+      // optional feature.health() → small JSON object, must be cheap (the worker pushes health every 5 s). One broken feature never breaks health.
+      const dataQuality = {};
+      for (const f of features) {
+        if (!f.health) continue;
+        try { dataQuality[f.id] = f.health(); } catch (err) { dataQuality[f.id] = { error: String(err.message).slice(0, 200) }; }
+      }
       return {
-        started, enabled: config.enabled, startedAt, link: link.name,
+        started, enabled: config.enabled, startedAt, link: link.name, dataQuality,
         db: db ? { ok: dbOk, version, file: db.file } : null,
         stocks: stocks.status(),
         features: features.map(f => f.id),

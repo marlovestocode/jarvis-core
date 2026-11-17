@@ -15,6 +15,8 @@ function describeHealth(h, now = Date.now()) {
   parts.push(`${s.calls} call${s.calls === 1 ? '' : 's'}, ${s.failures} failed${s.lastOkAt ? `, last success ${ago(now - s.lastOkAt)} ago` : ', none succeeded yet'}`);
   if (s.lastError) parts.push(`last error: ${s.lastError.message}`);
   if (h.features.length) parts.push(`features: ${h.features.join(', ')}`);
+  // a feature's own one-line summary (e.g. the data layer's data_quality): shown as written, never invented here
+  for (const s of Object.values(h.dataQuality || {})) if (typeof s?.summary === 'string' && s.summary) parts.push(s.summary.replace(/[.\s]+$/, ''));
   return parts.join('; ') + '.';
 }
 

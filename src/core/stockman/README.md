@@ -88,6 +88,27 @@ app.use({
 
 Features get the services through `ctx` and never import each other or the framework's internals. Do this before `app.start()`.
 
+## The data layer (features/, vault CL-0030 to CL-0033)
+
+Five features registered in `worker.js` through `app.use()`; `features/index.js` is the only file that wires them. Data plumbing only: no scoring, prediction features, strategies, ledger, reviewer or UI.
+
+| Feature (migration) | Files | What it does |
+|---|---|---|
+| `universe` (2) | `universe.js`, `html-table.js` | S&P 500 (Wikipedia) plus Nasdaq-100 (Nasdaq API, cross-checked with Wikipedia), de-duplicated; `BRK.B` kept, `yahoo_symbol` `BRK-B`; dated Wikipedia revisions for point-in-time membership (quarterly from 2020, 6 s apart, a few per cycle, resumable). Tables `universe_snapshot`, `universe_member`. |
+| `bars` (3) | `bars.js` | Paced sweep through `ctx.stocks` (the StockProvider): finished sessions only, gaps recorded and never filled, stale cache not stored, idempotent and resumable. Tables `bar`, `bar_gap`, `coverage`. |
+| `calendar` (4) | `calendar.js`, `calendar-rules.js`, `ny-time.js` | NYSE/Nasdaq trading days, holidays, early closes in New York time; a check of the calendar against the bars received; what a catch-up could not fill. Tables `market_day`, `catchup_gap`. |
+| `runs` (5) | `runs.js` | One run per trading day (`run-YYYY-MM-DD`), states `created → universe_ok → ingested`, stage rows with attempts and errors; catch-up on start and every 15 minutes; history steps; `data_quality`. Tables `run`, `run_stage`. |
+| `bars` history (6) | `bars.js` | Deep history for the backtest: one full-series fetch (`10y`, trimmed to `2019-10-01`) per symbol ever in a stored list plus `SPY`. Each symbol's row in `bar_history` says `ok`, `not_found` (delisted or renamed: a survivorship gap, reported), `failed` (3 tries) or `readjust`. A daily sweep that sees stored closes change (split or dividend) marks `readjust`, and the series is fetched again so all its adjusted closes stay on one basis. |
+| `earnings` (7) | `earnings.js` | Nasdaq earnings calendar, one request per weekday (`api.nasdaq.com`, already allowed), from `2019-10-01`, 1 s apart; the coming 28 days fetched again daily (dates move; a date's fetch replaces that date's rows); past dates fetched again once if first seen before they happened. `flags({ symbol, entryDay, exitDay })` gives `earnings_in_window`, `earnings_possible`, `earnings_data` by the vault note 06 rules. Tables `earnings_fetch`, `earnings_event`. |
+
+- **History steps:** after each daily cycle, and on a 15-minute tick when no daily work is due, one bounded step of each: universe snapshots (8), deep bars (200 symbols), earnings dates (120). The daily data always comes first. `SPY` (the benchmark proxy, vault note 06) is also swept daily with the universe but never counts in coverage.
+- **CLI:** `cli.js data cycle`, `data history [steps]` (runs the steps until nothing is pending; about 45 minutes from empty), `data status`, `data flags SYMBOL ENTRY EXIT`.
+
+- **Catch-up:** on start the newest finished session is found (close plus 30 min), a run is made for every trading day since the last run or stored bar, and one sweep covers the gap with the smallest provider range that fits. A day with no bar from any symbol after a clean sweep, or below 90% coverage after 3 tries, is accepted but recorded in `catchup_gap` and shown in `data_quality`.
+- **data_quality:** `app.health().dataQuality.runs` (coverage fresh/universe, data age, open gaps, calendar doubts, last run) with a `summary` string that jarvis's `stockman_status` prints. It says daily bars of finished sessions; quote delay is not measured.
+- **Switches:** the worker runs the cycles only with the real provider (`yahoo`); `STOCKMAN_AUTORUN=off` stops them. All requests use the one fetcher, so `online.finance` and the allowlist apply. No host was added.
+- **Tests:** `test/stockman-{calendar-rules,universe,bars,data-layer,history}.test.js`; fixtures are excerpts of real responses in `test/fixtures/stockman-data/` (see its README).
+
 ## What is verified and what is not
 
 Verified: the Yahoo response shape for quote and history, the unknown-symbol HTTP 404, and that this phase passes the full jarvis suite. **Not verified:** quote delay and behaviour during US market hours, the rate-limit threshold (HTTP 429 did occur under a burst of probes), the error JSON body for an unknown symbol, and intervals other than `1d` and `1m` (so only those are offered). The Yahoo endpoint is unofficial and may change.

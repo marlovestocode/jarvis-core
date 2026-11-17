@@ -91,7 +91,10 @@ function createYahooProvider({ http, now = Date.now, baseUrl = BASE } = {}) {
         if (o === null || h === null || l === null || c === null || v === null) { skipped++; continue; }
         bars.push({ t: ts[i] * 1000, open: o, high: h, low: l, close: c, adjClose: Array.isArray(adj) ? num(adj[i]) : null, volume: v });
       }
-      return checkHistory({ symbol, currency: String(result.meta.currency || ''), range, interval, source: 'yahoo', fetchedAt: now(), stale, ageMs, bars, skipped }, 'yahoo');
+      const h = { symbol, currency: String(result.meta.currency || ''), range, interval, source: 'yahoo', fetchedAt: now(), stale, ageMs, bars, skipped };
+      const name = result.meta.longName || result.meta.shortName;   // seen live 2026-11-17 (AAPL, SPY); used only for a ticker-reuse check
+      if (typeof name === 'string' && name) h.name = name.slice(0, 120);
+      return checkHistory(h, 'yahoo');
     },
   };
 }

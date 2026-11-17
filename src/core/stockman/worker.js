@@ -12,6 +12,10 @@
 //                         { type: 'log', line }
 // Exit codes: 0 stopped, 1 crashed (restart), 2 could not start: bad config or migration (restart would loop).
 const { createStockman } = require('./app');
+const { loadConfig } = require('./config');
+const { createFetcher } = require('../net/fetcher');
+const { createPolicy } = require('../net/policy');
+const { createDataLayer } = require('./features');
 
 const HEALTH_EVERY_MS = 5000;
 const FATAL_EXIT = 2;
@@ -39,12 +43,18 @@ function run() {
   async function init(msg) {
     if (msg.online && typeof msg.online === 'object') online = msg.online;
     try {
+      const config = loadConfig({ dataDir: msg.dataDir });
+      const getConfig = () => ({ online });   // the policy reads online.enabled and online.finance live
+      // ONE fetcher for the provider and the data layer: same allowlist, switches, timeout and size cap (no second HTTP path)
+      const fetcher = createFetcher({ policy: createPolicy(getConfig), cacheDir: config.cacheDir, timeoutMs: config.provider.timeoutMs });
       app = createStockman({
-        dataDir: msg.dataDir,
-        getConfig: () => ({ online }),   // the policy reads online.enabled and online.finance live
+        config, getConfig, fetcher,
         log: line => send({ type: 'log', line }),
         link: { name: 'parent', publish: (topic, payload) => send({ type: 'event', topic, payload }), subscribe: () => () => {} },
       });
+      // the data layer (universe, bars, calendar, runs). Runs by itself only with the real provider; STOCKMAN_AUTORUN=off stops the automatic cycles.
+      const layer = createDataLayer({ fetcher, autoRun: config.provider.name === 'yahoo' && !/^(off|false|0|no)$/i.test(process.env.STOCKMAN_AUTORUN || '') });
+      for (const f of layer.features) app.use(f);
       await app.start();
     } catch (err) {
       send({ type: 'fatal', error: String(err?.message || err) });
