@@ -39,7 +39,7 @@ async function makeLearning({ members = [], runState = () => 'ingested', flags =
     runs: { getRun: day => { const s = state.runState(day); return s ? { run_id: `run-${day}`, trade_day: day, state: s } : null; } },
     earnings: { flags: ({ symbol, entryDay, exitDay }) => (state.flags ? state.flags(symbol, entryDay, exitDay) : { earnings_in_window: false, earnings_possible: false, earnings_data: 'confirmed' }) },
   };
-  const layer = createLearningLayer({ data, now, autoRun: false, options: { shadow: shadowOpts, calibration: calibrationOpts } });
+  const layer = createLearningLayer({ data, now, autoRun: false, options: { shadow: { momentum: false, ...shadowOpts }, calibration: calibrationOpts } });
   app.use(bars.feature);
   for (const f of layer.features) app.use(f);
   await app.start();

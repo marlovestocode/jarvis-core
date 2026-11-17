@@ -224,8 +224,10 @@ function createScoring() {
     if (!db) throw new StockmanError('scoring: not started');
     const R = RULES[rule];
     if (!R) throw new StockmanError(`scoring: unknown rule ${rule}`);
-    const which = variant || R.primary;
-    if (!which) throw new StockmanError(`scoring: rule ${rule} has no primary variant; name one`);
+    // variant 'all' (momentum only): score every variant of the rule from the same features, for the shadow log
+    const all = rule === 'momentum' && variant === 'all';
+    const which = all ? null : (variant || R.primary);
+    if (!all && !which) throw new StockmanError(`scoring: rule ${rule} has no primary variant; name one`);
     const uniq = [...new Set(symbols)].sort();
     const { entryDay, exitDay } = horizonDays(day);
     const { sessions, bars, counts, notFound } = loadDayInputs(day, uniq, R.sessionsNeeded);
@@ -237,9 +239,25 @@ function createScoring() {
       const gap25 = !b || gapSessions.some(d => !b.present.has(d));
       let flags = null;
       if (hasBarOnDay && flagsOf) { try { flags = flagsOf(symbol, entryDay, exitDay) || null; } catch { flags = { earnings_data: 'unknown', error: true }; } }
-      const s = R.scoreCandidate({ notFound: notFound.has(symbol), hasBarOnDay, nBars: counts.get(symbol) || 0, close: b ? b.closeOn : null, features, gap25, flags, variant: which });
-      return { symbol, ...s, earnings: flags };
+      const input = { notFound: notFound.has(symbol), hasBarOnDay, nBars: counts.get(symbol) || 0, close: b ? b.closeOn : null, features, gap25, flags };
+      if (!all) return { symbol, ...R.scoreCandidate({ ...input, variant: which }), earnings: flags };
+      const perVariant = {};
+      for (const v of R.variants) perVariant[v.id] = R.scoreCandidate({ ...input, variant: v.id });
+      const list = Object.values(perVariant), first = list[0];
+      // the row itself carries what every variant agrees on; each variant's own verdict is in perVariant
+      return { symbol, eligible: list.some(s => s.eligible), reasons: first.reasons.filter(q => list.every(s => s.reasons.includes(q))), score: null, variants: first.variants, features: first.features, earnings: flags, perVariant };
     });
+    if (all) {
+      for (const v of R.variants) {
+        const basket = selectBasket(rows.map(r => ({ symbol: r.symbol, eligible: r.perVariant[v.id].eligible, score: r.perVariant[v.id].score })), R.params.basketSize);
+        for (const r of rows) {
+          const k = basket.get(r.symbol), s = r.perVariant[v.id];
+          r.perVariant[v.id] = { eligible: s.eligible, reasons: s.reasons, score: s.score, rank: k ? k.rank : null, inBasket: Boolean(k && k.inBasket) };
+        }
+      }
+      for (const r of rows) { r.rank = null; r.inBasket = false; }
+      return { day, build: R.build, entryDay, exitDay, rows };
+    }
     const basket = selectBasket(rows, R.params.basketSize);
     for (const r of rows) { const k = basket.get(r.symbol); r.rank = k ? k.rank : null; r.inBasket = Boolean(k && k.inBasket); }
     return { day, build: R.build, entryDay, exitDay, rows };

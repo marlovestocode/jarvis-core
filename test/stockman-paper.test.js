@@ -32,7 +32,7 @@ async function make({ dbFile = ':memory:', enabled = true, nowIso = '2026-11-16T
     runs: { getRun: day => ({ run_id: `run-${day}`, trade_day: day, state: 'ingested' }) },
     earnings: { flags: () => ({ earnings_in_window: false, earnings_possible: false, earnings_data: 'confirmed' }) },
   };
-  const learning = createLearningLayer({ data, now, autoRun: false });
+  const learning = createLearningLayer({ data, now, autoRun: false, options: { shadow: { momentum: false } } });
   const trading = createTradingLayer({ data: { ...data, ...learning.api }, now, options: enabled === 'default' ? {} : { paper: { enabled, autoRun: false } } });
   app.use(bars.feature);
   for (const f of [...learning.features, ...trading.features]) app.use(f);
