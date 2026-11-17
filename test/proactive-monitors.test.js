@@ -200,3 +200,34 @@ test('weatherAlerts: checks at most every 10 min, ignores headline text, a faili
   const bad = createWeatherAlertsMonitor({ getAlerts: async () => { throw new Error('alerts are US only'); } });
   await assert.rejects(bad.check({}, {}, {}, 1e9), /US only/);
 });
+
+// ---- followedTeams ----
+const { createFollowedTeamsMonitor } = require('../src/core/proactive/monitors/followed-teams');
+const game = (o = {}) => ({ league: 'NFL', away: 'Giants', home: 'Cowboys', start: new Date(1e9 - 2 * 3600000).toISOString(), status: 'final', score: { away: 17, home: 24 }, ...o });
+
+test('followedTeams: off by default; a live game turning final is announced once', async () => {
+  assert.deepEqual(DM.followedTeams, { enabled: false });
+  let g = game({ status: 'live', score: { away: 10, home: 7 } });
+  const mon = createFollowedTeamsMonitor({ getGames: async () => [g] });
+  assert.equal(mon.enabled({ followedTeams: { enabled: true } }), true);
+  const st = {};
+  assert.equal(await mon.check({}, {}, st, 1e9), null);
+  g = game();
+  const r = await mon.check({}, {}, st, 1e9 + 6 * MIN);
+  assert.equal(r.text, 'Final: Giants 17, Cowboys 24.');
+  assert.equal(await mon.check({}, {}, st, 1e9 + 12 * MIN), null);
+});
+
+test('followedTeams: an old final on first sight is not replayed; a fresh one is; polled at most every 5 min', async () => {
+  let calls = 0;
+  const old = game({ start: new Date(1e9 - 30 * 3600000).toISOString() });
+  const mon = createFollowedTeamsMonitor({ getGames: async () => { calls++; return [old, game({ home: 'Eagles' })]; } });
+  const st = {};
+  const r = await mon.check({}, {}, st, 1e9);
+  assert.equal(r.text, 'Final: Giants 17, Eagles 24.');
+  assert.equal(await mon.check({}, {}, st, 1e9 + MIN), null);
+  assert.equal(calls, 1);
+  assert.equal(await mon.check({}, {}, st, 1e9 + 6 * MIN), null);   // old one skipped, Eagles told
+  const none = createFollowedTeamsMonitor({ getGames: async () => [game({ score: null })] });
+  assert.equal(await none.check({}, {}, {}, 1e9), null);
+});
