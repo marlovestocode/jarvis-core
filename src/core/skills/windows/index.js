@@ -51,7 +51,7 @@ function createWindowsTools({ host, confirm, actionLog, waitMs = 5000, pollMs = 
 
   const windowArrange = {
     name: 'window_arrange', risk: 'safe',
-    hint: 'window_arrange: snap, maximize, minimize, restore or center a window. window_to_monitor: move it to another monitor. desktop_switch / window_to_desktop: virtual desktops. end_unresponsive_app: end a hung app (asks first). Say it is done only when the result says so.',
+    hint: 'window_arrange: snap, maximize, minimize, restore or center a window. window_split: two windows side by side. window_to_monitor: move it to another monitor. desktop_switch / window_to_desktop: virtual desktops. end_unresponsive_app: end a hung app (asks first). Say it is done only when the result says so.',
     description: `Snap, maximize, minimize, restore or center a window. layout: ${LAYOUTS.join(', ')}. target: app or title words; omit for the window in front.`,
     params: obj({ target: { description: 'app name or words from the title; omit for the window in front', type: 'string' }, layout: { description: 'where to put the window or which state to give it', type: 'string', enum: LAYOUTS } }, ['layout']),
     async run({ target, layout } = {}) {
@@ -74,6 +74,21 @@ function createWindowsTools({ host, confirm, actionLog, waitMs = 5000, pollMs = 
         }
       }
       return SAID[layout] ? `Snapped ${w.title} to ${SAID[layout]}.` : `${DONE[layout]} ${w.title}.`;
+    },
+  };
+
+  const windowSplit = {
+    name: 'window_split', risk: 'safe',
+    hint: 'window_split: put two windows side by side (left and right halves). For two browser TABS in one Chrome window use browser_split_view instead.',
+    description: 'Tile two windows side by side: the first on the left half, the second on the right half. left and right are app names or title words; omit left for the window in front.',
+    params: obj({ left: { description: 'app or title words for the left window; omit for the window in front', type: 'string' }, right: { description: 'app or title words for the right window', type: 'string' } }, ['right']),
+    async run({ left, right } = {}) {
+      if (!String(right || '').trim()) throw new Error('Say which window goes on the right');
+      const a = await pick(left), b = await pick(right);
+      if (a.hwnd === b.hwnd) throw new Error('That is the same window twice. Say two different windows.');
+      const one = await windowArrange.run({ target: a.title, layout: 'left' });
+      const two = await windowArrange.run({ target: b.title, layout: 'right' });
+      return `${one} ${two}`;
     },
   };
 
@@ -157,7 +172,7 @@ function createWindowsTools({ host, confirm, actionLog, waitMs = 5000, pollMs = 
     },
   };
 
-  return [windowArrange, windowToMonitor, desktopSwitch, windowToDesktop, endUnresponsive];
+  return [windowArrange, windowSplit, windowToMonitor, desktopSwitch, windowToDesktop, endUnresponsive];
 }
 
 function createGroup({ pc } = {}) {
@@ -167,7 +182,7 @@ function createGroup({ pc } = {}) {
     id: 'windows',
     label: 'Window layout, monitors, virtual desktops, hung apps',
     triggers: [
-      { words: ['snap', 'maximize', 'maximise', 'minimize', 'minimise', 'restore', 'left half', 'right half', 'monitor', 'monitors', 'second screen', 'virtual desktop', 'virtual desktops', 'not responding', 'frozen', 'hung', 'unresponsive'], w: 3 },
+      { words: ['snap', 'maximize', 'maximise', 'minimize', 'minimise', 'restore', 'left half', 'right half', 'monitor', 'monitors', 'second screen', 'split', 'side by side', 'tile', 'tiles', 'virtual desktop', 'virtual desktops', 'not responding', 'frozen', 'hung', 'unresponsive'], w: 3 },
       { re: /\b(?:next|previous|other|new) desktop\b|\bdesktop \d+\b/i, w: 3 },
       { words: ['window', 'windows', 'resize', 'desktop'], w: 1 },
     ],

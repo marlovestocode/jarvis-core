@@ -1,7 +1,7 @@
 // JARVIS core: Electron shell around src/core. Local only.
 const path = require('node:path');
 const fs = require('node:fs');
-const { app, globalShortcut, session, Notification, clipboard, shell, dialog } = require('electron');
+const { app, globalShortcut, session, Notification, clipboard, shell, dialog, nativeImage } = require('electron');
 
 // Data in %APPDATA%\jarvis-core (JARVIS_DATA_DIR overrides it, for self-tests).
 const DATA_DIR = process.env.JARVIS_DATA_DIR || path.join(app.getPath('appData'), 'jarvis-core');
@@ -27,7 +27,12 @@ const { createSessionStore } = require('../core/session');
 const { createRegistry } = require('../core/providers/provider');
 const { NullProvider } = require('../core/providers/null-provider');
 const { createOllamaProvider } = require('../core/providers/ollama');
-const { createToolRunner } = require('../core/tools/registry');
+const { createVisionClient } = require('../core/vision/client');
+const { createToolRunner, eligibility } = require('../core/tools/registry');
+const { createToolIndex } = require('../core/skills/toolindex');
+const { createLedger } = require('../core/tools/ledger');
+const { createWorkMem } = require('../core/context/workmem');
+const { toolContract } = require('../core/skills/toolcards');
 const brain = require('../core/brain');
 const skills = require('../core/skills');
 const { createHardwareProbe } = require('../core/brain/hardware');
@@ -54,6 +59,8 @@ const { createConfirm } = require('../core/pc/confirm');
 const { createActionLog } = require('../core/pc/actions-log');
 const { createTaskStore } = require('../core/tasks/store');
 const { createTaskRunner } = require('../core/tasks/runner');
+const { createAssembler } = require('../core/context/assemble');
+const { liveProvider, taskProvider } = require('../core/context/providers');
 const { createTasksSkill } = require('../core/tasks/skill');
 const { createTaskTools } = require('../core/tools/tasks');
 const { createOrchestrator } = require('../core/orchestrator');
@@ -90,7 +97,7 @@ const { loadOrCreateLinkKey } = require('../core/media/link-key');
 const { createYtMusic } = require('../core/media/ytmusic');
 const { createYtPlaylists } = require('../core/media/ytplaylists');
 const { createSpeaker } = require('../core/voice/speaker/speaker');
-const { enrollVoice } = require('../core/voice/speaker/enroll');
+const { enrollVoice, recordPhrase, finishEnroll, cancelEnroll } = require('../core/voice/speaker/enroll');
 const { createPlayLog } = require('../core/music/log');
 const { createMemorySystem } = require('../core/memory/system');
 const { isUntrustedTool } = require('../core/brain/guard');
@@ -141,10 +148,8 @@ ctx.bus = createBus({ onError: err => ctx.log('listener error:', err?.message) }
 // analytics dashboard (core/bridge.js serves it) and by the analytics_summary tool. No conversation text is stored.
 const seenUp = {};   // a connection that never came up (no extension, no wallpaper) is "not in use", not "down": it is sampled only after its first time up
 const upSample = (name, up) => { if (up === null || up === undefined) return undefined; if (up) seenUp[name] = true; return seenUp[name] ? !!up : undefined; };
-function metricsSample() {
-  const out = {};
-  try { const c = ctx.cortex?.stats?.(); if (c) { out.cortexNodes = c.nodes; out.cortexBytes = c.bytes; } } catch { /* the store may be closed */ }
-  try { out.plays = ctx.playLog?.count?.(); } catch { /* not ready */ }
+// which linked services are up right now (undefined = never came up, so "not in use"); the metrics sample and the settings health strip share it
+function serviceHealth() {
   const svc = {
     ollama: upSample('ollama', ctx.providers.get('ollama')?.health?.().ok),
     ytmusic: upSample('ytmusic', ctx.ytmLink?.connected),
@@ -153,11 +158,22 @@ function metricsSample() {
     mediaHost: ctx.mediaHost ? !ctx.mediaHost.health().gaveUp : undefined,
     pcHost: ctx.pcHostProc ? !ctx.pcHostProc.health().gaveUp : undefined,
   };
-  for (const [k, v] of Object.entries(svc)) if (v !== undefined) (out.svc ||= {})[k] = v;
+  const out = {};
+  for (const [k, v] of Object.entries(svc)) if (v !== undefined) out[k] = v;
+  return out;
+}
+ctx.serviceHealth = serviceHealth;
+function metricsSample() {
+  const out = {};
+  try { const c = ctx.cortex?.stats?.(); if (c) { out.cortexNodes = c.nodes; out.cortexBytes = c.bytes; } } catch { /* the store may be closed */ }
+  try { out.plays = ctx.playLog?.count?.(); } catch { /* not ready */ }
+  const svc = serviceHealth();
+  if (Object.keys(svc).length) out.svc = svc;
   return out;
 }
 ctx.metrics = createMetrics({ dir: path.join(DATA_DIR, 'metrics'), bus: ctx.bus, log: ctx.log, groupOf: name => ctx.catalog?.groupOf?.(name) ?? null, sample: metricsSample });
 const DASH = path.join(__dirname, '../ui/dashboard');
+const readUi = f => { try { return fs.readFileSync(path.join(DASH, '..', f)); } catch { return null; } };
 const readDash = f => { try { return fs.readFileSync(path.join(DASH, f)); } catch { return Buffer.from(''); } };
 ctx.openDashboard = async ({ range = 'day' } = {}) => {
   if (!ctx.bridge) return null;
@@ -264,7 +280,7 @@ function capsLine() {
   const c = ctx.config, on = v => (v ? 'on' : 'off');
   return [
     `wake word "Jarvis" is ${on(c.wakeEnabled)} (also the voice hotkey ${c.hotkeys.voice})`,
-    `recognises the owner's voice: ${ctx.speaker.enrolled() ? (c.speakerGate ? 'enrolled, only they can wake it' : 'enrolled, gate off') : 'not enrolled'}`,
+    `recognises the owner's voice: ${ctx.speaker.enrolled() ? (c.speakerGate ? `enrolled, ${c.speakerMode} mode${(ctx.speaker.recent?.() || []).length ? `, last scores ${ctx.speaker.recent().slice(-3).map(x => x.score).join(', ')}` : ''}` : 'enrolled, gate off') : 'not enrolled'}`,
     `YouTube Music extension: ${ctx.ytmLink.connected ? 'connected' : 'not connected'}`,
     `listening log: ${c.music.logPlays ? `${ctx.playLog.count()} plays recorded${ctx.playLog.since() ? ` since ${new Date(ctx.playLog.since()).toLocaleDateString(ctx.config.speech.dateOrder === 'dmy' ? 'en-GB' : 'en-US')}` : ''}` : 'off'} (music_stats tool)`,
     skills.capsLine(ctx.catalog, { browser: !c.browser.enabled ? 'off' : ctx.ytmLink.connected ? 'connected' : 'not connected' }),   // every skill group; risky PC actions ask the user first, timers are spoken when they fire
@@ -297,6 +313,7 @@ ctx.actionLog = createActionLog({ file: path.join(DATA_DIR, 'actions.log'), log:
 ctx.confirm = createConfirm({ actionLog: ctx.actionLog, onResolved: r => ctx.tasks?.onConfirmResolved(r), onReasked: r => ctx.tasks?.onConfirmReasked(r) });   // a task step waiting on this yes/no hears the outcome
 ctx.timerStore = createTimerStore({ file: path.join(DATA_DIR, 'timers.json'), log: ctx.log });
 ctx.scheduler = createScheduler({ store: ctx.timerStore, bus: ctx.bus, log: ctx.log });
+ctx.lists = require('../core/lists/store').createListStore({ file: path.join(DATA_DIR, 'lists.json'), log: ctx.log });
 // Saved multi-step tasks (src/core/tasks): steps run through ctx.tools, which is built after the catalog, so it is read lazily.
 // Any failure here leaves JARVIS without task tools, as before.
 try {
@@ -306,6 +323,8 @@ try {
     store: ctx.taskStore, bus: ctx.bus, log: ctx.log,
     tools: { run: (...a) => ctx.tools.run(...a), resolves: n => ctx.tools.resolves(n) },
     riskOf: n => ctx.toolList?.find(t => t.name === n || t.aliases?.includes(n))?.risk,
+    // a step is retried only when its tool reads or is idempotent: a write that may have happened is never repeated
+    canRetry: n => { const t = ctx.tools?.get?.(n); if (!t) return false; const c = toolContract(t); return c.effect === 'read' || c.idempotent; },
     confirmPending: () => ctx.confirm.pending(),
     onCancel: () => ctx.confirm.clear(),   // a cancelled task's question must not stay answerable
   });
@@ -313,11 +332,24 @@ try {
   ctx.taskTools = createTaskTools({ runner: ctx.tasks });
 } catch (err) { ctx.log('tasks unavailable:', err?.message || err); ctx.tasks = null; ctx.tasksSkill = null; ctx.taskTools = null; }
 // JARVIS's own introspection tools: the checks read ctx live each time they run (src/main/checks.js)
-const self = { getChecks: () => selfChecks(ctx), about: () => ({ version, electron: process.versions.electron, node: process.versions.node, startedAt: ctx.startedAt, dataDir: DATA_DIR }), logFile: LOG_FILE, dataDir: DATA_DIR };
-ctx.catalog = brain.defaultCatalog({ self, analytics: { metrics: ctx.metrics, openDashboard: ctx.openDashboard }, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, getConfig: ctx.getConfig, applySettings: patch => { const { config, errors } = applyPatch(ctx.config, patch, { providers: ctx.providers, engines: ctx.engines }); ctx.saveConfig(config); return errors; }, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, lyrics: ctx.lyrics, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog }, ...(ctx.taskTools ? { tasks: ctx.taskTools } : {}) });
+const self = { getChecks: () => selfChecks(ctx), about: () => ({ version, electron: process.versions.electron, node: process.versions.node, startedAt: ctx.startedAt, dataDir: DATA_DIR, model: (() => { try { return ctx.getConfig()?.ollama?.model || ''; } catch { return ''; } })(), embedder: (() => { try { return ctx.cortex?.health?.()?.embedder || null; } catch { return null; } })() }), logFile: LOG_FILE, dataDir: DATA_DIR };
+ctx.vision = createVisionClient({ getConfig: () => ctx.config });
+// shrink big captures before the vision model sees them: fewer image tokens, faster answers
+const visionResize = async png => {
+  const img = nativeImage.createFromBuffer(png);
+  const { width, height } = img.getSize();
+  const k = (Number(ctx.config.vision?.maxEdge) || 1280) / Math.max(width, height);
+  return k >= 1 ? png : img.resize({ width: Math.round(width * k), height: Math.round(height * k), quality: 'best' }).toPNG();
+};
+ctx.catalog = brain.defaultCatalog({ vision: { client: ctx.vision, resize: visionResize }, self, analytics: { metrics: ctx.metrics, openDashboard: ctx.openDashboard }, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, wallpaperClients: () => (ctx.bridge ? ctx.bridge.clients() : null), getConfig: ctx.getConfig, applySettings: patch => { const { config, errors } = applyPatch(ctx.config, patch, { providers: ctx.providers, engines: ctx.engines }); ctx.saveConfig(config); return errors; }, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, lyrics: ctx.lyrics, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, lists: ctx.lists, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog }, ...(ctx.taskTools ? { tasks: ctx.taskTools } : {}) });
 ctx.toolList = ctx.catalog.tools;
 for (const m of ctx.catalog.missing) if (m.error) ctx.log(`skill group ${m.id} failed to load: ${m.error}`);
-ctx.tools = createToolRunner(ctx.toolList, { groups: ctx.catalog.groups });
+// tool discovery: embeddings come from the memory system's embedder (none installed: lexical only, within 250 ms)
+const embedTexts = (texts, o) => ctx.memorySystem.embed(texts, o);
+ctx.ledger = createLedger({});
+ctx.workmem = createWorkMem({});   // owner-only, in memory, 15 min: what "that file" and "continue" refer to
+ctx.toolIndex = createToolIndex({ catalog: ctx.catalog, embed: embedTexts, eligible: eligibility });
+ctx.tools = createToolRunner(ctx.toolList, { groups: ctx.catalog.groups, toolIndex: ctx.toolIndex });
 // which tool a request is about, ranked from the tools' own text and from the requests that worked before (this run): the model sees the likeliest tools first
 const toolRanker = createRanker(ctx.toolList);
 // a request that names nothing to act on, or something JARVIS has no tool for, is answered here instead of guessed at by the model
@@ -343,8 +375,12 @@ ctx.live.register('timers', timersSource({ list: () => ctx.scheduler?.list?.() |
 ctx.live.register('confirm', () => { const a = ctx.confirm?.pending?.(); if (!a?.summary) return null; const group = a.tool ? ctx.catalog?.groupOf?.(a.tool) : null; return group ? { summary: a.summary, group } : { summary: a.summary }; });   // pending() exposes no age, so no ageMs; group: the skill area of the waiting tool, when known
 ctx.live.register('task', () => ctx.tasks?.active() ?? null);
 ctx.live.register('groups', () => { const list = ctx.orchestrator?.getLastGroups?.(); const at = ctx.orchestrator?.getLastGroupsAt?.(); return Array.isArray(list) ? { list, at: typeof at === 'number' ? at : 0 } : null; });
+// cross-system context for recall: live state and tasks only. memoryProvider exists but is NOT wired here: the memory block is the recall owner and a second forTurn per turn would double-count.
+const contextProviders = [liveProvider({ live: ctx.live })];
+if (ctx.tasks) contextProviders.push(taskProvider({ tasks: ctx.tasks }));
+ctx.context = createAssembler({ providers: contextProviders });
 ctx.orchestrator = createOrchestrator({
-  live: ctx.live, catalog: ctx.catalog,   // catalog: plan() checks a pending confirm's group against it
+  live: ctx.live, catalog: ctx.catalog, context: ctx.context, embed: embedTexts, toolIndex: ctx.toolIndex, ledger: ctx.ledger, workmem: ctx.workmem,   // catalog: plan() checks a pending confirm's group against it
   bus: ctx.bus, sessions: ctx.sessions, providers: ctx.providers, tools: ctx.tools, getConfig: ctx.getConfig,
   systemPrompt: brain.systemPrompt, stamp: brain.nowLine, route: brain.route,
   selectGroups: (text, o) => skills.selectGroups(text, o, ctx.catalog),
@@ -540,7 +576,7 @@ app.whenReady().then(async () => {
     brain: { view: o => ctx.cortex.view(o), labels: ids => ctx.cortex.labels(ids), labelsOn: () => ctx.getConfig().cortex?.wallpaperLabels !== false,
       // the skill groups (and their tool names) are neurons too: a tool call fires its group
       skills: () => ctx.catalog.groups.map(g => ({ id: g.id, label: g.label, tools: g.tools.map(t => t.name) })) },
-    dashboard: { query: o => ctx.metrics.query(o), files: { html: readDash('index.html'), js: readDash('dashboard.js'), css: readDash('dashboard.css') } },
+    dashboard: { query: o => ctx.metrics.query(o), files: { html: readDash('index.html'), js: readDash('dashboard.js'), css: readDash('dashboard.css'), hudCss: readUi('hud.css'), hudJs: readUi('hud.js'), palette: readUi('palette.css') } },
     onOpen: mode => { ctx.log(`open from wallpaper: ${mode}`); if (mode === 'voice') ctx.startVoice(); else ctx.windows?.showChat(); },
   });
   bridgeStarting.catch(() => {});
@@ -566,7 +602,10 @@ app.whenReady().then(async () => {
   // the hidden mic page loads on first voice use, not at startup
   ctx.windows.ensureChat();
   ctx.bus.on('*', ev => ctx.windows.sendAll('ai:event', ev));
-  ctx.enrollVoice = () => enrollVoice(ctx);
+  ctx.enrollVoice = opts => enrollVoice(ctx, opts);
+  ctx.enrollPhrase = () => recordPhrase(ctx);
+  ctx.enrollFinish = opts => finishEnroll(ctx, opts);
+  ctx.enrollCancel = () => cancelEnroll(ctx);
   registerIpc(ctx);
   ctx.memorySystem.start();   // startup sweep (newest 5 ready chats) and the 5 s idle tick
   ctx.tray = createTray({

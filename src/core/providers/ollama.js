@@ -8,6 +8,8 @@ const { localOrigin } = require('../net/services');
 const DEFAULT_HOST = 'http://127.0.0.1:11434';
 const INFO_TTL = 30000;
 const DOWN_TTL = 3000;   // after a failed check, answer "not running" from memory this long instead of waiting out the timeout every turn
+const DOWN_MAX = 30000;  // ...doubling with each consecutive failure up to this, so a long outage is not polled every 3 s
+const downTtl = n => Math.min(DOWN_MAX, DOWN_TTL * 2 ** Math.max(0, n - 1));
 
 function mapMessages(messages) {
   return messages.map(m => {
@@ -80,10 +82,10 @@ function createOllamaProvider({ getConfig, fetch: fetchImpl, statusTimeoutMs = 4
     const key = host() + '|' + name;
     const hit = caches.get(key);
     if (hit && Date.now() - hit.at < INFO_TTL) return hit;
-    if (down && now() - down.at < DOWN_TTL) throw down.err;
+    if (down && now() - down.at < downTtl(down.n)) throw down.err;
     let tags;
     try { tags = await getJson('/api/tags'); } catch (err) {
-      if (!err.code) { down = { at: now(), err }; health.ok = false; health.failures++; health.lastError = err.message; }   // not running (no model-level code)
+      if (!err.code) { down = { at: now(), err, n: (down?.n || 0) + 1 }; health.ok = false; health.failures++; health.lastError = err.message; }   // not running (no model-level code)
       throw err;
     }
     down = null; health.ok = true; health.lastOkAt = now();

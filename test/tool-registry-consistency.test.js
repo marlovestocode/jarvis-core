@@ -91,3 +91,17 @@ test('registry: the capabilities line is generated from the groups and lists eve
   for (const g of groups.filter(x => x.id !== 'core')) assert.ok(line.includes(`${g.id} = ${g.label}`), `${g.id} is in the capabilities line`);
   assert.ok(!line.includes('core = '));
 });
+
+test('registry: tool contracts are sane (effect enum, confirm never read, verify points at another read tool)', () => {
+  const { EFFECTS, toolContract } = require('../src/core/skills/toolcards');
+  for (const t of tools) {
+    const c = toolContract(t);
+    assert.ok(EFFECTS.includes(c.effect), `${t.name}: effect ${c.effect}`);
+    if (t.risk === 'confirm') assert.notEqual(c.effect, 'read', `${t.name}: confirm tool cannot be read`);
+    if (c.verify) {
+      assert.notEqual(c.verify.tool, t.name, `${t.name}: verifies itself`);
+      const v = catalog.byName.get(c.verify.tool)?.tool;
+      assert.ok(v && toolContract(v).effect === 'read', `${t.name}: verify tool must be a read tool`);
+    }
+  }
+});

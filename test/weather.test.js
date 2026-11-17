@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { fakeNet } = require('./helpers/fakenet');
+const { fakeNet, fixture } = require('./helpers/fakenet');
 const { resolvePlace, searchPlaces, toPlace } = require('../src/core/knowledge/location');
 const { getWeather, getAlerts, formatWeather, formatAlerts, weatherWords } = require('../src/core/knowledge/weather');
 const { describeAge } = require('../src/core/knowledge/age');
@@ -167,4 +167,132 @@ test('alerts: non-US → US only', async () => {
   const n = fakeNet(ROUTES);
   await assert.rejects(getAlerts(n.fetcher, { name: 'Paris, France', lat: 48.85, lon: 2.35, country: 'FR' }), /only available for the US/);
   assert.equal(n.calls.length, 0);
+});
+
+// ---- 16-day forecast + tomorrow semantics ----
+
+// Synthesize a 16-day daily array from the 7-day fixture: dates continue, values cycle. Records the request URL.
+const forecast16 = seen => url => {
+  seen.push(url);
+  const f = JSON.parse(fixture('openmeteo-forecast.json'));
+  const d = f.daily;
+  const n = d.time.length;
+  for (let i = n; i < 16; i++) {
+    d.time.push(new Date(Date.parse(d.time[0] + 'T12:00:00Z') + i * 86400000).toISOString().slice(0, 10));
+    for (const k of Object.keys(d)) if (k !== 'time') d[k].push(d[k][i % n]);
+  }
+  return new Response(JSON.stringify(f), { status: 200 });
+};
+const HOME_PLACE = { name: 'Abilene, TX', lat: 32.4487, lon: -99.7331, country: 'US' };
+
+test('weather: days=16 asks for forecast_days=16 and returns 16 days', async () => {
+  const seen = [];
+  const n = fakeNet([
+    [/api\.open-meteo\.com\/v1\/forecast/, forecast16(seen)],
+    [/air-quality-api\.open-meteo\.com/, 'openmeteo-air.json'],
+  ]);
+  const w = await getWeather(n.fetcher, HOME_PLACE, { days: 16 });
+  assert.equal(w.days.length, 16);
+  assert.match(seen[0], /forecast_days=16/);
+  assert.equal(w.days[0].date, '2026-11-10');
+  assert.equal(w.days[15].date, '2026-11-25');
+  for (const d of w.days) for (const k of ['date', 'high', 'low', 'conditions', 'rainChance', 'uv']) assert.ok(k in d, k);
+});
+
+test('weather: days above 16 clamp to 16 and the URL carries the clamped count', async () => {
+  const seen = [];
+  const n = fakeNet([
+    [/api\.open-meteo\.com\/v1\/forecast/, forecast16(seen)],
+    [/air-quality-api\.open-meteo\.com/, 'openmeteo-air.json'],
+  ]);
+  const w = await getWeather(n.fetcher, HOME_PLACE, { days: 30 });
+  assert.equal(w.days.length, 16);
+  assert.match(seen[0], /forecast_days=16/);
+});
+
+test('weather: days=2 fetches forecast_days=2; the second day is the Tomorrow line', async () => {
+  const n = fakeNet(ROUTES);
+  const w = await getWeather(n.fetcher, HOME_PLACE, { days: 2 });
+  assert.equal(w.days.length, 2);
+  assert.match(n.calls.find(u => u.includes('/v1/forecast')), /forecast_days=2/);
+  const t = formatWeather(w);
+  assert.match(t, /^Today \(2026-11-10\):/m);
+  assert.match(t, /^Tomorrow \(2026-11-11\):/m);
+});
+
+// ---- fuzzy place fallbacks: suggest, never silently substitute ----
+
+const TER_ROUTES = [
+  [/geocoding-api\.open-meteo\.com.*name=Terinlingua/, 'geocode-none.json'],
+  [/geocoding-api\.open-meteo\.com.*name=Ter/, 'geocode-terlingua.json'],
+  [/geocoding-api\.open-meteo\.com/, 'geocode-none.json'],
+];
+// the full multi-word query must miss; only the bare city name (name=Springfield&) hits the fixture
+const WORD_ROUTES = [
+  [/geocoding-api\.open-meteo\.com.*name=Springfield&/, 'geocode-springfield.json'],
+  [/geocoding-api\.open-meteo\.com/, 'geocode-none.json'],
+];
+
+test('location: misspelled "Terinlingua" suggests Terlingua through candidates, never a silent place', async () => {
+  const n = fakeNet(TER_ROUTES);
+  const p = await resolvePlace(n.fetcher, 'Terinlingua', DEFAULTS);
+  assert.ok(Array.isArray(p.candidates), 'asks instead of substituting');
+  assert.equal(p.lat, undefined);
+  assert.equal(p.candidates[0], 'Terlingua, Texas', 'best edit-similarity match first');
+  assert.ok(n.calls.some(u => /name=Ter&/.test(u)), 'a prefix search was used');
+});
+
+test('location: prefix search with no hits still returns empty candidates', async () => {
+  const n = fakeNet(TER_ROUTES);
+  const c = await resolvePlace(n.fetcher, 'Zzzqqqxx', DEFAULTS);
+  assert.deepEqual(c.candidates, []);
+});
+
+test('location: "Springfield Illinois" without a comma resolves to Springfield, Illinois', async () => {
+  const n = fakeNet(WORD_ROUTES);
+  const p = await resolvePlace(n.fetcher, 'Springfield Illinois', DEFAULTS);
+  assert.equal(p.name, 'Springfield, Illinois');
+  assert.equal(p.country, 'US');
+});
+
+test('location: "Springfield MO" expands the state abbreviation to Missouri', async () => {
+  const n = fakeNet(WORD_ROUTES);
+  const p = await resolvePlace(n.fetcher, 'Springfield MO', DEFAULTS);
+  assert.equal(p.name, 'Springfield, Missouri');
+});
+
+test('location: multi-word with several regional matches asks with candidates', async () => {
+  const n = fakeNet(WORD_ROUTES);
+  const c = await resolvePlace(n.fetcher, 'Springfield US', DEFAULTS);
+  assert.ok(Array.isArray(c.candidates));
+  assert.ok(c.candidates.length >= 3);
+  assert.ok(c.candidates.includes('Springfield, Illinois'));
+});
+
+test('location: comma query whose region matches nothing retries the city and asks', async () => {
+  const n = fakeNet(ROUTES);
+  const c = await resolvePlace(n.fetcher, 'Springfield, Atlantis', DEFAULTS);
+  assert.ok(Array.isArray(c.candidates), 'never silently picks a wrong region');
+  assert.equal(c.lat, undefined);
+  assert.ok(c.candidates.includes('Springfield, Illinois'));
+});
+
+test('location: diacritics are stripped on the normalized retry', async () => {
+  const n = fakeNet([
+    [/geocoding-api\.open-meteo\.com.*name=munich/, '{"results":[{"id":2867714,"name":"Munich","latitude":48.13743,"longitude":11.57549,"country_code":"DE","admin1":"Bavaria","country":"Germany","timezone":"Europe/Berlin","population":1260391}]}'],
+    [/geocoding-api\.open-meteo\.com/, 'geocode-none.json'],
+  ]);
+  const p = await resolvePlace(n.fetcher, 'Münich', DEFAULTS);
+  assert.equal(p.name, 'Munich, Bavaria');
+  assert.equal(p.country, 'DE');
+});
+
+test('location: doubled letters collapse on the normalized retry', async () => {
+  const n = fakeNet([
+    [/geocoding-api\.open-meteo\.com.*name=Dallas&/, 'geocode-dallas.json'],
+    [/geocoding-api\.open-meteo\.com.*name=dalas&/, 'geocode-dallas.json'],
+    [/geocoding-api\.open-meteo\.com/, 'geocode-none.json'],
+  ]);
+  const p = await resolvePlace(n.fetcher, 'Dallass', DEFAULTS);
+  assert.equal(p.name, 'Dallas, Texas');
 });

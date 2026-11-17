@@ -16,11 +16,13 @@ const words = s => norm(s).split(' ').filter(w => w && !STOP.has(w));
 const clean = text => String(text ?? '').replace(/\s+/g, ' ').trim().replace(/[.!\s]+$/, '');
 const entityKey = name => 'entity:' + String(name ?? '').toLowerCase().replace(/[^\p{L}]+/gu, ' ').trim();
 
-// text → null when fine, else the old store's reason
+const { isPoison } = require('./poison');
+// text → null when fine, else the old store's reason. 'meta': what JARVIS can or cannot do, a failed tool or the user's mood is not a fact about them
 function invalid(t) {
   if (t.length < 3) return 'empty';
   if (t.length > MAX_LEN) return 'long';
   if (SECRET.test(t)) return 'secret';
+  if (isPoison(t)) return 'meta';
   return null;
 }
 
@@ -230,7 +232,7 @@ function createMemory({ cortex, now = Date.now, caps = {}, addTier = 'profile' }
 
   // profile facts for the system prompt: most used first, then newest, within a character budget
   function profile({ budget = 500 } = {}) {
-    const facts = activeFacts().filter(n => tierOf(n) === 'profile')
+    const facts = activeFacts().filter(n => tierOf(n) === 'profile' && !isPoison(n.text))
       .sort((a, b) => (b.uses || 0) - (a.uses || 0) || b.created - a.created || b.id - a.id);
     const text = [], ids = [];
     let used = 0;

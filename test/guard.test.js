@@ -30,6 +30,8 @@ test('guard: replies from the saved chats that claimed actions no tool took are 
     'Chrome volume is now at 90%.',
     "I can't open Discord. Playback is now paused.",
     'Done.',
+    "I've focused your Discord window for you.",
+    'I have brought the Discord window to the front of your screen.',
   ]) assert.equal(unbackedClaim(r, 0), true, r);
 });
 

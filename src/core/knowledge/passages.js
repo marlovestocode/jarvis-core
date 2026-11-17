@@ -163,8 +163,51 @@ function formatPassages(passages, max = MAX_CHARS) {
   return out.join('\n\n');
 }
 
+
+// A planet, the Sun or the Moon: not the passages that best match the bare name (that is all Introduction), but a spread across its article:
+// the opening, then one or two fact-dense sentences from each topic that makes the body interesting (what it is, its look, moons, rings, how people found
+// it, the missions that went there). Short enough to leave room, varied enough that the answer is not a repeat of the first paragraph.
+const SPACE_TOPICS = [
+  ['name', /\b(name|etymolog|nomenclature|naming)\b/i],
+  ['look', /\b(great red spot|great dark spot|atmosphere|weather|magnetosphere|magnetic field|physical characteristics|composition|surface|geology|internal structure|interior)\b/i],
+  ['moons', /\b(moons?|natural satellites?|satellites?)\b/i],
+  ['rings', /\brings?\b/i],
+  ['seen', /\b(observation|observed|history|discover|telescop|study|early)\b/i],
+  ['missions', /\b(exploration|missions?|spacecraft|probes?|flybys?|landers?|rovers?)\b/i],
+  ['life', /\b(habitab|life|human)\b/i],
+];
+function bestSentences(text, n) {
+  const sen = splitSentences(text).map(x => x.trim()).filter(x => x.split(/\s+/).length >= 4);
+  if (sen.length <= n) return sen;
+  // facts people remember: a number or a date, a superlative, a comparison ("larger than Mercury"), a first
+  const score = x => (/\d/.test(x) ? 1 : 0) + (/\b(?:largest|smallest|first|only|most|strongest|oldest|hottest|coldest|brightest|than|named|discovered)\b/i.test(x) ? 1 : 0);
+  const best = sen.map((x, i) => ({ i, sc: score(x) })).sort((p, q) => q.sc - p.sc || p.i - q.i).slice(0, n).map(x => x.i);
+  return best.sort((x, y) => x - y).map(i => sen[i]);
+}
+function spaceBrief(passages, max = 3400) {
+  if (!passages.length) return '';
+  const title = passages[0].title, out = [], used = new Set();
+  let total = 0;
+  const add = (sec, text) => {
+    const line = `[${title} › ${sec}] ${text}`;
+    if (total + line.length + 2 > max) return false;
+    out.push(line); total += line.length + 2; return true;
+  };
+  const intro = passages.find(p => p.section === 'Introduction') || passages[0];
+  used.add(intro);
+  add('Introduction', bestSentences(intro.text, 3).join(' '));
+  for (const [, re] of SPACE_TOPICS) {
+    const hit = passages.find(p => !used.has(p) && p.section !== 'Introduction' && re.test(p.section));
+    if (!hit) continue;
+    used.add(hit);
+    const text = bestSentences(hit.text, 3).join(' ');
+    if (text && !add(hit.section.replace(/^.* › /, ''), text.slice(0, 620))) break;
+  }
+  return out.join('\n\n');
+}
+
 function keyWords(query) {
   return fold(String(query).toLowerCase()).split(/[^a-z0-9]+/).filter(w => w && !STOP.has(w)).join(' ');
 }
 
-module.exports = { toPassages, rank, formatPassages, tokens, sections, keyWords };
+module.exports = { toPassages, rank, formatPassages, spaceBrief, tokens, sections, keyWords };

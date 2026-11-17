@@ -33,7 +33,7 @@ function setup({ usePastChats = true } = {}) {
 
 test('memory-tools: shapes — names, needsClean, untrusted', () => {
   const { tools, by } = setup();
-  assert.deepEqual(tools.map(t => t.name), ['remember', 'forget_memory', 'recall_chats', 'memory_about']);
+  assert.deepEqual(tools.map(t => t.name), ['remember', 'forget_memory', 'recall_chats', 'memory_about', 'memory_list']);
   assert.equal(by.remember.needsClean, true);
   assert.equal(by.forget_memory.needsClean, true);
   assert.equal(by.recall_chats.untrusted, true);
@@ -92,7 +92,7 @@ test('memory skill: "what do you remember about Rex" uses memory_about; "about m
 test('memory group: new tools offered and triggers for past chats', () => {
   const { memory, chats, cortex } = setup();
   const g = createGroup({ memory, chats, cortex, getConfig: () => ({ memory: {} }) });
-  assert.deepEqual(g.tools.map(t => t.name), ['remember', 'forget_memory', 'recall_chats', 'memory_about']);
+  assert.deepEqual(g.tools.map(t => t.name), ['remember', 'forget_memory', 'recall_chats', 'memory_about', 'memory_list']);
   assert.ok(g.triggers.some(t => t.words.includes('did we talk') && t.words.includes('what do you know about')));
 });
 

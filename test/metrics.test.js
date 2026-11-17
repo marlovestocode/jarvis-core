@@ -191,6 +191,19 @@ test('bridge: the dashboard page and numbers are served to this page only, with 
   } finally { await bridge.close(); }
 });
 
+test('bridge: the shared HUD kit files are served beside the dashboard, and a missing one is a 404', async () => {
+  const files = { html: Buffer.from('h'), js: Buffer.from('j'), css: Buffer.from('c'), hudCss: Buffer.from('/*hud*/'), hudJs: Buffer.from('//hud'), palette: null };
+  const bridge = await startBridge({ bus: createBus(), version: 't', ports: [47975, 47976], dashboard: { query: () => ({}), files } });
+  const get = p => new Promise((resolve, reject) => http.get({ host: '127.0.0.1', port: bridge.port, path: p }, res => { let b = ''; res.on('data', d => (b += d)); res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: b })); }).on('error', reject));
+  try {
+    const css = await get('/ai/hud.css');
+    assert.equal(css.status, 200); assert.equal(css.body, '/*hud*/'); assert.match(css.headers['content-type'], /text\/css/);
+    const js = await get('/ai/hud.js');
+    assert.equal(js.body, '//hud'); assert.match(js.headers['content-type'], /javascript/);
+    assert.equal((await get('/ai/palette.css')).status, 404, 'a file the app could not read is not served');
+  } finally { await bridge.close(); }
+});
+
 test('bridge: without a dashboard the routes do not exist', async () => {
   const bridge = await startBridge({ bus: createBus(), version: 't', ports: [47973, 47974] });
   const r = await new Promise(res => http.get({ host: '127.0.0.1', port: bridge.port, path: '/ai/metrics' }, x => { x.resume(); res(x.statusCode); }));

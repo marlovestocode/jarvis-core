@@ -10,6 +10,7 @@ const { named } = require('./ytmusic');
 
 const CLARIFY_MS = 30000;
 const BROWSERS = new Set(['YouTube', 'Chrome', 'Edge', 'Brave', 'Opera', 'Firefox']);
+const { parseClock, spokenDuration, spokenSongs, pick } = require('../voice/spoken-list');
 const cap = s => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 const sentence = s => cap(String(s).replace(/\.$/, '')) + '.';
 const NO_LINK = "The YouTube Music extension isn't connected, so I can't search for songs.";
@@ -69,7 +70,7 @@ function createMediaSkill({ service, ytm = null, ytPlaylists = null, now = Date.
         intent = { kind: 'find', mode: 'play', query: intent.query };   // nothing in the library by that name: the public catalog
       }
       if (intent.kind === 'find') return await find(intent, voice);
-      if (intent.kind === 'query' && intent.what === 'next' && ytm?.connected) { const r = await upNext(voice); if (r) return r; }
+      if (intent.kind === 'query' && intent.what === 'next' && ytm?.connected) { const r = await upNext(voice, intent.count); if (r) return r; }
       if (intent.kind === 'control' && (intent.action === 'like' || (intent.action === 'queue' && intent.op))) return await ytmControl(intent, voice);
       if (intent.kind === 'control' && ['shuffle', 'repeat'].includes(intent.action) && (!intent.app || BROWSERS.has(intent.app)) && await ytm?.isSource()) return await ytmControl(intent, voice);
     } catch (err) {
@@ -211,14 +212,28 @@ function createMediaSkill({ service, ytm = null, ytPlaylists = null, now = Date.
     return say(`${intent.mode === 'next' ? 'Next up' : 'Added to the queue'}: ${named(r.item, !voice)}.`);
   }
 
-  async function upNext(voice) {
-    const q = await ytm.upNext(3);
+  async function upNext(voice, count) {
+    const q = await ytm.upNext(count || 3);
     if (q.none) return null;   // no YouTube Music tab: the general answer applies
     if (q.repeat === 'ONE') return say('This song again. Repeat is on.', true, 'youtube_music');
     if (!q.next.length) return say("Nothing's queued after this.", true, 'youtube_music');
+    if (count) {   // an explicit count: list them all, with lengths and the total
+      const secs = q.next.map(x => parseClock(x.duration)).filter(v => v != null);
+      const total = secs.reduce((a, b) => a + b, 0);
+      const asked = q.next.length < count ? ` Only ${q.next.length} ${q.next.length === 1 ? 'is' : 'are'} queued.` : '';
+      if (voice) {   // said aloud: no numbering, no lengths, the artist once, the rest counted, the total rounded
+        const said = spokenSongs(q.next);
+        const sayTotal = secs.length ? ` ${cap(spokenDuration(total))} in total.` : '';
+        return say(`${said}${sayTotal}${asked}`, true, 'youtube_music');
+      }
+      const fmt = t => { const h = Math.floor(t / 3600), mi = Math.floor(t % 3600 / 60), s = t % 60; return h ? `${h}:${String(mi).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${mi}:${String(s).padStart(2, '0')}`; };
+      const items = q.next.map((x, i) => `${i + 1}. “${x.title}”${x.artist ? ` by ${x.artist}` : ''}${parseClock(x.duration) != null ? ` (${x.duration})` : ''}`);
+      return say(`Next ${q.next.length}: ${items.join('; ')}.${secs.length ? ` Total ${fmt(total)}.` : ''}${asked}`, true, 'youtube_music');
+    }
     const first = q.next[0];
     const one = `${voice ? first.title : `“${first.title}”`}${first.artist ? ` by ${first.artist}` : ''}`;
     const rest = q.next.slice(1).map(x => (voice ? x.title : `“${x.title}”`));
+    if (voice) return say(rest.length ? `Next up: ${spokenSongs(q.next)}` : `Next up is ${one}.`, true, 'youtube_music');
     const text = rest.length ? `Next: ${one}, then ${rest.join(', then ')}.` : `Next: ${one}.`;
     return say(text, true, 'youtube_music');
   }
@@ -228,10 +243,10 @@ function createMediaSkill({ service, ytm = null, ytPlaylists = null, now = Date.
     switch (intent.action) {
       case 'like': {
         const r = await ytm.like(intent.value);
-        return say({ LIKE: 'Liked.', DISLIKE: 'Disliked.', INDIFFERENT: 'Like removed.' }[r.value] || 'Done.');
+        { const lit = { LIKE: 'Liked.', DISLIKE: 'Disliked.', INDIFFERENT: 'Like removed.' }[r.value] || 'Done.'; return say(voice && r.value === 'LIKE' ? pick(['Liked.', 'Done, liked.', 'Got it, liked.'], 'like') : lit, true, 'youtube_music', lit); }
       }
       case 'queue': {
-        if (intent.op === 'clear') { const r = await ytm.clear(); return say(r.removed ? 'Queue cleared.' : 'The queue was already empty.'); }
+        if (intent.op === 'clear') { const r = await ytm.clear(); return r.removed ? say(voice ? pick(['Queue cleared.', 'Cleared.', 'Gone.'], 'queue-clear') : 'Queue cleared.', true, 'youtube_music', 'Queue cleared.') : say('The queue was already empty.'); }
         const r = await ytm.removeNext();
         if (!r.ok) return say(r.message, false);
         return say(`Removed ${voice ? r.removed.title : `“${r.removed.title}”`}.`);
@@ -242,7 +257,7 @@ function createMediaSkill({ service, ytm = null, ytPlaylists = null, now = Date.
         const r = await ytm.shuffle();
         return r.ok ? say(voice ? '' : 'Shuffled.', true, 'youtube_music', 'Shuffled.') : say(r.message, false);
       }
-      default: return say('Done.');
+      default: return say(voice ? pick(['Done.', 'Got it.', 'There.'], 'done') : 'Done.', true, 'youtube_music', 'Done.');
     }
   }
 

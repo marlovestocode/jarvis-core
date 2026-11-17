@@ -253,3 +253,23 @@ test('chat window bus path keeps the full events', async () => {
   assert.equal(seen[0].text, SECRET);
   await br.close();
 });
+
+test('public stream: the speaker event passes ok, score and a known verdict; a junk verdict string is dropped', async () => {
+  const out = await publicOf([
+    ['speaker', { ok: false, score: 0.31, verdict: 'guest', text: 'hello there' }],
+    ['speaker', { ok: false, score: 0.2, verdict: 'definitely not a verdict' }],
+  ]);
+  const sp = out.filter(e => e.event === 'speaker').map(e => e.data);
+  assert.equal(sp[0].ok, false);
+  assert.equal(sp[0].score, 0.31);
+  assert.equal(sp[0].verdict, 'guest');
+  assert.ok(!('text' in sp[0]));
+  assert.ok(!('verdict' in sp[1]));
+});
+
+test('public stream: the globe command carries numbers and a continent word, never text', async () => {
+  const out = await publicOf([['globe', { op: 'focus', lat: 1.5, lon: 38, span: 14, target: 'asia', name: SECRET, text: SECRET }]]);
+  const g = out.find(e => e.event === 'globe');
+  assert.deepEqual({ op: g.data.op, lat: g.data.lat, lon: g.data.lon, span: g.data.span, target: g.data.target }, { op: 'focus', lat: 1.5, lon: 38, span: 14, target: 'asia' });
+  assert.ok(!JSON.stringify(g).includes(SECRET));
+});

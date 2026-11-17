@@ -1,5 +1,6 @@
 // Timers, alarms and reminders for the model. The scheduler persists each one before we say it is set.
 const { parseDuration, parseWhen, sayTime } = require('../timers/parse');
+const { parseRepeat, nextDue, sayRepeat } = require('../timers/recur');
 
 const MAX_TIMER_MS = 7 * 864e5;
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
@@ -22,9 +23,19 @@ function createTimerTools({ scheduler, now = Date.now }) {
     return r.at;
   };
   const done = at => sayTime(at, now()).replace(/ today$/, '');
+  const REPEAT_PARAM = { description: 'optional: repeat it; "daily", "weekdays", "weekends", "weekly", "monthly", or day names like "monday and thursday". Needs at (a clock time).', type: 'string' };
+  // a repeat keeps the clock time of the first due; the first occurrence is the next one that fits the days
+  const repeating = (words, due) => {
+    if (!words) return { due };
+    const rep = parseRepeat(words, due);
+    if (!rep) throw new Error(`Could not read "${words}" as a repeat. Say daily, weekdays, weekends, weekly, monthly or day names`);
+    return { repeat: rep, due: nextDue(rep, now() - 1) };
+  };
 
   const setTimer = {
     name: 'set_timer',
+    // read back that it is scheduled; 'No timers set.' has no 'timer:' entry so an empty list fails
+    verify: { tool: 'list_timers', args: () => ({}), expect: a => (a.label ? { contains: `${a.label} timer:` } : { matches: '(^|\n)Timer: [^\n]*left' }) },
     examples: ['count down minutes','timer for cooking','start a stopwatch countdown'],   // wording the ranker matches requests against (skills/rank.js)
     direct: true,   // its result is already a sentence: it is the reply, no second model call
     hint: 'set_timer: a countdown ("10 minutes"). set_alarm: a clock time. set_reminder: text plus at or in. list_timers / cancel_timer: see or cancel them. Read back the time the tool gives.',
@@ -43,32 +54,37 @@ function createTimerTools({ scheduler, now = Date.now }) {
 
   const setAlarm = {
     name: 'set_alarm',
+    verify: { tool: 'list_timers', args: () => ({}), expect: a => (a.label ? { contains: `${a.label} alarm: at` } : { matches: '(^|\n)Alarm: at' }) },
     examples: ['wake me up in the morning','alarm clock at a time of day'],   // wording the ranker matches requests against (skills/rank.js)
     direct: true,   // its result is already a sentence: it is the reply, no second model call
     hint: 'set_alarm: see set_timer.',
     description: 'Set an alarm for a clock time, e.g. at "7:30 am" or "tomorrow at 9". label is optional.',
-    params: { type: 'object', properties: { at: { description: 'clock time, e.g. "7:30 am" or "tomorrow at 9"', type: 'string' }, label: { description: 'what the alarm is for, optional', type: 'string' } }, required: ['at'], additionalProperties: false },
-    async run({ at, label = '' } = {}) {
+    params: { type: 'object', properties: { at: { description: 'clock time, e.g. "7:30 am" or "tomorrow at 9"', type: 'string' }, label: { description: 'what the alarm is for, optional', type: 'string' }, repeat: REPEAT_PARAM }, required: ['at'], additionalProperties: false },
+    async run({ at, label = '', repeat } = {}) {
       if (!at) throw new Error('What time should the alarm go off?');
-      const t = scheduler.add({ kind: 'alarm', label, due: when(at) });
-      return `${t.label ? cap(t.label) + ' alarm' : 'Alarm'} set for ${sayTime(t.due, now())}.`;
+      const r = repeating(repeat, when(at));
+      const t = scheduler.add({ kind: 'alarm', label, due: r.due, ...(r.repeat ? { repeat: r.repeat } : {}) });
+      return r.repeat ? `${t.label ? cap(t.label) + ' alarm' : 'Alarm'} set ${sayRepeat(r.repeat)}, next at ${sayTime(t.due, now())}.` : `${t.label ? cap(t.label) + ' alarm' : 'Alarm'} set for ${sayTime(t.due, now())}.`;
     },
   };
 
   const setReminder = {
     name: 'set_reminder',
+    verify: { tool: 'list_timers', args: () => ({}), expect: a => ({ contains: `Reminder to ${String(a.text || '').trim().replace(/^to\s+/i, '')}:` }) },
     direct: true,   // its result is already a sentence: it is the reply, no second model call
     hint: 'set_reminder: see set_timer.',
     description: 'Remind the user of something. text is what to remind; give at (a clock time) or in (a delay like "20 minutes").',
-    params: { type: 'object', properties: { text: { description: 'what to remind the user of, without "remind me to"', type: 'string' }, at: { description: 'clock time to remind, e.g. "5pm" or "tomorrow at 9"; or give in instead', type: 'string' }, in: { description: 'delay before reminding, e.g. "20 minutes"; or give at instead', type: 'string' } }, required: ['text'], additionalProperties: false },
-    async run({ text, at, in: delay } = {}) {
+    params: { type: 'object', properties: { text: { description: 'what to remind the user of, without "remind me to"', type: 'string' }, at: { description: 'clock time to remind, e.g. "5pm" or "tomorrow at 9"; or give in instead', type: 'string' }, in: { description: 'delay before reminding, e.g. "20 minutes"; or give at instead', type: 'string' }, repeat: REPEAT_PARAM }, required: ['text'], additionalProperties: false },
+    async run({ text, at, in: delay, repeat } = {}) {
       const what = String(text || '').trim().replace(/^to\s+/i, '');
       if (!what) throw new Error('What should I remind you about?');
       let due;
       if (delay) { const ms = parseDuration(delay); if (!ms) throw new Error(`Could not read "${delay}" as a length of time`); due = now() + ms; }
       else if (at) due = when(at);
       else throw new Error('When should I remind you?');
-      const t = scheduler.add({ kind: 'reminder', label: what, due });
+      const r = repeating(repeat, due);
+      const t = scheduler.add({ kind: 'reminder', label: what, due: r.due, ...(r.repeat ? { repeat: r.repeat } : {}) });
+      if (r.repeat) return `I will remind you to ${what.charAt(0).toLowerCase() + what.slice(1)} ${sayRepeat(r.repeat)}, next at ${sayTime(t.due, now())}.`;
       return `I will remind you to ${what.charAt(0).toLowerCase() + what.slice(1)} at ${sayTime(t.due, now())}.`;
     },
   };
@@ -77,14 +93,15 @@ function createTimerTools({ scheduler, now = Date.now }) {
 
   const listTimers = {
     name: 'list_timers',
+    volatile: true,   // timers fire and are cancelled: a cached list is stale at once
     direct: true,   // its result is already a sentence: it is the reply, no second model call
     hint: 'list_timers: see set_timer.',
-    description: 'List the timers, alarms and reminders that are set.',
+    description: 'List the timers, alarms and reminders that are set, with repeats.',
     params: { type: 'object', properties: {}, additionalProperties: false },
     async run() {
       const list = scheduler.list();
       if (!list.length) return 'No timers set.';
-      return list.map(t => `${name(t)}: ${t.kind === 'timer' ? `${sayDuration(Math.ceil((t.due - now()) / 60e3) * 60e3)} left, ` : ''}at ${sayTime(t.due, now())}.`).join('\n');
+      return list.map(t => `${name(t)}: ${t.kind === 'timer' ? `${sayDuration(Math.ceil((t.due - now()) / 60e3) * 60e3)} left, ` : ''}at ${sayTime(t.due, now())}${t.repeat ? `, repeats ${sayRepeat(t.repeat)}` : ''}.`).join('\n');
     },
   };
 

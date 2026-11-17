@@ -32,10 +32,10 @@ function setup(hostOpts = {}) {
 }
 const rectOf = (host, hwnd) => host.wins.find(w => w.hwnd === hwnd).rect;
 
-test('windows group: five tools, strict schemas, only the hung-app one asks', () => {
+test('windows group: six tools, strict schemas, only the hung-app one asks', () => {
   const { group } = setup();
   assert.equal(group.id, 'windows');
-  assert.deepEqual(group.tools.map(t => t.name), ['window_arrange', 'window_to_monitor', 'desktop_switch', 'window_to_desktop', 'end_unresponsive_app']);
+  assert.deepEqual(group.tools.map(t => t.name), ['window_arrange', 'window_split', 'window_to_monitor', 'desktop_switch', 'window_to_desktop', 'end_unresponsive_app']);
   for (const t of group.tools) assert.equal(t.params.additionalProperties, false, t.name);
   assert.deepEqual(group.tools.filter(t => t.risk === 'confirm').map(t => t.name), ['end_unresponsive_app']);
   assert.ok(group.tools.every(t => t.description.length < 220), 'descriptions stay short');
@@ -231,4 +231,19 @@ test('pc host: bad window arguments are rejected before anything is sent', async
   await assert.rejects(h.desktopSwitch(21), /Bad desktop/);
   await assert.rejects(h.desktopMove(5, 0), /Bad desktop/);
   assert.deepEqual(sent, []);
+});
+
+test('windows: window_split tiles two windows left and right, verified', async () => {
+  const { host, run } = setup();
+  const r = await run('window_split', { left: 'chrome', right: 'code' });
+  assert.equal(r.ok, true, r.text);
+  assert.match(r.text, /Snapped Docs - Chrome to the left.*Snapped main\.js to the right/);
+  assert.equal(rectOf(host, 1).x, 0);
+  assert.ok(rectOf(host, 2).x > 0);
+});
+
+test('windows: window_split refuses the same window twice and needs a right window', async () => {
+  const { run } = setup();
+  assert.equal((await run('window_split', { left: 'chrome', right: 'chrome' })).ok, false);
+  assert.equal((await run('window_split', { left: 'chrome' })).ok, false);
 });

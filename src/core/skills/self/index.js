@@ -15,6 +15,7 @@ function createGroup({ self, analytics } = {}) {
   const tools = self ? [...createSelfTools(self), ...createAnalyticsTools(analytics)] : [];
   return { id: 'self', label: 'JARVIS self-check: diagnostics, list of skills, version and settings, error log', triggers: [
     { re: SELF, w: 3 },
+    { re: /\b(?:what|which) (?:model|llm|ai) (?:are you|do you (?:run|use)|is this)\b|\bwhat(?:'s| is) your (?:model|latency|response time|speed)\b|\bhow (?:fast|quick|slow) are you\b|\bwhich (?:model|embedder) (?:are|is) (?:you|jarvis) (?:running|using)\b/i, w: 3 },
     { re: /(?:dashboard|analytics|your (?:stats|statistics|metrics|performance|uptime|reliability)|how (?:have|are) you (?:been )?(?:doing|performing)|how reliable are you|usage stats)/i, w: 3 },
   // the log is text from outside (error messages can quote pages and files), so self_log is untrusted
   ], tools: tools.map(t => own(t, ALIASES[t.name] || [], t.name === 'self_log' ? { untrusted: true } : {})) };

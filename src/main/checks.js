@@ -69,7 +69,9 @@ function selfChecks(ctx, { fetch = globalThis.fetch } = {}) {
     { id: 'voice recognition', run: () => {
       if (!ctx.speaker.available()) return off('the speaker model is not installed');
       if (!ctx.speaker.enrolled()) return off('no voice enrolled');
-      return `voice enrolled (${ctx.speaker.count()} samples), gate ${cfg().speakerGate ? 'on' : 'off'}`;
+      const scores = (ctx.speaker.recent?.() || []).slice(-3).map(x => x.score).filter(x => typeof x === 'number');
+      if (!cfg().speakerGate) return `voice enrolled (${ctx.speaker.count()} samples), gate off`;
+      return `voice enrolled (${ctx.speaker.count()} samples), gate on (${cfg().speakerMode} mode)${scores.length ? `, last scores ${scores.map(x => x.toFixed(2)).join(', ')}` : ''}`;
     } },
     { id: 'wallpaper link', run: () => (ctx.bridge ? `127.0.0.1:${ctx.bridge.port}, ${ctx.bridge.clients() ? 'wallpaper connected' : 'no wallpaper connected'}` : bad('the bridge did not start')) },
     { id: 'chrome extension', run: () => {

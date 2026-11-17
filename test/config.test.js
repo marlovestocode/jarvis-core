@@ -141,3 +141,48 @@ test('relative library.dir is rejected with a reported key', () => {
   assert.equal(loadConfig(d).library.dir, 'C:\\JarvisData\\library');
   assert.ok(inspectConfig(d).ignored.includes('library.dir'));
 });
+
+test('speaker mode and learning keys: defaults', () => {
+  assert.equal(DEFAULTS.speakerMode, 'guest');
+  assert.equal(DEFAULTS.speakerGuestBelow, 0.30);
+  assert.equal(DEFAULTS.speakerLearn, true);
+  assert.equal(DEFAULTS.speakerLearnAbove, 0.60);
+  const c = loadConfig(tmp());
+  assert.equal(c.speakerMode, 'guest');
+  assert.equal(c.speakerGuestBelow, 0.30);
+  assert.equal(c.speakerLearn, true);
+  assert.equal(c.speakerLearnAbove, 0.60);
+});
+
+test('speaker mode and learning keys: valid values are kept', () => {
+  const d = tmp();
+  fs.writeFileSync(path.join(d, 'config.json'), JSON.stringify({ speakerMode: 'block', speakerGuestBelow: 0.2, speakerLearn: false, speakerLearnAbove: 0.7 }));
+  const c = loadConfig(d);
+  assert.equal(c.speakerMode, 'block');
+  assert.equal(c.speakerGuestBelow, 0.2);
+  assert.equal(c.speakerLearn, false);
+  assert.equal(c.speakerLearnAbove, 0.7);
+});
+
+test('speaker mode and learning keys: invalid values fall back and are reported', () => {
+  const { inspectConfig } = require('../src/core/config');
+  const d = tmp();
+  fs.writeFileSync(path.join(d, 'config.json'), JSON.stringify({ speakerMode: 'open', speakerGuestBelow: 0.05, speakerLearn: 'yes', speakerLearnAbove: 0.99 }));
+  const c = loadConfig(d);
+  assert.equal(c.speakerMode, 'guest');
+  assert.equal(c.speakerGuestBelow, 0.30);
+  assert.equal(c.speakerLearn, true);
+  assert.equal(c.speakerLearnAbove, 0.60);
+  const ign = inspectConfig(d).ignored;
+  for (const k of ['speakerMode', 'speakerGuestBelow', 'speakerLearn', 'speakerLearnAbove']) assert.ok(ign.includes(k), k);
+});
+
+test('speakerGuestBelow at or above speakerThreshold falls back and is reported', () => {
+  const { inspectConfig } = require('../src/core/config');
+  const d = tmp();
+  fs.writeFileSync(path.join(d, 'config.json'), JSON.stringify({ speakerThreshold: 0.4, speakerGuestBelow: 0.4 }));
+  assert.equal(loadConfig(d).speakerGuestBelow, 0.30);
+  assert.ok(inspectConfig(d).ignored.includes('speakerGuestBelow'));
+  fs.writeFileSync(path.join(d, 'config.json'), JSON.stringify({ speakerThreshold: 0.45, speakerGuestBelow: 0.44 }));
+  assert.equal(loadConfig(d).speakerGuestBelow, 0.44);
+});

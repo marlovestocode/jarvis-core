@@ -47,8 +47,8 @@ test('browser_tabs: needs the optional tabs permission, then only the listed fie
   await assert.rejects(browserCommand('browser_tabs', {}, fakeChrome()), /permission not granted: tab titles and addresses/);
   const r = await browserCommand('browser_tabs', {}, fakeChrome({ granted: ['tabs'] }));
   assert.deepEqual(r, [
-    { id: 1, windowId: 7, title: 'Docs', url: 'https://docs.example.com/', active: true, pinned: false, audible: false },
-    { id: 2, windowId: 7, title: 'YouTube', url: 'https://www.youtube.com/watch?v=1', active: false, pinned: true, audible: true },
+    { id: 1, windowId: 7, title: 'Docs', url: 'https://docs.example.com/', active: true, pinned: false, audible: false, groupId: null, splitViewId: null },
+    { id: 2, windowId: 7, title: 'YouTube', url: 'https://www.youtube.com/watch?v=1', active: false, pinned: true, audible: true, groupId: null, splitViewId: null },
   ]);
 });
 

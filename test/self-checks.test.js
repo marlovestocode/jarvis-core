@@ -47,7 +47,7 @@ test('selfChecks: a healthy app has no problems', async () => {
   assert.equal(r['speech-to-text'].detail, 'Whisper (small.en)');
   assert.equal(r['wallpaper link'].detail, '127.0.0.1:47801, wallpaper connected');
   assert.equal(r['offline library'].detail, 'wikipedia_en.zim, 6,000,000 articles');
-  assert.equal(r['online lookups'].detail, 'on: weather, news, sports, wiki, web, lyrics');
+  assert.equal(r['online lookups'].detail, 'on: weather, news, sports, wiki, web, lyrics, finance');
   assert.equal(r.timers.detail, '2 set');
   assert.equal(r.settings.detail, 'no config.json yet, defaults in use');
 });
@@ -105,4 +105,11 @@ test('selfChecks: cortex check ok / off / problem', async () => {
   const bad = (await run(fakeCtx({ memorySystem: { check: () => ({ level: 'bad', detail: 'the cortex is read-only' }) } }))).cortex;
   assert.deepEqual([bad.state, bad.detail], ['fail', 'the cortex is read-only']);
   assert.equal((await run(fakeCtx({ memorySystem: null }))).cortex.state, 'off');
+});
+
+test('selfChecks: voice recognition line names the mode and the last scores', async () => {
+  const r = await run(fakeCtx({ speaker: { available: () => true, enrolled: () => true, count: () => 3, recent: () => [{ t: 1, score: 0.71, verdict: 'owner' }, { t: 2, score: 0.22, verdict: 'guest' }] } }));
+  assert.equal(r['voice recognition'].detail, 'voice enrolled (3 samples), gate on (guest mode), last scores 0.71, 0.22');
+  const b = await run(fakeCtx({ config: { ...DEFAULTS, provider: 'ollama', speakerMode: 'block', speakerGate: false } }));
+  assert.equal(b['voice recognition'].detail, 'voice enrolled (3 samples), gate off');
 });

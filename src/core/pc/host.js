@@ -14,7 +14,7 @@ const LIMIT_MS = {
   ping: QUICK_MS, windows: QUICK_MS, foreground: QUICK_MS, monitors: QUICK_MS, place: QUICK_MS, moveToMonitor: QUICK_MS,
   desktopSwitch: QUICK_MS, desktopMove: QUICK_MS, alive: QUICK_MS, closeMain: QUICK_MS, kill: QUICK_MS, focus: QUICK_MS,
   brightness: QUICK_MS, setBrightness: QUICK_MS, displays: QUICK_MS, nightLight: QUICK_MS, battery: QUICK_MS, powerPlans: QUICK_MS,
-  setPowerPlan: QUICK_MS, focusAssist: QUICK_MS, clipboardRead: QUICK_MS, clipboardWrite: QUICK_MS, lock: QUICK_MS,
+  processTop: 15000, setPowerPlan: QUICK_MS, focusAssist: QUICK_MS, clipboardRead: QUICK_MS, clipboardWrite: QUICK_MS, lock: QUICK_MS,
 };
 const POWER = ['shutdown', 'restart', 'sleep'];
 
@@ -79,6 +79,12 @@ function createPcHost({ request }) {
       return { gone: !!r?.gone, inBin: !!r?.inBin };
     }),
     audioDevices: wrap(async () => list(await call('audioDevices')).filter(d => d && typeof d.id === 'string' && d.id && typeof d.name === 'string').map(d => ({ id: d.id, name: d.name, default: !!d.default }))),
+    // heaviest apps by memory or CPU time: [{ name, count, memMB, cpuSec }]
+    processTop: wrap(async (by = 'memory', count = 5) => {
+      if (by !== 'memory' && by !== 'cpu') throw new Error('Bad sort (memory or cpu)');
+      const n = Math.max(1, Math.min(25, Math.round(Number(count)) || 5));
+      return list(await call('processTop', { by, count: n })).filter(p => p && typeof p.name === 'string').map(p => ({ name: p.name, count: Number(p.count) || 1, memMB: Number(p.memMB) || 0, cpuSec: Number(p.cpuSec) || 0 }));
+    }),
     audioSetDefault: wrap(async id => (await call('audioSetDefault', { id: needText(id, 'device id') })) === true),
     // percent of the built-in panel, or null when this display has no brightness control
     brightness: wrap(async () => { const r = await call('brightness'); return Number.isFinite(r) ? r : null; }),
