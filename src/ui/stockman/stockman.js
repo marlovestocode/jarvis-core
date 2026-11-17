@@ -94,6 +94,9 @@
       fillTop('t-wide', sp.widest); fillTop('t-tight', sp.tightest);
       rows($('t-quotes').tBodies[0], sp.latest, r => [td(r.symbol), td(fix(r.bid, 2), 'n'), td(fix(r.ask, 2), 'n'), td(fix(r.bps, 2), 'n'), td(clock(r.at))]);
     }
+    const op = s.options && !s.options.error ? s.options : null;
+    rows($('t-odte').tBodies[0], op ? Object.entries(op.byDte || {}).map(([k, v]) => ({ k, ...v })) : [], r => [td(`${r.k} days`), td(String(r.samples), 'n'), td(r.medianSpreadPct === null ? '—' : `${(r.medianSpreadPct * 100).toFixed(1)}%`, 'n'), td(fix(r.medianSpreadAbs, 2), 'n')]);
+    rows($('t-ounder').tBodies[0], op ? (op.perUnderlying || []).slice(0, 12) : [], r => [td(r.underlying), td(String(r.samples), 'n'), td(`${(r.medianSpreadPct * 100).toFixed(1)}%`, 'n')]);
     rows($('t-forward').tBodies[0], fw, r => {
       const c = el('td'); c.append(spark(r.series || []));
       return [td(r.label), td(String(r.days), 'n'), td(String(r.names), 'n'), td(pct(r.meanGross), `n ${sign(r.meanGross)}`), td(pct(r.meanNet10), `n ${sign(r.meanNet10)}`), td(r.winShare === null ? '—' : `${(r.winShare * 100).toFixed(0)}%`, 'n'), c];
@@ -114,6 +117,7 @@
     add('Database version', String(eng.dbVersion ?? '—'));
     add('Features', Array.isArray(eng.features) ? eng.features.join(', ') : '—');
     add('Paper trading', s.switches?.paperTrading ? 'ON' : 'off (no rule passed tuning)', s.switches?.paperTrading ? 'warn' : '');
+    if (s.router && !s.router.error) add('Broker router', `${Object.entries(s.router.positions || {}).map(([k, v]) => `${v} ${k}`).join(', ') || 'no positions yet'}${s.router.last ? `; last step ${s.router.last.status}` : ''}`, s.router.last && s.router.last.status !== 'ok' ? 'warn' : '');
     add('Alpaca orders', s.switches?.brokerOrders ? `ON, cap USD ${s.switches.brokerMaxNotionalUsd}` : 'off (paper account reads only)', s.switches?.brokerOrders ? 'warn' : '');
 
     const ev = $('events'); clear(ev);

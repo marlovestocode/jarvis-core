@@ -81,6 +81,8 @@ function buildState({ app, api, config = {}, now = Date.now }) {
     summaries: part(() => Object.fromEntries(Object.entries(health.dataQuality || {}).map(([k, v]) => [k, v?.summary || '']))),
     data: part(() => { const h = api.runs.health(); return { summary: h.summary, ...Object.fromEntries(['targetSession', 'coverage', 'dataAgeMs', 'lastSweepAgeMs', 'gaps', 'lastRun', 'deepHistory', 'pointInTimeHistory', 'earnings'].map(k => [k, h[k]])) }; }),
     spreads: part(() => spreadPanel(db, api.spreads, day)),
+    options: part(() => (api.options ? api.options.summary({ from: day, to: day }) : null)),
+    router: part(() => (api.router ? api.router.status() : null)),
     shadow: part(() => ({ reversal: api.shadow.status('reversal'), momentum: api.shadow.status('momentum') })),
     forward: part(() => forwardResults(db, api.scoring)),
     calibration: part(() => api.calibration.health()),
