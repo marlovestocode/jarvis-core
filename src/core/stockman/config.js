@@ -26,7 +26,7 @@ const DEFAULTS = Object.freeze({
   paperTrading: Object.freeze({ enabled: false }),
   // Alpaca PAPER order methods (trading/alpaca.js, vault D23): OFF by default. Reading (account, clock, quotes) needs only online.broker in jarvis's config.
   // The keys are never configured here: ALPACA_PAPER_KEY_ID and ALPACA_PAPER_SECRET_KEY, environment only.
-  broker: Object.freeze({ enabled: false, maxNotionalUsd: 1000 }),
+  broker: Object.freeze({ enabled: false, maxNotionalUsd: 1000, capitalUsd: 20000 }),
 });
 
 const LEVELS = ['debug', 'info', 'warn', 'error'];
@@ -51,6 +51,7 @@ const RULES = [
   ['provider', 'breakerCooldownMs', v => Number.isInteger(v) && v >= 100 && v <= 3600000, 'milliseconds, 100 to 3600000'],
   ['paperTrading', 'enabled', v => typeof v === 'boolean', 'true or false'],
   ['broker', 'enabled', v => typeof v === 'boolean', 'true or false'],
+  ['broker', 'capitalUsd', v => typeof v === 'number' && v >= 100 && v <= 1000000, 'US dollars the router spreads over 5 sleeves and the basket, 100 to 1000000'],
   ['broker', 'maxNotionalUsd', v => typeof v === 'number' && v > 0 && v <= 100000, 'a number of US dollars, above 0 and at most 100000'],
   ['log', 'level', v => LEVELS.includes(v), `one of ${LEVELS.join(', ')}`],
   ['log', 'eventLevel', v => LEVELS.includes(v), `one of ${LEVELS.join(', ')}`],

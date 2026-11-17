@@ -106,7 +106,8 @@ test('orders: off unless config.broker.enabled; guards on notional, qty and time
   await assert.rejects(() => bad({ notionalUsd: 0 }), InvalidRequestError);
   await assert.rejects(() => bad({ notionalUsd: 100, qty: 1 }), /not both/);
   await assert.rejects(() => bad({ notionalUsd: null, qty: null }), /not both and not neither/);
-  await assert.rejects(() => bad({ notionalUsd: null, qty: 1.5 }), /whole number/);
+  await assert.rejects(() => bad({ notionalUsd: null, qty: 0 }), /qty must be/);
+  await assert.rejects(() => bad({ notionalUsd: null, qty: 1.5, timeInForce: 'opg' }), /fractional quantity needs time in force day/);
   await assert.rejects(() => bad({ timeInForce: 'gtc' }), /time in force/);
   await assert.rejects(() => bad({ leg: 'hold' }), /entry or exit/);
   await assert.rejects(() => bad({ positionId: 0 }), /position id/);

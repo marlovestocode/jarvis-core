@@ -176,7 +176,7 @@ test('stockman-process: the real worker starts, answers, survives being killed, 
   await engine.start();
   let h = engine.health();
   assert.equal(h.started, true);
-  assert.equal(h.db.version, 12);   // the framework's 1, data layer 2 to 7, ledger 8, backtest 9, learning layer 10 and 11, cost sampler 12 (the worker registers them all; the paper opener adds no table)
+  assert.equal(h.db.version, 13);   // the framework's 1, data layer 2 to 7, ledger 8, backtest 9, learning layer 10 and 11, cost sampler 12 (the worker registers them all; the paper opener adds no table)
   assert.equal(h.stocks.provider, 'mock');
   assert.ok(fs.existsSync(path.join(dataDir, 'stockman.db')), 'the worker owns the database file');
 
@@ -184,11 +184,11 @@ test('stockman-process: the real worker starts, answers, survives being killed, 
   assert.equal(missing.code, 'NOT_FOUND');
   assert.equal((await engine.request('quote', { symbol: 'bad symbol' }).catch(e => e)).code, 'INVALID_REQUEST');
   assert.equal((await engine.request('nope').catch(e => e)).code, 'INVALID_REQUEST');
-  assert.equal((await engine.request('health')).db.version, 12);
-  assert.deepEqual((await engine.request('health')).features, ['universe', 'bars', 'calendar', 'earnings', 'spreads', 'runs', 'scoring', 'shadow', 'calibration', 'ledger', 'backtest', 'paper']);
+  assert.equal((await engine.request('health')).db.version, 13);
+  assert.deepEqual((await engine.request('health')).features, ['universe', 'bars', 'calendar', 'earnings', 'spreads', 'runs', 'scoring', 'shadow', 'calibration', 'ledger', 'backtest', 'paper', 'options', 'broker-router']);
   assert.ok(Array.isArray(await engine.request('events', { limit: 5 })));
   const dash = await engine.request('dashboard');                                      // the dashboard page's numbers, built in the worker
-  assert.equal(dash.engine.started, true); assert.equal(dash.engine.dbVersion, 12); assert.ok(Array.isArray(dash.forward) && dash.forward.length === 7);
+  assert.equal(dash.engine.started, true); assert.equal(dash.engine.dbVersion, 13); assert.ok(Array.isArray(dash.forward) && dash.forward.length === 7);
   assert.match(dash.note, /never predictions/);
   assert.ok(events.includes('ready'));                                                // the framework's own link event arrived on jarvis's bus
 
@@ -204,4 +204,22 @@ test('stockman-process: the real worker starts, answers, survives being killed, 
   await engine.stop();
   await tick(100);
   assert.throws(() => process.kill(pid2, 0), 'the worker is gone after stop()');
+});
+
+test('stockman-process: after giving up it tries again on its own (reviveMs), so a temporary cause does not leave the engine off; stop cancels it', async () => {
+  let n = 0;
+  const { engine, children, events, lines } = make(c => { n++; if (n <= 3) c.autoReady = false; else c.autoReady = true; if (n <= 3) { const o = c.send; c.send = m => { o(m); if (m.type === 'init') setImmediate(() => c.emit('exit', 1, null)); }; } },
+    { restart: { baseMs: 5, maxMs: 10, maxRestarts: 1, resetAfterMs: 60000, reviveMs: 40 } });
+  await engine.start().catch(() => {});
+  await until(() => engine.health().process.state === 'failed');
+  await until(() => engine.health().process.state === 'running', 3000);
+  assert.ok(lines.some(l => /trying to start it again/.test(l)) && lines.some(l => /engine is back/.test(l)));
+  assert.ok(events.includes('engine-failed') && events.includes('engine-up'));
+  await engine.stop();
+  assert.equal(engine.health().process.state, 'stopped');
+  const off = make(c => { const o = c.send; c.send = m => { o(m); if (m.type === 'init') setImmediate(() => c.emit('exit', 1, null)); }; }, { restart: { baseMs: 5, maxMs: 10, maxRestarts: 1, resetAfterMs: 60000, reviveMs: 0 } });
+  await off.engine.start().catch(() => {});
+  await tick(120);
+  assert.equal(off.children.length, 1, 'reviveMs 0: it stays down, as before');
+  await off.engine.stop();
 });

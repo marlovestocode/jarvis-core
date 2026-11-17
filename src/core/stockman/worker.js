@@ -18,6 +18,9 @@ const { createPolicy } = require('../net/policy');
 const { createDataLayer } = require('./features');
 const { createTradingLayer } = require('./trading');
 const { buildState } = require('./jarvis/dashboard');
+const { createAlpacaHttp, createAlpaca } = require('./trading/alpaca');
+const { createOptions } = require('./features/options');
+const { createBrokerRouter } = require('./trading/broker-router');
 
 const HEALTH_EVERY_MS = 5000;
 const FATAL_EXIT = 2;
@@ -63,7 +66,16 @@ function run() {
       // the paper-trade opener is part of it and stays OFF unless STOCKMAN_PAPER_TRADING or paperTrading.enabled turns it on (vault note 06 gate)
       const trading = createTradingLayer({ data: layer.api, options: { paper: { enabled: config.paperTrading.enabled, autoRun: config.provider.name === 'yahoo' } } });
       for (const f of trading.features) app.use(f);
-      dash = { api: { ...layer.api, ...trading.api }, config };
+      // Alpaca PAPER adapter (trading/alpaca.js): reads for the options sampler. The same policy as the fetcher, source 'broker' (online.broker, default off:
+      // then the sampler stops quietly and says so). Orders stay off unless config.broker.enabled. Keys come from the environment only.
+      const alpaca = createAlpaca({ http: createAlpacaHttp({ policy: createPolicy(getConfig) }), opts: { enabled: config.broker.enabled, maxNotionalUsd: config.broker.maxNotionalUsd } });
+      const options = createOptions({ alpaca, opts: { autoRun: config.provider.name === 'yahoo' && !/^(off|false|0|no)$/i.test(process.env.STOCKMAN_AUTORUN || '') } });
+      app.use(options.feature);
+      // paper orders to Alpaca: only with paperTrading.enabled AND broker.enabled (both default off); needs the shadow candidates the learning layer logs
+      const router = createBrokerRouter({ ledger: trading.api.ledger, shadow: layer.api.shadow, scoring: layer.api.scoring, alpaca,
+        opts: { enabled: config.paperTrading.enabled && config.broker.enabled, capitalUsd: config.broker.capitalUsd, autoRun: config.provider.name === 'yahoo' } });
+      app.use(router.feature);
+      dash = { api: { ...layer.api, ...trading.api, options: options.api, router: router.api, alpaca }, config };
       await app.start();
     } catch (err) {
       send({ type: 'fatal', error: String(err?.message || err) });

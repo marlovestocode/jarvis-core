@@ -103,6 +103,19 @@ function createAlpaca({ http, opts = {} } = {}) {
     const bid = pos(q.bp), ask = pos(q.ap);
     return { symbol: s, bid, ask, bidSize: num(q.bs), askSize: num(q.as), at: q.t ?? null, spreadBps: bid && ask && ask >= bid ? (ask - bid) / ((ask + bid) / 2) * 1e4 : null };
   }
+  // the stock's quote midpoint (IEX feed), for the options sampler: throws when there is no two-sided quote
+  async function stockMid(symbol) {
+    const q = await latestQuote(symbol);
+    if (!q.bid || !q.ask) throw new ProviderDataError(`alpaca: no two-sided stock quote for ${q.symbol}`);
+    return (q.bid + q.ask) / 2;
+  }
+  // option snapshots of one underlying (indicative feed): { snapshots: { OCCSYMBOL: {...} }, nextPageToken }. Read-only.
+  async function optionSnapshots({ underlying, expiryLte = null, strikeGte = null, strikeLte = null, type = null, pageToken = null, limit = 1000 }) {
+    const r = await http.request('GET', DATA_BASE, `/v1beta1/options/snapshots/${encodeURIComponent(normalizeSymbol(underlying))}`, {
+      query: { feed: 'indicative', limit, expiration_date_lte: expiryLte, strike_price_gte: strikeGte, strike_price_lte: strikeLte, type, page_token: pageToken } });
+    if (!r || typeof r.snapshots !== 'object' || r.snapshots === null || Array.isArray(r.snapshots)) throw new ProviderDataError('alpaca: the option snapshots answer is not in the expected shape');
+    return { snapshots: r.snapshots, nextPageToken: r.next_page_token || null };
+  }
   async function getOrder(id) { return mapOrder(await http.request('GET', PAPER_BASE, `/v2/orders/${encodeURIComponent(id)}`)); }
   async function getOrderByClientId(clientOrderId) {
     return mapOrder(await http.request('GET', PAPER_BASE, '/v2/orders:by_client_order_id', { query: { client_order_id: clientOrderId } }));
@@ -124,10 +137,12 @@ function createAlpaca({ http, opts = {} } = {}) {
     if (!TIFS.includes(timeInForce)) throw new InvalidRequestError(`alpaca: time in force is one of ${TIFS.join(', ')}`);
     if ((notionalUsd === null) === (qty === null)) throw new InvalidRequestError('alpaca: give notionalUsd or qty, not both and not neither');
     if (notionalUsd !== null && !(pos(notionalUsd) && notionalUsd <= o.maxNotionalUsd)) throw new InvalidRequestError(`alpaca: notional must be above 0 and at most USD ${o.maxNotionalUsd} per order`);
-    if (qty !== null && !(Number.isInteger(qty) && qty > 0)) throw new InvalidRequestError('alpaca: qty must be a whole number above 0');
+    // fractional shares are allowed (a notional buy fills a fractional quantity, and its exit sells exactly that); a `day` market order only
+    if (qty !== null && !(typeof qty === 'number' && Number.isFinite(qty) && qty > 0 && qty < 1e7)) throw new InvalidRequestError('alpaca: qty must be a number above 0');
+    if (qty !== null && !Number.isInteger(qty) && timeInForce !== 'day') throw new InvalidRequestError('alpaca: a fractional quantity needs time in force day');
     const s = normalizeSymbol(symbol);
     const cid = clientOrderId(positionId, leg);
-    const body = { symbol: s, side: leg === 'entry' ? 'buy' : 'sell', type: 'market', time_in_force: timeInForce, client_order_id: cid, ...(notionalUsd !== null ? { notional: String(notionalUsd) } : { qty: String(qty) }) };
+    const body = { symbol: s, side: leg === 'entry' ? 'buy' : 'sell', type: 'market', time_in_force: timeInForce, client_order_id: cid, ...(notionalUsd !== null ? { notional: String(notionalUsd) } : { qty: String(Number(qty.toFixed(9))) }) };
     try {
       return { ...mapOrder(await http.request('POST', PAPER_BASE, '/v2/orders', { body })), duplicate: false };
     } catch (err) {
@@ -150,7 +165,7 @@ function createAlpaca({ http, opts = {} } = {}) {
     };
   }
 
-  return { account, clock, latestQuote, getOrder, getOrderByClientId, listOrders, placeOrder, cancelOrder, clientOrderId, options: o, configured: http.configured };
+  return { account, clock, latestQuote, stockMid, optionSnapshots, getOrder, getOrderByClientId, listOrders, placeOrder, cancelOrder, clientOrderId, options: o, configured: http.configured };
 }
 
 // ---- fills into the ledger (subscribe-only port: it has no order method, as ledger.attachFillSource requires) ------------------------

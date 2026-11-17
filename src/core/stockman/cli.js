@@ -97,6 +97,21 @@ async function broker(args, out) {
     }
     case 'quote': out(JSON.stringify(await alpaca.latestQuote(arg), null, 2)); return 0;
     case 'orders': out(JSON.stringify(await alpaca.listOrders({ status: 'all', limit: 20 }), null, 2)); return 0;
+    case 'options': {
+      // broker options round [UNDERLYING...] [--force] | broker options report [from] [to]: the options market sampler (read-only)
+      const { createOptions } = require('./features/options');
+      const rest = args.slice(1), force = rest.includes('--force'), words = rest.filter(w => !w.startsWith('--'));
+      const { app } = buildDataApp();
+      const sampler = createOptions({ alpaca, opts: { autoRun: false } });
+      app.use(sampler.feature);
+      await app.start();
+      try {
+        if (words[0] === 'round') out(JSON.stringify(await sampler.api.round({ force, only: words.length > 1 ? words.slice(1) : ['SPY', 'AAPL'] }), null, 2));
+        else out(JSON.stringify(sampler.api.summary({ from: words[1] || undefined, to: words[2] || undefined }), null, 2));
+        out(sampler.api.health().summary);
+      } finally { await app.stop(); }
+      return 0;
+    }
     case 'reconcile': {
       const { app, trading } = buildDataApp();
       await app.start();
@@ -107,7 +122,7 @@ async function broker(args, out) {
       } finally { await app.stop(); }
       return 0;
     }
-    default: out('usage: stockman broker <status | quote SYMBOL | orders | reconcile>   (Alpaca PAPER only; needs STOCKMAN_BROKER=on and the paper keys in the environment)'); return 2;
+    default: out('usage: stockman broker <status | quote SYMBOL | orders | reconcile | options round [SYMBOL...] [--force] | options report>   (Alpaca PAPER only; needs STOCKMAN_BROKER=on and the paper keys in the environment)'); return 2;
   }
 }
 

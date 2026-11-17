@@ -19,10 +19,12 @@ function createStockmanProcess({
   startTimeoutMs = 15000, requestTimeoutMs = 20000, stopTimeoutMs = 5000,
   restart = {},
 } = {}) {
-  const policy = { maxRestarts: 5, baseMs: 1000, maxMs: 30000, resetAfterMs: 60000, ...restart };
+  // reviveMs: after the engine has GIVEN UP (too many quick crashes, a failed start), try once more every reviveMs instead of staying down until
+  // jarvis restarts, so a temporary cause (a locked database file, no network at boot) cannot leave StockMan off for a whole day. 0 turns it off.
+  const policy = { maxRestarts: 5, baseMs: 1000, maxMs: 30000, resetAfterMs: 60000, reviveMs: 10 * 60000, ...restart };
   const out = link || (bus ? createBusLink({ bus }) : createMemoryLink());
   let state = 'stopped', child = null, lastHealth = null, lastExit = null, failReason = null;
-  let restarts = 0, readyAt = 0, restartTimer = null, stopping = false, seq = 0, lastOnline = null, startPromise = null;
+  let restarts = 0, readyAt = 0, restartTimer = null, reviveTimer = null, stopping = false, seq = 0, lastOnline = null, startPromise = null;
   const pending = new Map();
 
   const emptyStocks = { provider: 'unknown', breaker: { state: 'unknown' }, limiter: {}, calls: 0, failures: 0, lastOkAt: null, lastError: null };
@@ -79,6 +81,22 @@ function createStockmanProcess({
     state = 'failed'; failReason = reason;
     log(`stockman engine stopped for good: ${reason}`);
     try { out.publish('engine-failed', { reason: reason.slice(0, 200) }); } catch { /* link */ }
+    scheduleRevive();
+  }
+
+  function scheduleRevive() {
+    if (stopping || !(policy.reviveMs > 0) || reviveTimer) return;
+    reviveTimer = setTimeout(async () => {
+      reviveTimer = null;
+      if (stopping || state !== 'failed') return;
+      log('stockman engine: trying to start it again');
+      state = 'starting'; failReason = null; restarts = 0;
+      try { await spawn(); log('stockman engine is back'); try { out.publish('engine-up', { restarts: 0, revived: true }); } catch { /* link */ } } catch (err) {
+        if (child) { try { child.kill(); } catch { /* gone */ } }
+        if (!stopping) giveUp(`restart failed: ${String(err.message).slice(0, 200)}`);
+      }
+    }, policy.reviveMs);
+    reviveTimer.unref?.();
   }
 
   function onUnexpectedExit(code, signal, fatal, wasUp) {
@@ -109,14 +127,14 @@ function createStockmanProcess({
       if (state === 'running') return engine;
       if (startPromise) return startPromise;
       stopping = false; state = 'starting'; failReason = null; restarts = 0;
-      startPromise = spawn().then(() => engine, err => { state = 'failed'; failReason = err.message; if (child) { try { child.kill(); } catch { /* gone */ } } throw err; }).finally(() => { startPromise = null; });
+      startPromise = spawn().then(() => engine, err => { state = 'failed'; failReason = err.message; if (child) { try { child.kill(); } catch { /* gone */ } } scheduleRevive(); throw err; }).finally(() => { startPromise = null; });
       return startPromise;
     },
 
     async stop() {
       if (state === 'stopped') return;
       stopping = true; state = 'stopping';
-      clearTimeout(restartTimer); restartTimer = null;
+      clearTimeout(restartTimer); restartTimer = null; clearTimeout(reviveTimer); reviveTimer = null;
       const c = child;
       if (c) {
         await new Promise(resolve => {
