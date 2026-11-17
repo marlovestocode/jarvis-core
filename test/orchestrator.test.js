@@ -470,3 +470,21 @@ test('memory: a forgotten item is pruned from older saved memos before they are 
   assert.deepEqual(saved.memoIds, [8]);
   assert.doesNotMatch(saved.memo, /Rex is a dog/);
 });
+
+test('append during a turn is kept: written into the in-flight session, not saved over', async () => {
+  const fp = createFakeProvider([
+    [{ type: 'tool_call', id: 'c1', name: 'get_time', args: {} }, { type: 'done' }],
+    [{ type: 'token', text: 'It is noon' }, { type: 'done' }],
+  ]);
+  let orcRef; let handled;
+  const tools = createToolRunner([{ name: 'get_time', description: 't', params: {}, async run() { handled = orcRef.append(s.id, { role: 'assistant', content: 'Timer done', proactive: true }); return 'NOON'; } }]);
+  const { orc, sessions, s } = setup(fp, { tools });
+  orcRef = orc;
+  await orc.send(s.id, 'time?', { source: 'text' });
+  assert.equal(handled, true);
+  const msgs = sessions.load(s.id).messages;
+  assert.ok(msgs.some(m => m.proactive && m.content === 'Timer done'), 'proactive message survived');
+  const i = msgs.findIndex(m => m.proactive);
+  assert.equal(msgs[i - 1].content, 'It is noon', 'lands after the turn, not between tool call and result');
+  assert.equal(orc.append(s.id, { role: 'assistant', content: 'x' }), false, 'no turn running: caller saves itself');
+});

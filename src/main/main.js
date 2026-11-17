@@ -456,6 +456,7 @@ ctx.proactive = createProactiveEngine({
     else ctx.tray?.displayBalloon?.({ title, content: body });
   },
   appendHistory: msg => {
+    if (ctx.sessionId && ctx.orchestrator?.append(ctx.sessionId, msg)) return;   // a turn is running on it and saves the message itself
     let s = ctx.sessionId ? ctx.sessions.load(ctx.sessionId) : null;
     if (!s) { s = ctx.sessions.create(); ctx.sessionId = s.id; }
     s.messages.push(msg);

@@ -91,6 +91,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
   // memoryBlock (W1 §4): { forTurn, afterTurn, onUserMessage }. lastRecall = what the last turn recalled, so a
   // correction in the next message ("no, that's wrong") can weaken it (E10).
   let lastRecall = null;
+  let flight = null;              // { s, queue } while a turn runs: the session it holds and messages appended meanwhile
 
   function pickProvider() {
     const id = getConfig().provider;
@@ -172,6 +173,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
     try {
       let s = sessionId ? sessions.load(sessionId) : null;
       if (!s) s = sessions.create();
+      flight = { s, queue: [] };
       s.messages.push({ role: 'user', content: String(text), at: Date.now() });
       const turnStart = s.messages.length - 1;   // tool results before this message are old
       sessions.save(s);
@@ -560,8 +562,20 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
       return out;
     } finally {
       offNet();
+      // messages appended during the turn go after it (never between a tool call and its result), then the session is saved once more
+      if (flight?.queue.length) {
+        try { flight.s.messages.push(...flight.queue); sessions.save(flight.s); } catch (err) { bus.emit('log', { level: 'warn', text: `appended message lost: ${err.message}` }); }
+      }
+      flight = null;
       if (current === ac) current = null;
     }
+  }
+
+  // append(sessionId, msg) → true when a turn on that session is running and holds msg until it ends; false: the caller saves it itself
+  function append(sessionId, msg) {
+    if (!flight || flight.s.id !== sessionId) return false;
+    flight.queue.push(msg);
+    return true;
   }
 
   function stop() {
@@ -570,6 +584,7 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
 
   return {
     send,
+    append,
     stop,
     announce,
     get busy() { return current !== null; },
