@@ -1,7 +1,7 @@
 // JARVIS core: Electron shell around src/core. Local only.
 const path = require('node:path');
 const fs = require('node:fs');
-const { app, globalShortcut, session, Notification, clipboard, shell, dialog } = require('electron');
+const { app, globalShortcut, session, Notification, clipboard, shell, dialog, nativeImage } = require('electron');
 
 // Data in %APPDATA%\jarvis-core (JARVIS_DATA_DIR overrides it, for self-tests).
 const DATA_DIR = process.env.JARVIS_DATA_DIR || path.join(app.getPath('appData'), 'jarvis-core');
@@ -27,6 +27,7 @@ const { createSessionStore } = require('../core/session');
 const { createRegistry } = require('../core/providers/provider');
 const { NullProvider } = require('../core/providers/null-provider');
 const { createOllamaProvider } = require('../core/providers/ollama');
+const { createVisionClient } = require('../core/vision/client');
 const { createToolRunner, eligibility } = require('../core/tools/registry');
 const { createToolIndex } = require('../core/skills/toolindex');
 const { createLedger } = require('../core/tools/ledger');
@@ -325,7 +326,15 @@ try {
 } catch (err) { ctx.log('tasks unavailable:', err?.message || err); ctx.tasks = null; ctx.tasksSkill = null; ctx.taskTools = null; }
 // JARVIS's own introspection tools: the checks read ctx live each time they run (src/main/checks.js)
 const self = { getChecks: () => selfChecks(ctx), about: () => ({ version, electron: process.versions.electron, node: process.versions.node, startedAt: ctx.startedAt, dataDir: DATA_DIR, model: (() => { try { return ctx.getConfig()?.ollama?.model || ''; } catch { return ''; } })(), embedder: (() => { try { return ctx.cortex?.health?.()?.embedder || null; } catch { return null; } })() }), logFile: LOG_FILE, dataDir: DATA_DIR };
-ctx.catalog = brain.defaultCatalog({ self, analytics: { metrics: ctx.metrics, openDashboard: ctx.openDashboard }, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, wallpaperClients: () => (ctx.bridge ? ctx.bridge.clients() : null), getConfig: ctx.getConfig, applySettings: patch => { const { config, errors } = applyPatch(ctx.config, patch, { providers: ctx.providers, engines: ctx.engines }); ctx.saveConfig(config); return errors; }, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, lyrics: ctx.lyrics, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, lists: ctx.lists, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog }, ...(ctx.taskTools ? { tasks: ctx.taskTools } : {}) });
+ctx.vision = createVisionClient({ getConfig: () => ctx.config });
+// shrink big captures before the vision model sees them: fewer image tokens, faster answers
+const visionResize = async png => {
+  const img = nativeImage.createFromBuffer(png);
+  const { width, height } = img.getSize();
+  const k = (Number(ctx.config.vision?.maxEdge) || 1280) / Math.max(width, height);
+  return k >= 1 ? png : img.resize({ width: Math.round(width * k), height: Math.round(height * k), quality: 'best' }).toPNG();
+};
+ctx.catalog = brain.defaultCatalog({ vision: { client: ctx.vision, resize: visionResize }, self, analytics: { metrics: ctx.metrics, openDashboard: ctx.openDashboard }, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, wallpaperClients: () => (ctx.bridge ? ctx.bridge.clients() : null), getConfig: ctx.getConfig, applySettings: patch => { const { config, errors } = applyPatch(ctx.config, patch, { providers: ctx.providers, engines: ctx.engines }); ctx.saveConfig(config); return errors; }, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, lyrics: ctx.lyrics, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, lists: ctx.lists, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog }, ...(ctx.taskTools ? { tasks: ctx.taskTools } : {}) });
 ctx.toolList = ctx.catalog.tools;
 for (const m of ctx.catalog.missing) if (m.error) ctx.log(`skill group ${m.id} failed to load: ${m.error}`);
 // tool discovery: embeddings come from the memory system's embedder (none installed: lexical only, within 250 ms)

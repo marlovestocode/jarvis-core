@@ -72,10 +72,12 @@ const DEFAULTS = Object.freeze({
   library: Object.freeze({ dir: 'C:\\JarvisData\\library' }),
   // live state: windowTitle puts the title of the window in front into the live picture (it can hold private text; never sent on any stream or into the prompt)
   livestate: Object.freeze({ windowTitle: false }),
+  // screen vision: the small local vision model that reads the screen on request (scripts/Modelfile.jarvis-vision); it leaves VRAM after keepAlive so the main model keeps the GPU
+  vision: Object.freeze({ model: 'jarvis-vision', keepAlive: '1m', maxEdge: 1280, maxTokens: 400 }),
 });
 
 const VADS = ['silero', 'energy'];
-const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive', 'pc', 'browser', 'memory', 'cortex', 'speech', 'library', 'livestate'];
+const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive', 'pc', 'browser', 'memory', 'cortex', 'speech', 'library', 'livestate', 'vision'];
 const MODEL_NAME = /^[\w.:-]{1,64}$/;   // an Ollama model tag, e.g. nomic-embed-text:latest
 const HHMM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;   // "22:00"
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);

@@ -47,6 +47,7 @@
   { "id": "t-wifi", "group": "tools", "q": "Is my Wi-Fi connected, and how much battery is left?", "pick": "connectivity_status" },
   { "id": "t-bt", "group": "tools", "q": "Turn Bluetooth off.", "pick": "bluetooth_set" },
   { "id": "t-clip", "group": "tools", "q": "What is on my clipboard?", "pick": "clipboard_read" },
+  { "id": "t-screen", "group": "tools", "q": "What does the error on my screen say?", "pick": "screen_look" },
   { "id": "t-shot", "group": "tools", "q": "Take a screenshot of my screen.", "pick": "screenshot" },
   { "id": "t-big", "group": "tools", "q": "What are the biggest files in my Downloads folder?", "pick": "big_files" },
   { "id": "t-read", "group": "tools", "q": "Read the PDF called report.pdf in my Documents folder.", "pick": "read_document" },
