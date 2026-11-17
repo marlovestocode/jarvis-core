@@ -54,30 +54,37 @@ function sessionsEnding(day, n = SESSIONS_NEEDED) {
   return list.slice(-n);
 }
 
+// the close `i` sessions before the last session of `sessions`, or null when it is missing or unusable (never guessed)
+const adjReader = (sessions, adjOn) => {
+  const n = sessions.length;
+  return i => { const v = n - 1 - i >= 0 ? adjOn(sessions[n - 1 - i]) : null; return finitePos(v) ? v : null; };
+};
+// sample standard deviation of the `window` daily returns to the last session; null when a close is missing. Shared by both rules.
+function dailyVol(adj, window) {
+  const rets = [];
+  for (let i = 0; i < window; i++) {
+    const a = adj(i), b = adj(i + 1);
+    if (a === null || b === null) return null;
+    rets.push(a / b - 1);
+  }
+  let sum = 0;
+  for (const r of rets) sum += r;
+  const mean = sum / rets.length;
+  let ss = 0;
+  for (const r of rets) ss += (r - mean) * (r - mean);
+  return Math.sqrt(ss / (rets.length - 1));
+}
+
 // features from adjusted closes. sessions: ascending, ends at D. adjOn(day) → number or null (a missing or unusable bar).
 // A feature is null (never guessed) when a close it needs is missing.
 function computeFeatures({ sessions, adjOn }) {
-  const n = sessions.length;
-  const adj = i => { const v = n - 1 - i >= 0 ? adjOn(sessions[n - 1 - i]) : null; return finitePos(v) ? v : null; };
+  const adj = adjReader(sessions, adjOn);
   const f = { r3: null, r5: null, r10: null, vol20: null };
   for (const L of [3, 5, 10]) {
     const a = adj(0), b = adj(L);
     if (a !== null && b !== null) f[`r${L}`] = a / b - 1;
   }
-  const rets = [];
-  for (let i = 0; i < PARAMS.volWindow; i++) {
-    const a = adj(i), b = adj(i + 1);
-    if (a === null || b === null) { rets.length = 0; break; }
-    rets.push(a / b - 1);
-  }
-  if (rets.length === PARAMS.volWindow) {
-    let sum = 0;
-    for (const r of rets) sum += r;
-    const mean = sum / rets.length;
-    let ss = 0;
-    for (const r of rets) ss += (r - mean) * (r - mean);
-    f.vol20 = Math.sqrt(ss / (rets.length - 1));
-  }
+  f.vol20 = dailyVol(adj, PARAMS.volWindow);
   return f;
 }
 
@@ -123,12 +130,78 @@ function selectBasket(rows, size = PARAMS.basketSize) {
   return out;
 }
 
+// ===== Rule 2: momentum, "mom-v1" (note 06 "Rule 2: momentum", decision D25; pre-registered before any result) =====
+//   m      adjusted return over L sessions that ends 21 sessions before D:  adjclose(D-21) / adjclose(D-21-L) - 1,  L = 63, 126 or 252
+//   vol60  sample standard deviation of the 60 daily adjusted returns to D
+//   score  raw: m        vol: m / (vol60 * sqrt(L))        higher = stronger
+//   eligible: as the reversal rule (member, close above USD 5, no earnings flag, no missing bar in the last 25 sessions), except history:
+//             at least L + 22 clean bars.   basket and trade: as the reversal rule (top 20, entry next open, exit 5th close).
+// Variants (at most 6, counted per rule; 12 across both rules once all are run): L in {63, 126, 252}, each raw or vol. There is NO primary variant:
+// nothing is picked before the tuning result. The reversal rule above is untouched by this block.
+const MOM_BUILD = 'mom-v1.0';
+const MOM_PARAMS = Object.freeze({ skip: 21, volWindow: 60, minPrice: 5, gapWindow: 25, basketSize: 20, horizon: 5, extraHistory: 22, priceBasis: 'adj_close' });
+const MOM_VARIANTS = Object.freeze([63, 126, 252].flatMap(L => [
+  Object.freeze({ id: `mom${L}s`, lookback: L, scaled: true }), Object.freeze({ id: `mom${L}`, lookback: L, scaled: false }),
+]));
+if (MOM_VARIANTS.length > MAX_VARIANTS) throw new StockmanError(`scoring: ${MOM_VARIANTS.length} momentum variants, note 06 allows at most ${MAX_VARIANTS}`);
+const MOM_SESSIONS_NEEDED = MOM_PARAMS.skip + Math.max(...MOM_VARIANTS.map(v => v.lookback)) + 1;   // 274
+const momVariantId = ({ lookback, volScale }) => `mom${lookback}${volScale ? 's' : ''}`;
+
+function computeMomentumFeatures({ sessions, adjOn }) {
+  const adj = adjReader(sessions, adjOn);
+  const f = { m63: null, m126: null, m252: null, vol60: null };
+  for (const L of [63, 126, 252]) {
+    const a = adj(MOM_PARAMS.skip), b = adj(MOM_PARAMS.skip + L);
+    if (a !== null && b !== null) f[`m${L}`] = a / b - 1;
+  }
+  f.vol60 = dailyVol(adj, MOM_PARAMS.volWindow);
+  return f;
+}
+
+function momentumVariantScores(f) {
+  const out = {};
+  for (const v of MOM_VARIANTS) {
+    const m = f[`m${v.lookback}`];
+    if (m === null || m === undefined) { out[v.id] = null; continue; }
+    if (!v.scaled) { out[v.id] = m; continue; }
+    out[v.id] = f.vol60 === null || f.vol60 === undefined || f.vol60 <= 0 ? null : m / (f.vol60 * Math.sqrt(v.lookback));
+  }
+  return out;
+}
+
+// same input and output shape as scoreCandidate; `variant` is required (there is no primary momentum variant)
+function scoreMomentumCandidate({ notFound = false, hasBarOnDay, nBars = 0, close = null, features = null, gap25 = false, flags = null, variant }) {
+  const v = MOM_VARIANTS.find(x => x.id === variant);
+  if (!v) throw new StockmanError(`scoring: unknown momentum variant ${variant}`);
+  const reasons = [];
+  if (notFound) reasons.push('provider_has_no_bars');
+  if (!hasBarOnDay) { reasons.push('no_bar_on_day'); return { eligible: false, reasons, score: null, variants: momentumVariantScores({}), features: null }; }
+  if (nBars < v.lookback + MOM_PARAMS.extraHistory) reasons.push('insufficient_history');
+  if (!(close > MOM_PARAMS.minPrice)) reasons.push('price_not_above_5');
+  if (gap25) reasons.push('bar_gap_25');
+  const f = features || { m63: null, m126: null, m252: null, vol60: null };
+  const variants = momentumVariantScores(f);
+  const score = variants[variant];
+  const missing = f[`m${v.lookback}`] == null || (v.scaled && f.vol60 == null);
+  if (missing) reasons.push('no_features');
+  else if (score === null) reasons.push('zero_volatility');
+  if (flags && flags.earnings_in_window) reasons.push('earnings_in_window');
+  if (flags && flags.earnings_possible) reasons.push('earnings_possible');
+  return { eligible: reasons.length === 0, reasons, score, variants, features: { ...f, close, nBars } };
+}
+
+// one entry per rule: the single place that says which functions and settings score that rule
+const RULES = Object.freeze({
+  reversal: Object.freeze({ id: 'reversal', build: SCORING_BUILD, params: PARAMS, variants: VARIANTS, primary: PRIMARY_VARIANT, sessionsNeeded: SESSIONS_NEEDED, historyNeeded: () => SESSIONS_NEEDED, computeFeatures, variantScores, scoreCandidate }),
+  momentum: Object.freeze({ id: 'momentum', build: MOM_BUILD, params: MOM_PARAMS, variants: MOM_VARIANTS, primary: null, sessionsNeeded: MOM_SESSIONS_NEEDED, historyNeeded: v => MOM_PARAMS.skip + v.lookback + 1, computeFeatures: computeMomentumFeatures, variantScores: momentumVariantScores, scoreCandidate: scoreMomentumCandidate }),
+});
+
 function createScoring() {
   let db = null;
 
-  // the bars scoring needs for these symbols on `day`: the last SESSIONS_NEEDED sessions, the count of clean bars, the provider's not-found list
-  function loadDayInputs(day, symbols) {
-    const sessions = sessionsEnding(day);
+  // the bars scoring needs for these symbols on `day`: the last `n` sessions, the count of clean bars, the provider's not-found list
+  function loadDayInputs(day, symbols, n = SESSIONS_NEEDED) {
+    const sessions = sessionsEnding(day, n);
     const list = JSON.stringify(symbols);
     const bars = new Map();   // symbol → { adj: Map(day → adj), closeOn: close of `day`|null, present: Set(days) }
     for (const r of db.stmt('SELECT symbol, day, close, adj_close AS adj FROM bar WHERE day >= ? AND day <= ? AND symbol IN (SELECT value FROM json_each(?))').all(sessions[0], day, list)) {
@@ -146,30 +219,35 @@ function createScoring() {
   // score every symbol for the signal day `day`. flagsOf(symbol, entryDay, exitDay) → earnings flags or null (optional).
   // Returns { day, build, entryDay, exitDay, rows } with rows sorted by symbol; each row has symbol, eligible, reasons, score, rank, inBasket,
   // features, variants, earnings.
-  function scoreDay({ day, symbols, flagsOf = null }) {
+  //   rule: 'reversal' (default, unchanged) or 'momentum' (then `variant` is required)
+  function scoreDay({ day, symbols, flagsOf = null, rule = 'reversal', variant = null }) {
     if (!db) throw new StockmanError('scoring: not started');
+    const R = RULES[rule];
+    if (!R) throw new StockmanError(`scoring: unknown rule ${rule}`);
+    const which = variant || R.primary;
+    if (!which) throw new StockmanError(`scoring: rule ${rule} has no primary variant; name one`);
     const uniq = [...new Set(symbols)].sort();
     const { entryDay, exitDay } = horizonDays(day);
-    const { sessions, bars, counts, notFound } = loadDayInputs(day, uniq);
-    const gapSessions = sessions.slice(-PARAMS.gapWindow);
+    const { sessions, bars, counts, notFound } = loadDayInputs(day, uniq, R.sessionsNeeded);
+    const gapSessions = sessions.slice(-R.params.gapWindow);
     const rows = uniq.map(symbol => {
       const b = bars.get(symbol);
       const hasBarOnDay = Boolean(b && b.present.has(day));
-      const features = hasBarOnDay ? computeFeatures({ sessions, adjOn: d => b.adj.get(d) ?? null }) : null;
+      const features = hasBarOnDay ? R.computeFeatures({ sessions, adjOn: d => b.adj.get(d) ?? null }) : null;
       const gap25 = !b || gapSessions.some(d => !b.present.has(d));
       let flags = null;
       if (hasBarOnDay && flagsOf) { try { flags = flagsOf(symbol, entryDay, exitDay) || null; } catch { flags = { earnings_data: 'unknown', error: true }; } }
-      const s = scoreCandidate({ notFound: notFound.has(symbol), hasBarOnDay, nBars: counts.get(symbol) || 0, close: b ? b.closeOn : null, features, gap25, flags });
+      const s = R.scoreCandidate({ notFound: notFound.has(symbol), hasBarOnDay, nBars: counts.get(symbol) || 0, close: b ? b.closeOn : null, features, gap25, flags, variant: which });
       return { symbol, ...s, earnings: flags };
     });
-    const basket = selectBasket(rows);
+    const basket = selectBasket(rows, R.params.basketSize);
     for (const r of rows) { const k = basket.get(r.symbol); r.rank = k ? k.rank : null; r.inBasket = Boolean(k && k.inBasket); }
-    return { day, build: SCORING_BUILD, entryDay, exitDay, rows };
+    return { day, build: R.build, entryDay, exitDay, rows };
   }
 
-  const api = { build: SCORING_BUILD, params: PARAMS, variants: VARIANTS, primaryVariant: PRIMARY_VARIANT, scoreDay, loadDayInputs, computeFeatures, scoreCandidate, selectBasket, variantScores, horizonDays, sessionsEnding };
+  const api = { build: SCORING_BUILD, rules: RULES, params: PARAMS, variants: VARIANTS, primaryVariant: PRIMARY_VARIANT, scoreDay, loadDayInputs, computeFeatures, scoreCandidate, selectBasket, variantScores, horizonDays, sessionsEnding };
   const feature = { id: 'scoring', async start(ctx) { db = ctx.db; }, async stop() {} };
   return { feature, api };
 }
 
-module.exports = { isCleanBar, variantId, createScoring, SCORING_BUILD, PARAMS, VARIANTS, PRIMARY_VARIANT, MAX_VARIANTS, computeFeatures, variantScores, scoreCandidate, selectBasket, horizonDays, sessionsEnding, CLEAN_SQL };
+module.exports = { MOM_BUILD, MOM_PARAMS, MOM_VARIANTS, MOM_SESSIONS_NEEDED, momVariantId, computeMomentumFeatures, momentumVariantScores, scoreMomentumCandidate, RULES, isCleanBar, variantId, createScoring, SCORING_BUILD, PARAMS, VARIANTS, PRIMARY_VARIANT, MAX_VARIANTS, computeFeatures, variantScores, scoreCandidate, selectBasket, horizonDays, sessionsEnding, CLEAN_SQL };

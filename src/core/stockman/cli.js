@@ -9,7 +9,7 @@
 //   node src/core/stockman/cli.js data history [steps]        history steps until nothing is pending or `steps` ran (default 200) (LIVE, slow)
 //   node src/core/stockman/cli.js data status                 the data_quality object as JSON (no network)
 //   node src/core/stockman/cli.js data flags SYMBOL ENTRY EXIT    earnings flags for one paper trade window (no network)
-//   node src/core/stockman/cli.js backtest run [variant|all] [--holdout]   run the reversal backtest on the TUNING period (the holdout is locked: --holdout, once per variant)
+//   node src/core/stockman/cli.js backtest run [variant|all|all-momentum] [--holdout]   run the backtest (reversal or momentum variants) on the TUNING period (the holdout is locked: --holdout, once per variant)
 //   node src/core/stockman/cli.js backtest status | show [variant]         what has run, the variant count; the last stored result
 // The data commands use the same fetcher setup as the worker (allowlist, switches, size cap) and never start the automatic cycles.
 // Options via environment: STOCKMAN_DATA_DIR, STOCKMAN_PROVIDER (yahoo | mock), STOCKMAN_LOG_LEVEL. See README.md.
@@ -35,7 +35,7 @@ function buildDataApp() {
 // backtest run [variant|all] [--holdout]   backtest status   backtest show [variant] [--holdout]   (no network; reads and writes stockman.db)
 async function backtest(args, out) {
   const { formatResult } = require('./trading/report');
-  const { ALL_VARIANTS } = require('./trading/engine');
+  const { ALL_VARIANTS, MOMENTUM_VARIANTS } = require('./trading/engine');
   const flags = args.filter(a => a.startsWith('--')), [sub, name] = args.filter(a => !a.startsWith('--'));
   const holdout = flags.includes('--holdout');
   for (const f of flags) if (f !== '--holdout') { out(`unknown option ${f}`); return 2; }
@@ -46,13 +46,23 @@ async function backtest(args, out) {
     switch (sub) {
       case 'run': {
         if (holdout && (!name || name === 'all')) { out('the holdout runs one named variant at a time, once: backtest run <variant> --holdout'); return 2; }
-        const keys = !name ? ['rev-L5-vol'] : name === 'all' ? ALL_VARIANTS.map(v => v.key) : [name];
+        if (holdout && name && name.startsWith('all')) { out('the holdout runs one named variant at a time, once: backtest run <variant> --holdout'); return 2; }
+        const group = name === 'all' || name === 'all-reversal' ? ALL_VARIANTS : name === 'all-momentum' ? MOMENTUM_VARIANTS : null;
+        const keys = !name ? ['rev-L5-vol'] : group ? group.map(v => v.key) : [name];
+        let failed = 0;
         for (const key of keys) {
           const t0 = Date.now();
-          const r = bt.run({ variant: key, period: holdout ? 'holdout' : 'tuning', allowHoldout: holdout });
-          out(formatResult(r));
-          out(`(${((Date.now() - t0) / 1000).toFixed(1)} s)\n`);
+          try {
+            const r = bt.run({ variant: key, period: holdout ? 'holdout' : 'tuning', allowHoldout: holdout });
+            out(formatResult(r));
+            out(`(${((Date.now() - t0) / 1000).toFixed(1)} s)\n`);
+          } catch (err) {
+            // in a group run, a variant that cannot run (for example too little history) does not stop the others; it is reported, never shortened
+            if (!group) throw err;
+            failed++; out(`${key}: COULD NOT RUN: ${err.message}\n`);
+          }
         }
+        if (failed) return 1;
         break;
       }
       case 'status': out(JSON.stringify(bt.status(), null, 2)); break;
@@ -61,7 +71,7 @@ async function backtest(args, out) {
         out(r ? formatResult(r) : 'no finished run for that variant and period');
         break;
       }
-      default: out('usage: stockman backtest <run [variant|all] [--holdout] | status | show [variant] [--holdout]>\nvariants: ' + ALL_VARIANTS.map(v => v.key).join(', ') + '\nThe holdout is locked: it runs only with --holdout, once per variant.'); return 2;
+      default: out('usage: stockman backtest <run [variant|all] [--holdout] | status | show [variant] [--holdout]>\nvariants: ' + [...ALL_VARIANTS, ...MOMENTUM_VARIANTS].map(v => v.key).join(', ') + '\n"all" or "all-reversal" runs the six reversal variants, "all-momentum" the six momentum variants.\nThe holdout is locked: it runs only with --holdout, once per variant.'); return 2;
     }
     return 0;
   } finally { await app.stop(); }

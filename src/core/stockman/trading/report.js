@@ -4,7 +4,9 @@ const pct = (x, digits = 3) => (Number.isFinite(x) ? `${(x * 100).toFixed(digits
 function formatResult(r) {
   const s = r.summary, g = r.survivorship, L = [];
   L.push(`BACKTEST ${r.variant}  (${r.buildId})  period: ${r.period.toUpperCase()}   run ${r.runId}`);
-  L.push(`Variants tried so far: ${r.variantsTried} of ${r.variantsAllowed} allowed. Every result below must be read with that count beside it.`);
+  const mom = r.rule === 'momentum';
+  if (mom) L.push(`Variants tried: ${r.variantsTried} of ${r.variantsAllowed} momentum variants, ${r.variantsAcrossRules} variants across both rules. More trials make a lucky result more likely: read every number below with that count beside it.`);
+  else L.push(`Variants tried so far: ${r.variantsTried} of ${r.variantsAllowed} allowed. Every result below must be read with that count beside it.`);
   L.push(`Signals ${r.firstSignalDay} to ${r.lastSignalDay}; trades ${r.firstEntryDay} to ${r.lastExitDay}. Trading days run ${r.tradingDaysRun}, skipped ${r.skippedDays}.`);
   L.push(`Baskets: ${s.baskets} (all five sleeves). Non-overlapping 5-session windows used for the statistics: ${s.windows}.`);
   L.push(`Per window, top-20 equal weight, entry next open, exit 5th close, versus SPY over the same dates:`);
@@ -21,8 +23,14 @@ function formatResult(r) {
   L.push(`SURVIVORSHIP GAP (vault G24): point-in-time members with NO bars at all, per signal day: average ${g.avgNoBars.toFixed(1)} (${pct(g.shareNoBars, 1)} of members), worst day ${g.maxNoBars}.`);
   L.push(`  Plus ${g.avgNoBarOnDay.toFixed(1)} members per day that have bars on other days but none on the signal day (listed later, renamed, or a data hole): excluded, not filled.`);
   for (const [y, t] of Object.entries(g.years)) L.push(`  ${y}: ${t.avgNoBars.toFixed(1)} of ${t.avgMembers.toFixed(0)} members missing on average (${pct(t.shareNoBars, 1)}), worst day ${t.maxNoBars}`);
-  L.push(`  Per-day rows are in table backtest_day. Delisted or renamed names (failed banks, buyouts) have no bars, and a reversal rule buys big recent losers, so the missing names`);
-  L.push(`  are likely the ones that kept falling: this result probably looks BETTER than a complete data set would show. It is biased in the rule's favour, by an unknown amount.`);
+  L.push(`  Per-day rows are in table backtest_day. Delisted or renamed names (failed banks, buyouts) have no bars.`);
+  if (mom) {
+    L.push(`  A momentum rule buys past winners: the missing names include failures it would not have bought and buyout targets it often would have, which rise before they vanish.`);
+    L.push(`  The DIRECTION of the bias is UNKNOWN (note 06); the result could look better or worse than a complete data set would show.`);
+  } else {
+    L.push(`  A reversal rule buys big recent losers, so the missing names are likely the ones that kept falling: this result probably looks BETTER than a complete data set would show.`);
+    L.push(`  It is biased in the rule's favour, by an unknown amount.`);
+  }
   L.push('');
   L.push(`Data: ${r.data.sessions} sessions ${r.data.firstSession} to ${r.data.lastSession}, ${r.data.symbolsWithBars} symbols with bars. Costs: ${r.baseBps} bps base is an assumption, not measured.`);
   L.push(r.period === 'tuning' ? 'Tuning period only. The holdout was not touched.' : 'HOLDOUT run: recorded; this variant can never be run on the holdout again.');

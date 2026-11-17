@@ -15,16 +15,19 @@ const { createEarnings } = require('./earnings');
 const { createLearningLayer } = require('../learning');
 
 // The backtest needs bars and earnings dates from here (vault note 06: backtest 2020-03 to 2026-11-13 with 60 sessions of warm-up).
-const HISTORY_FROM = '2019-10-01';
+// Daily bars start 2019-01-01: the momentum rule with L = 252 needs 274 sessions before the first signal on 2020-03-02 (note 06, D25).
+// The earnings calendar does not need to go back that far and keeps its own, later start, so its fetched days are not fetched again.
+const HISTORY_FROM = '2019-01-01';
+const EARNINGS_FROM = '2019-10-01';
 // The benchmark proxy (note 06: S&P 500 total return, proxied by SPY adjusted closes; an assumption). Swept daily with the universe.
 const BENCHMARKS = Object.freeze(['SPY']);
 
 // deps: { fetcher (jarvis's fetcher: policy, size cap, switches), now, sleep, autoRun, historyFrom, options: { universe, bars, calendar, runs, earnings } }
-function createDataLayer({ fetcher, now = Date.now, sleep, autoRun = true, historyFrom = HISTORY_FROM, options = {} } = {}) {
+function createDataLayer({ fetcher, now = Date.now, sleep, autoRun = true, historyFrom = HISTORY_FROM, earningsFrom = historyFrom > EARNINGS_FROM ? historyFrom : EARNINGS_FROM, options = {} } = {}) {
   const universe = createUniverse({ fetcher, now, sleep, opts: options.universe });
   const bars = createBars({ now, sleep, opts: options.bars });
   const calendar = createCalendar({ now, opts: options.calendar });
-  const earnings = createEarnings({ fetcher, now, sleep, opts: { historyFrom, ...options.earnings } });
+  const earnings = createEarnings({ fetcher, now, sleep, opts: { historyFrom: earningsFrom, ...options.earnings } });
   const runs = createRuns({
     universe: universe.api, bars: bars.api, calendar: calendar.api, earnings: earnings.api,
     halt: () => Promise.all([bars.feature.stop(), universe.feature.stop(), earnings.feature.stop()]),
@@ -39,4 +42,4 @@ function createDataLayer({ fetcher, now = Date.now, sleep, autoRun = true, histo
   };
 }
 
-module.exports = { createDataLayer, HISTORY_FROM, BENCHMARKS };
+module.exports = { createDataLayer, HISTORY_FROM, EARNINGS_FROM, BENCHMARKS };

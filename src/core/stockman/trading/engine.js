@@ -28,15 +28,21 @@ const SESSIONS_NEEDED = Math.max(GAP_WINDOW, VOL_WINDOW + 1, 11);
 const LOOKBACKS = Object.freeze([3, 5, 10]);
 
 // ---- variants: at most 6 (lookback 3, 5 or 10 sessions; with or without the volatility scaling) -------------------------------------
-const variantKey = ({ lookback, volScale }) => `rev-L${lookback}-${volScale ? 'vol' : 'raw'}`;
-const ALL_VARIANTS = Object.freeze(LOOKBACKS.flatMap(lookback => [true, false].map(volScale => Object.freeze({ lookback, volScale, key: variantKey({ lookback, volScale }) }))));
+// Two rules (reversal, momentum), at most 6 variants each (D25). A variant carries its rule; a variant without one is a reversal variant.
+const ruleOf = v => S.RULES[v.rule || 'reversal'];
+const variantKey = ({ lookback, volScale, rule = 'reversal' }) => `${rule === 'momentum' ? 'mom' : 'rev'}-L${lookback}-${volScale ? 'vol' : 'raw'}`;
+const ALL_VARIANTS = Object.freeze(LOOKBACKS.flatMap(lookback => [true, false].map(volScale => Object.freeze({ rule: 'reversal', lookback, volScale, key: variantKey({ lookback, volScale }) }))));
+const MOMENTUM_VARIANTS = Object.freeze([...new Set(S.MOM_VARIANTS.map(v => v.lookback))].flatMap(lookback => [true, false].map(volScale => Object.freeze({ rule: 'momentum', lookback, volScale, key: variantKey({ rule: 'momentum', lookback, volScale }) }))));
+const EVERY_VARIANT = Object.freeze([...ALL_VARIANTS, ...MOMENTUM_VARIANTS]);
 function parseVariant(key) {
-  const v = ALL_VARIANTS.find(x => x.key === key);
-  if (!v) throw new RangeError(`unknown variant "${key}"; the six allowed are ${ALL_VARIANTS.map(x => x.key).join(', ')}`);
+  const v = EVERY_VARIANT.find(x => x.key === key);
+  if (!v) throw new RangeError(`unknown variant "${key}"; the six allowed per rule are reversal: ${ALL_VARIANTS.map(x => x.key).join(', ')}; momentum: ${MOMENTUM_VARIANTS.map(x => x.key).join(', ')}`);
   return v;
 }
-const buildId = v => `${SCORING_BUILD}/L${v.lookback}/${v.volScale ? 'vol' : 'raw'}`;   // the rule's build id plus the variant, e.g. rev-v1.0/L5/vol
-if (ALL_VARIANTS.length !== S.VARIANTS.length) throw new Error('engine variants must match learning/scoring.js VARIANTS');
+const ruleVariants = v => (v.rule === 'momentum' ? MOMENTUM_VARIANTS : ALL_VARIANTS);
+const buildId = v => `${ruleOf(v).build}/L${v.lookback}/${v.volScale ? 'vol' : 'raw'}`;   // the rule's build id plus the variant, e.g. rev-v1.0/L5/vol, mom-v1.0/L63/raw
+const variantIdOf = v => (v.rule === 'momentum' ? S.momVariantId(v) : S.variantId(v));
+if (ALL_VARIANTS.length !== S.VARIANTS.length || MOMENTUM_VARIANTS.length !== S.MOM_VARIANTS.length) throw new Error('engine variants must match learning/scoring.js VARIANTS and MOM_VARIANTS');
 
 // ---- series on the common session grid --------------------------------------------------------------------------------------------------
 // rows: [{ day, open, high, low, close, adj_close, volume }] of one symbol, sorted by day. The cleanliness rules are scoring.js's (isCleanBar):
@@ -65,10 +71,11 @@ function alignSeries(sessions, index, rows) {
 
 // ---- the scoring function (also used alone by tests) ----------------------------------------------------------------------------------
 // The shared features and variant score at session index d (needs d >= 24). null when a close it needs is missing.
-const sessionWindow = d => Array.from({ length: SESSIONS_NEEDED }, (_, k) => d - SESSIONS_NEEDED + 1 + k);
+const sessionWindow = (d, n = SESSIONS_NEEDED) => Array.from({ length: n }, (_, k) => d - n + 1 + k);
 const adjAt = s => i => (s.adj[i] > 0 ? s.adj[i] : null);
-function scoreAt(s, d, { lookback, volScale }) {
-  return S.variantScores(S.computeFeatures({ sessions: sessionWindow(d), adjOn: adjAt(s) }))[S.variantId({ lookback, volScale })];
+function scoreAt(s, d, variant) {
+  const R = ruleOf(variant);
+  return R.variantScores(R.computeFeatures({ sessions: sessionWindow(d, R.sessionsNeeded), adjOn: adjAt(s) }))[variantIdOf(variant)];
 }
 
 // ---- the run -----------------------------------------------------------------------------------------------------------------------------
@@ -82,17 +89,20 @@ function scoreAt(s, d, { lookback, volScale }) {
 //   signalRange   { first, last }  session indexes of the first and last signal day to run (inclusive); the caller fixed them from the period
 //   gridEnd       session index of the last exit day of the 5-session window grid (windows end at gridEnd, gridEnd-5, ...)
 function runBacktest({ sessions, series, benchmark, membersAsOf, flags, variant, signalRange, gridEnd, topN = TOP_N, onDay = null }) {
-  const variantId = S.variantId(variant);
+  const R = ruleOf(variant), variantId = variantIdOf(variant);
   const bench = series.get(benchmark);
   if (!bench) throw new Error(`no bars for the benchmark ${benchmark}`);
   const baskets = [], days = [];
   const totals = { excludedBy: { no_bar_on_day: 0, short_history: 0, gap_25: 0, price_at_or_below_5: 0, bad_volatility: 0, bad_return: 0, earnings_in_window: 0, earnings_possible: 0 }, earningsUnknown: 0, lostNames: 0, skippedDays: 0 };
   for (let d = signalRange.first; d <= signalRange.last; d++) {
     if (d < GAP_WINDOW || d + HOLD >= sessions.length) throw new RangeError(`signal day index ${d} is outside the data`);
+    // a rule that needs a long history is never run on a shortened one (momentum L=252 needs 274 sessions up to the signal day)
+    const need = R.historyNeeded(variant);
+    if (d + 1 < need) throw new RangeError(`${variant.key || variantId} needs ${need} sessions up to the signal day; only ${d + 1} exist up to ${sessions[d]}`);
     const day = sessions[d], e = d + 1, x = d + HOLD, entryDay = sessions[e], exitDay = sessions[x];
     const members = membersAsOf(day);
     const dayRow = { day, members: members.length, noBars: 0, noBarOnDay: 0, eligible: 0, selected: 0, skip: null };
-    const window = sessionWindow(d), gapFrom = d - GAP_WINDOW + 1;
+    const window = sessionWindow(d, Math.min(R.sessionsNeeded, d + 1)), gapFrom = d - GAP_WINDOW + 1;
     const cands = [];
     for (const sym of members) {
       const s = series.get(sym);
@@ -101,9 +111,9 @@ function runBacktest({ sessions, series, benchmark, membersAsOf, flags, variant,
       for (let i = gapFrom; i <= d; i++) if (!s.present[i]) { gap25 = true; break; }
       const input = {
         hasBarOnDay: Boolean(s.present[d]), nBars: s.cum[d + 1], close: Number.isNaN(s.close[d]) ? null : s.close[d], gap25, variant: variantId,
-        features: s.present[d] ? S.computeFeatures({ sessions: window, adjOn: adjAt(s) }) : null,
+        features: s.present[d] ? R.computeFeatures({ sessions: window, adjOn: adjAt(s) }) : null,
       };
-      const r = S.scoreCandidate(input);
+      const r = R.scoreCandidate(input);
       if (!r.eligible || r.score === null) {
         const why = r.reasons;
         if (why.includes('no_bar_on_day')) { dayRow.noBarOnDay++; totals.excludedBy.no_bar_on_day++; }
@@ -123,7 +133,7 @@ function runBacktest({ sessions, series, benchmark, membersAsOf, flags, variant,
     for (const c of cands) {
       if (picked.length >= topN) break;
       const f = flags({ symbol: c.symbol, entryDay, exitDay });
-      const r = S.scoreCandidate({ ...c.input, flags: f });
+      const r = R.scoreCandidate({ ...c.input, flags: f });
       if (!r.eligible) {
         if (r.reasons.includes('earnings_in_window')) totals.excludedBy.earnings_in_window++;
         else if (r.reasons.includes('earnings_possible')) totals.excludedBy.earnings_possible++;
@@ -195,4 +205,4 @@ function gapReport(days) {
   return { days: rows.length, avgNoBars: rows.length ? nSum / rows.length : 0, avgNoBarOnDay: rows.length ? oSum / rows.length : 0, shareNoBars: mSum ? nSum / mSum : 0, maxNoBars: rows.reduce((m, r) => Math.max(m, r.noBars), 0), years };
 }
 
-module.exports = { SCORING_BUILD, TOP_N, MIN_BARS, MIN_PRICE, GAP_WINDOW, VOL_WINDOW, HOLD, LOOKBACKS, ALL_VARIANTS, variantKey, parseVariant, buildId, alignSeries, scoreAt, sessionWindow, runBacktest, summarize, gapReport };
+module.exports = { SCORING_BUILD, TOP_N, MIN_BARS, MIN_PRICE, GAP_WINDOW, VOL_WINDOW, HOLD, LOOKBACKS, ALL_VARIANTS, MOMENTUM_VARIANTS, EVERY_VARIANT, ruleOf, ruleVariants, variantKey, parseVariant, buildId, alignSeries, scoreAt, sessionWindow, runBacktest, summarize, gapReport };

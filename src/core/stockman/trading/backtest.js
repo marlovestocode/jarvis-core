@@ -15,6 +15,8 @@ const { gapReport, summarize } = E;
 const MIGRATION_VERSION = 9;
 const PERIODS = Object.freeze({ START: '2020-03-01', END: '2026-11-13', HOLDOUT_WINDOWS: 100 });
 const BENCHMARK = 'SPY';
+// the reversal rule used all 6 of its variants before the momentum rule was written (CL-0047); the cross-rule total never counts below that
+const PRIOR_TRIALS = Object.freeze({ reversal: 6 });
 
 class HoldoutLockedError extends StockmanError { constructor(m) { super(m, { code: 'HOLDOUT_LOCKED' }); } }
 
@@ -67,7 +69,11 @@ function createBacktest({ ledger, data = {}, now = Date.now, opts = {} } = {}) {
   const need = () => { if (!db) throw new StockmanError('backtest: not started'); return db; };
   const num = sql => Number(need().stmt(sql).get().n);
 
-  const variantsTried = () => num('SELECT COUNT(*) AS n FROM backtest_variant');
+  // the rule of a stored variant is its key's prefix (no schema change): mom-... is momentum, everything else is reversal
+  const RULE_SQL = { reversal: "variant_key NOT LIKE 'mom-%'", momentum: "variant_key LIKE 'mom-%'" };
+  const variantsTried = rule => (rule ? num(`SELECT COUNT(*) AS n FROM backtest_variant WHERE ${RULE_SQL[rule]}`) : num('SELECT COUNT(*) AS n FROM backtest_variant'));
+  // variants tried across both rules: the reversal rule's 6 (CL-0047) are counted even on a fresh copy of the data
+  const acrossRules = () => Math.max(PRIOR_TRIALS.reversal, variantsTried('reversal')) + variantsTried('momentum');
   const holdoutRun = key => need().stmt("SELECT id, status, started_at AS startedAt FROM backtest_run WHERE variant_key = ? AND period = 'holdout'").get(key) || null;
 
   function loadSessions() {
@@ -110,12 +116,18 @@ function createBacktest({ ledger, data = {}, now = Date.now, opts = {} } = {}) {
     if (sessions.length < 200) throw new StockmanError(`the benchmark ${o.benchmark} has only ${sessions.length} bars; run the data history first`);
     const p = periodIndexes(sessions, o);
     const range = p[period];
+    const R = E.ruleOf(v);
+    // a long-history rule is never run on a shortened history: refuse BEFORE the variant is logged, so the attempt does not use up a trial
+    const histNeed = R.historyNeeded(v);
+    if (range.first + 1 < histNeed) {
+      throw new StockmanError(`${v.key} needs ${histNeed} sessions of ${o.benchmark} bars up to the first signal day ${sessions[range.first]}, but only ${range.first + 1} exist (data starts ${sessions[0]}); run the data history with the deeper start first`);
+    }
     // log the variant and take the lock BEFORE any result exists, so a crash cannot give a second look
     const id = `bt-${v.key}-${period}-${now()}`;
     d.tx(() => {
       d.stmt('INSERT OR IGNORE INTO backtest_variant(variant_key, lookback, vol_scale, first_run_at) VALUES (?,?,?,?)').run(v.key, v.lookback, v.volScale ? 1 : 0, now());
       d.stmt('INSERT INTO backtest_run(id, variant_key, period, status, started_at, scoring_build, cost_model, variants_tried, params) VALUES (?,?,?,?,?,?,?,?,?)')
-        .run(id, v.key, period, 'running', now(), E.buildId(v), MODEL_VERSION, variantsTried(), JSON.stringify({ range: [sessions[range.first], sessions[range.last]], gridEnd: sessions[p.gridEnd], holdoutFirstEntry: sessions[p.holdoutFirstEntry], benchmark: o.benchmark }));
+        .run(id, v.key, period, 'running', now(), E.buildId(v), MODEL_VERSION, variantsTried(v.rule === 'momentum' ? 'momentum' : 'reversal'), JSON.stringify({ range: [sessions[range.first], sessions[range.last]], gridEnd: sessions[p.gridEnd], holdoutFirstEntry: sessions[p.holdoutFirstEntry], benchmark: o.benchmark }));
     });
     try {
       const series = loadSeries(sessions);
@@ -126,15 +138,17 @@ function createBacktest({ ledger, data = {}, now = Date.now, opts = {} } = {}) {
       });
       const sum = summarize(r.baskets, { boot: o.boot });
       const gap = gapReport(r.days);
-      const tried = variantsTried();
+      const rule = R.id, tried = variantsTried(rule);
       const result = {
-        runId: id, variant: v.key, buildId: E.buildId(v), period, variantsTried: tried, variantsAllowed: E.ALL_VARIANTS.length,
+        runId: id, variant: v.key, rule, buildId: E.buildId(v), period, variantsTried: tried, variantsAllowed: E.ruleVariants(v).length, variantsAcrossRules: acrossRules(),
         firstSignalDay: sessions[range.first], lastSignalDay: sessions[range.last],
         firstEntryDay: r.baskets[0]?.entryDay ?? null, lastExitDay: r.baskets.at(-1)?.exitDay ?? null,
         tradingDaysRun: r.days.length, skippedDays: r.totals.skippedDays, summary: sum, survivorship: gap, totals: r.totals,
         data: { sessions: sessions.length, firstSession: sessions[0], lastSession: sessions.at(-1), symbolsWithBars: series.size },
         costLevels: REPORT_BPS, baseBps: BASE_BPS,
-        caveat: 'A simulation of past data, not a prediction. Members whose bars the provider no longer serves (delisted, renamed) are missing, which likely makes a reversal rule look better than it was (vault G24).',
+        caveat: rule === 'momentum'
+          ? 'A simulation of past data, not a prediction. Members whose bars the provider no longer serves (delisted, renamed) are missing; for a momentum rule the direction of that bias is unknown (vault G24, note 06).'
+          : 'A simulation of past data, not a prediction. Members whose bars the provider no longer serves (delisted, renamed) are missing, which likely makes a reversal rule look better than it was (vault G24).',
       };
       d.tx(() => {
         // replace this variant-and-period's earlier simulated rows, then write the new ones
@@ -167,7 +181,8 @@ function createBacktest({ ledger, data = {}, now = Date.now, opts = {} } = {}) {
   function status() {
     const d = need();
     return {
-      variantsTried: variantsTried(), variantsAllowed: E.ALL_VARIANTS.length,
+      variantsTried: variantsTried(), variantsAllowed: E.ALL_VARIANTS.length,   // all rows; allowed per rule
+      byRule: { reversal: variantsTried('reversal'), momentum: variantsTried('momentum') }, variantsAcrossRules: acrossRules(), variantsAllowedTotal: E.ALL_VARIANTS.length + E.MOMENTUM_VARIANTS.length,
       variants: d.stmt('SELECT variant_key AS variant, first_run_at AS firstRunAt FROM backtest_variant ORDER BY first_run_at').all(),
       runs: d.stmt('SELECT id, variant_key AS variant, period, status, started_at AS startedAt, finished_at AS finishedAt, variants_tried AS variantsTried FROM backtest_run ORDER BY started_at, id').all(),
       holdoutSpent: d.stmt("SELECT variant_key AS variant, id, status FROM backtest_run WHERE period = 'holdout' ORDER BY started_at").all(),
