@@ -1,0 +1,57 @@
+{
+ "results": [
+  {
+   "id": 4265737,
+   "name": "Terre Haute",
+   "latitude": 39.4667,
+   "longitude": -87.4139,
+   "elevation": 152,
+   "feature_code": "PPLA2",
+   "country_code": "US",
+   "admin1_id": 4921868,
+   "admin2_id": 4265736,
+   "timezone": "America/Indiana/Indianapolis",
+   "population": 60448,
+   "postcodes": [
+    "47801",
+    "47802",
+    "47803",
+    "47804",
+    "47805",
+    "47807",
+    "47808",
+    "47809",
+    "47811",
+    "47812",
+    "47813",
+    "47814",
+    "47885"
+   ],
+   "country_id": 6252001,
+   "country": "United States",
+   "admin1": "Indiana",
+   "admin2": "Vigo"
+  },
+  {
+   "id": 5532436,
+   "name": "Terlingua",
+   "latitude": 29.32296,
+   "longitude": -103.61214,
+   "elevation": 862,
+   "feature_code": "PPL",
+   "country_code": "US",
+   "admin1_id": 4736286,
+   "admin2_id": 4676798,
+   "timezone": "America/Chicago",
+   "population": 300,
+   "postcodes": [
+    "79852"
+   ],
+   "country_id": 6252001,
+   "country": "United States",
+   "admin1": "Texas",
+   "admin2": "Brewster"
+  }
+ ],
+ "generationtime_ms": 0.2849102
+}

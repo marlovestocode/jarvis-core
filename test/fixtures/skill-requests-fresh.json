@@ -36,5 +36,16 @@
   {"text": "message my sister I'm on my way", "outcome": "decline"},
   {"text": "what is the meaning of life", "outcome": "answer"},
   {"text": "tell me about yourself", "outcome": "answer"},
-  {"text": "summarize the plot of Hamlet", "outcome": "answer"}
+  {"text": "summarize the plot of Hamlet", "outcome": "answer"},
+  {"text": "refresh this tab", "group": ["browser"], "tool": "browser_refresh_tab"},
+  {"text": "group my work tabs together", "group": ["browser"], "tool": "browser_group_tabs"},
+  {"text": "put these two tabs in split view", "group": ["browser"], "tool": "browser_split_view"},
+  {"text": "snap my chrome and code windows side by side", "group": ["windows"], "tool": "window_split"},
+  {"text": "what 12 songs are next in my queue", "group": ["media"], "tool": "youtube_music"},
+  {"text": "add milk to my grocery list", "group": ["lists"], "tool": "list_add"},
+  {"text": "remind me every weekday at 8 to stand up", "group": ["timers"], "tool": "set_reminder"},
+  {"text": "which apps are using the most ram", "group": ["system"], "tool": "process_top"},
+  {"text": "what was the last song i listened to", "group": ["ytmusic"], "tool": "music_stats"},
+  {"text": "list my memories", "group": ["memory"], "tool": "memory_list"},
+  {"text": "what model are you running on", "group": ["self"], "tool": "self_config"}
 ]

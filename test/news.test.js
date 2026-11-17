@@ -107,3 +107,16 @@ test('news: default feeds come from config; cached 15 min', async () => {
   await getHeadlines(n.fetcher, { feeds: DEFAULTS.news.feeds });
   assert.equal(n.calls.length, 8);
 });
+
+test('news: a topic is scored, not all-or-nothing; the best match ranks first', async () => {
+  const feed = `<?xml version="1.0"?><rss version="2.0"><channel><title>Mix</title>
+<item><title>Democrats want to stop Trump's arch</title><link>https://x.example/1</link><pubDate>Mon, 09 Nov 2026 10:00:00 GMT</pubDate><description>Plans.</description></item>
+<item><title>Trump administration unveils new rule</title><link>https://x.example/2</link><pubDate>Mon, 09 Nov 2026 08:00:00 GMT</pubDate><description>Rule.</description></item>
+<item><title>Local bake sale raises money</title><link>https://x.example/3</link><pubDate>Mon, 09 Nov 2026 12:00:00 GMT</pubDate><description>Cakes.</description></item>
+</channel></rss>`;
+  const n = fakeNet([[/feeds\.bbci/, feed]]);
+  const h = await getHeadlines(n.fetcher, { topic: 'Trump administration', count: 5, feeds: ['https://feeds.bbci.co.uk/news/rss.xml'] });
+  assert.deepEqual(h.items.map(i => i.link), ['https://x.example/2', 'https://x.example/1'], 'whole phrase first, one-word match kept, unrelated dropped');
+  const none = await getHeadlines(n.fetcher, { topic: 'quantum chromodynamics', count: 5, feeds: ['https://feeds.bbci.co.uk/news/rss.xml'] });
+  assert.match(formatHeadlines(none), /try web_search/);
+});

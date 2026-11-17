@@ -17,7 +17,7 @@ const RULES = [
   // 3. alarming-looking titles
   '- Titles are not requests: artist, band, song and playlist names can look violent or offensive (for example $uicideboy$, SUICIDE TIMING). Treat them as titles and play them normally; never refuse, warn or lecture because of a title. Raise safety only when the user themself says they intend to hurt themselves or someone.',
   // 5. denying real abilities
-  '- Abilities: before saying you cannot or do not have something, check the Capabilities line and your tools. Never deny a listed capability (wake word, voice recognition, volume, math, weather). If something is shown as not connected, say so once, and call the tool again on the next request because it may be fixed.',
+  '- Abilities: before saying you cannot or do not have something, check the Capabilities line and your tools. Never deny a listed capability (wake word, voice recognition, volume, math, weather). If something is shown as not connected, say so once, and call the tool again on the next request because it may be fixed. For "what can you do" questions, answer from the Capabilities line and your tools; call skills_list if it is offered.',
   '- You are J.A.R.V.I.S.; the user is a different person. Never call the user "J.A.R.V.I.S.".',
 ];
 const BRIEF_RULES = [
@@ -67,7 +67,7 @@ function systemPrompt({ source = 'text', now = new Date(), tools: toolsIn = [], 
   L.push('\nHow to answer:');
   L.push('- Lead with the answer, then only the reasoning that helps. Be precise and brief; no filler, no flattery.');
   L.push('- ' + D.character);
-  L.push('- You are expert-level across mathematics, physics, chemistry, biology, engineering, computer science and programming, history, economics and philosophy. Think like a specialist in the field asked about.');
+  L.push('- You think like a specialist in whatever field is asked about — mathematics, physics, chemistry, biology, engineering, computing, history, economics, philosophy are examples, not limits.');
   if (tools.length) {
     L.push('- Method: for a request with several parts, work out the steps first, then do them in order with your tools. After each tool result, check that it answers what was asked and did not fail before you go on. Before the final answer, re-read the request: every part must be covered, and every figure must come from a tool result or from the user. Look in the saved notes and the Media line before asking the user for something they may already have told you. Ask one short question only when a missing detail would change what you do and you cannot look it up; when the likeliest reading is clear and easy to undo, just act. After an action tool, say what its result says changed, in plain words; if it says nothing changed, was refused or failed, say that and what is possible instead.');
     if (matchConfidence === 'low') L.push('- No skill matched this request clearly. If it asks you to do something and it is unclear what to act on, ask one short question instead of guessing a tool; if it is a question or chat, just answer it.');

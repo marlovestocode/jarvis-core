@@ -25,10 +25,61 @@ async function resolvePlace(fetcher, text, config) {
   const q = String(text || '').trim().replace(/[.?!]+$/, '');
   if (HOME.test(q) || q.toLowerCase() === String(config.location.city).toLowerCase()) return home(config);
   const list = await searchPlaces(fetcher, q);
-  if (!list.length) return { candidates: [] };
+  if (list.length) return pick(list, q);
+  return fuzzy(fetcher, q);
+}
+
+// one clear match → the place; several close ones → candidates to ask about
+function pick(list, q) {
   const [a, b] = list;
   if (!b || q.includes(',') || (a.population || 0) >= 5 * (b.population || 0)) return toPlace(a);
   return { candidates: list.slice(0, 5).map(label) };
+}
+
+const plain = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+function distance(a, b) {   // Levenshtein
+  const row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = row[0]; row[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = tmp;
+    }
+  }
+  return row[b.length];
+}
+const similarity = (a, b) => 1 - distance(a, b) / Math.max(a.length, b.length, 1);
+
+// Nothing matched the name as typed. Try, in order: a trailing state/country word ("Springfield Illinois", "Springfield MO"), the city
+// alone when the region matched nothing, the name without accents/capitals and with doubled letters collapsed, then a prefix search ranked
+// by spelling. A guess is never returned as the place: only an exact-name retry resolves, a spelling guess comes back as candidates to ask about.
+async function fuzzy(fetcher, q) {
+  if (q.includes(',')) {
+    const found = await searchPlaces(fetcher, q.split(',')[0].trim());
+    if (found.length) return { candidates: [...new Set(found.slice(0, 5).map(label))] };
+  } else {
+    const words = q.split(/\s+/);
+    for (const k of [1, 2]) {
+      if (words.length <= k) continue;
+      const qq = `${words.slice(0, -k).join(' ')}, ${words.slice(-k).join(' ')}`;
+      const found = await searchPlaces(fetcher, qq);
+      if (found.length) return pick(found, '');   // the region was a guess at a word, so several matches still ask
+    }
+  }
+  const tried = new Set([q]);
+  for (const qq of [plain(q), plain(q).replace(/([a-z])\1+/g, '$1')]) {
+    if (!qq || tried.has(qq)) continue;
+    tried.add(qq);
+    const found = await searchPlaces(fetcher, qq);
+    if (found.length) return pick(found, qq);
+  }
+  const city = q.split(',')[0].trim();
+  if (city.length < 4) return { candidates: [] };
+  const found = await searchPlaces(fetcher, city.slice(0, 3));
+  const want = plain(city);
+  const ranked = found.map(r => ({ r, s: similarity(want, plain(r.name)) })).filter(x => x.s >= 0.6).sort((x, y) => y.s - x.s);
+  return { candidates: [...new Set(ranked.slice(0, 5).map(x => label(x.r)))] };
 }
 
 async function searchPlaces(fetcher, text) {

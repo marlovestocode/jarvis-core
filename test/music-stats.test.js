@@ -8,6 +8,9 @@ const { createPlayLog, normalize } = require('../src/core/music/log');
 const { report, periodRange } = require('../src/core/music/stats');
 const { createMusicStatsTool } = require('../src/core/tools/musicstats');
 const { route } = require('../src/core/brain/router');
+const { loadGroups, buildCatalog } = require('../src/core/skills');
+const { selectGroups } = require('../src/core/skills/select');
+const { toolDeps } = require('./helpers/tool-deps');
 const { DEFAULTS } = require('../src/core/config');
 
 const tmp = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'jmusic-')), 'plays.jsonl');
@@ -156,5 +159,12 @@ test('tool: music_stats answers from the log, caps limits, and the router sends 
   const out = await tool.run({ report: 'top_artists', period: 'all', limit: 999 });
   assert.match(out, /Top artists/); assert.match(out, /Log covers 25 plays since/);
   assert.match(await tool.run({}), /No plays logged|Listening/);
-  for (const q of ['what are my top artists', 'how often do I skip songs', 'what did I listen to last week', 'what is my music taste', 'what is my skip rate']) assert.equal(route(q).tools, true, q);
+  for (const q of ['what are my top artists', 'how often do I skip songs', 'what did I listen to last week', 'what is my music taste', 'what is my skip rate', 'show me my music statistics', 'my listening analytics', 'top artists', 'what are my top songs']) assert.equal(route(q).tools, true, q);
+});
+
+test('select: statistics and bare top-artists phrasings load the ytmusic group that owns music_stats', () => {
+  const catalog = buildCatalog(loadGroups(toolDeps()));
+  for (const q of ['show me my music statistics', 'my listening analytics', 'top artists', 'what are my top songs']) {
+    assert.ok(selectGroups(q, {}, catalog).includes('ytmusic'), q);
+  }
 });

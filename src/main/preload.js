@@ -23,7 +23,12 @@ contextBridge.exposeInMainWorld('jarvis', {
     places: query => ipcRenderer.invoke('settings:places', String(query)),
     close: () => ipcRenderer.invoke('settings:close'),
     speakerStatus: () => ipcRenderer.invoke('speaker:status'),
-    speakerEnroll: () => ipcRenderer.invoke('speaker:enroll'),
+    speakerPhrases: () => ipcRenderer.invoke('speaker:phrases'),
+    speakerRecord: () => ipcRenderer.invoke('speaker:record'),
+    speakerFinish: opts => ipcRenderer.invoke('speaker:finish', opts),
+    speakerCancel: () => ipcRenderer.invoke('speaker:cancel'),
+    speakerEnroll: opts => ipcRenderer.invoke('speaker:enroll', opts),
+    speakerRemove: id => ipcRenderer.invoke('speaker:remove', id),
     speakerClear: () => ipcRenderer.invoke('speaker:clear'),
     memory: {
       list: q => ipcRenderer.invoke('memory:list', q),

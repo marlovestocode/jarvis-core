@@ -87,7 +87,8 @@ function createWorkMem({ ttlMs = 15 * 60 * 1000, maxEntries = 20, maxSessions = 
     if (!owner(speaker)) return '';
     const es = recent(id, maxEntries);
     const g = goal(id);
-    const tail = g?.open ? [`Last goal (open): ${g.text}`, ...(cont ? [`Continue: ${g.text}`] : [])] : [];
+    // an unfinished goal rides along only when the user is picking it up ("continue", "try again"); on any other request it anchored the model to the old task
+    const tail = g?.open && cont ? [`Last goal (open): ${g.text}`, `Continue: ${g.text}`] : [];
     if (!es.length && !tail.length) return '';
     const room = budgetChars - HEADER.length - tail.reduce((a, l) => a + l.length + 1, 0);
     const lines = [];

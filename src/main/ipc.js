@@ -24,6 +24,9 @@ function registerIpc(ctx) {
     try {
       const res = await orchestrator.send(ctx.sessionId, text, { source: 'text' });
       ctx.sessionId = res.sessionId;
+      // "when I text, talk back": say a typed message's answer out loud when the setting is on. announce() only speaks while the voice is idle,
+      // so it never talks over a voice turn, and it goes through the same speaking path as every reply (Esc and "stop" cut it).
+      if (ctx.getConfig?.()?.speech?.speakChatReplies && res.reply && !res.error && !res.stopped) { try { Promise.resolve(ctx.voice?.announce?.(res.reply)).catch(() => {}); } catch { /* speaking is a nicety */ } }
       return res;
     } catch (err) {
       return { error: err.message === 'BUSY' ? 'BUSY' : String(err.message || err), reply: '', stopped: false };
@@ -87,9 +90,15 @@ function registerIpc(ctx) {
     return { ...(await describeNow()), errors };
   });
   // your voice: enrol (about 12 s of speech), forget, status. Only numbers are stored.
-  const voiceStatus = () => ({ available: ctx.speaker.available(), enrolled: ctx.speaker.enrolled(), count: ctx.speaker.count(), enrolling: !!ctx.enrollBuf });
+  const voiceStatus = () => ({ available: ctx.speaker.available(), enrolled: ctx.speaker.enrolled(), count: ctx.speaker.count(), enrolling: !!ctx.enrollBuf, voices: ctx.speaker.voices?.() || [] });
   h('speaker:status', () => voiceStatus());
-  h('speaker:enroll', async () => { const r = await ctx.enrollVoice(); return { ...r, ...voiceStatus() }; });
+  h('speaker:enroll', async (_e, o) => { const r = await ctx.enrollVoice({ append: !!(o && o.append) }); return { ...r, ...voiceStatus() }; });
+  // guided enrolment: the sentences to read, listen to one, finish (append = add another person), cancel
+  h('speaker:phrases', () => require('../core/voice/speaker/enroll').PHRASES);
+  h('speaker:record', async () => ({ ...(await ctx.enrollPhrase()), ...voiceStatus() }));
+  h('speaker:finish', async (_e, o) => { const r = await ctx.enrollFinish({ append: !!(o && o.append), name: o && typeof o.name === 'string' ? o.name : '' }); return { ...r, ...voiceStatus() }; });
+  h('speaker:cancel', () => { ctx.enrollCancel(); return voiceStatus(); });
+  h('speaker:remove', (_e, id) => { ctx.speaker.remove(String(id || '')); return voiceStatus(); });
   h('speaker:clear', () => { ctx.speaker.clear(); return voiceStatus(); });
   // while a hotkey field is capturing, release global shortcuts so the keypress reaches the field
   let capturing = false;

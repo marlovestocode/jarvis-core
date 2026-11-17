@@ -68,6 +68,7 @@ test('runner: a group name called as a tool loads the group and lists its tools 
   const scope = createToolRunner(catalog.tools, { groups: catalog.groups }).turn(['core']);
   const r = await scope.run('ytmusic', {}, { turn: { tainted: false } });
   assert.equal(r.ok, true);
+  assert.equal(r.groupLoad, true, 'marked so a load never backs an action claim');
   assert.match(r.text, /ytmusic is a skill group, not a tool/);
   assert.match(r.text, /ytm_library, ytm_play_library, music_stats/);
   assert.ok(scope.loaded().includes('ytmusic'));

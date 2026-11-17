@@ -147,7 +147,7 @@ function applyPatch(current, patch = {}, { providers, engines }) {
   if (isObj(patch.speech)) {
     const sp = patch.speech;
     if ('dialect' in sp) { if (DIALECTS.includes(sp.dialect)) config.speech.dialect = sp.dialect; else errors.push(`Unknown dialect: ${String(sp.dialect).slice(0, 30)}`); }
-    for (const k of ['contractions', 'pauses']) if (k in sp) { if (typeof sp[k] === 'boolean') config.speech[k] = sp[k]; else errors.push(`Bad speech switch: ${k}`); }
+    for (const k of ['contractions', 'pauses', 'speakChatReplies']) if (k in sp) { if (typeof sp[k] === 'boolean') config.speech[k] = sp[k]; else errors.push(`Bad speech switch: ${k}`); }
     if ('dateOrder' in sp) { if (sp.dateOrder === 'mdy' || sp.dateOrder === 'dmy') config.speech.dateOrder = sp.dateOrder; else errors.push('Date order must be mdy or dmy'); }
   }
   if (isObj(patch.library) && 'dir' in patch.library) {

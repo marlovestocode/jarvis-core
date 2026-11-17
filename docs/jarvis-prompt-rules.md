@@ -51,3 +51,10 @@ Quick chat (no tools) gets a compressed version: never say you did anything, tit
 - **"Didn't catch that" aloud.** A dropped low-confidence transcript is logged and silent; JARVIS does not say it.
 - **Music result vs query.** No similarity check that asks before playing a loose match.
 - **Threshold tuning.** The -1.0 log-probability gate was set from synthetic clips; review `jarvis.log` for "stt dropped" lines after a few days.
+
+## Voice and dialect (human-jarvis, 2026-11-14)
+
+- Default dialect is `human-jarvis` (`src/core/voice/dialect.js`): concise, dry, human speaking habits, contractions. `british-formal`, `neutral` and `casual` remain selectable in Settings under "How he talks". A saved `speech.dialect` in the user's config overrides the default.
+- Each preset has a `spoken` flag. `natural` makes `articulate()` (`voice/speech-text.js`) say times ("quarter past three"), and ISO dates ("today", "tomorrow", a weekday, "December twenty-fifth"); `literal` keeps the old "3 oh 5 P M" and "November 10, twenty twenty-six".
+- `voice/spoken-list.js` phrases lists and durations for speech (`spokenSongs`, `spokenDuration`, `parseClock`) and varies canned confirmations (`pick`, never the same line twice in a row). Used by `media/skill.js` in voice mode only; typed chat keeps its numbered list with exact lengths and total. The model-facing `record` text stays literal.
+- Spec: `docs/superpowers/specs/2026-11-14-humanized-voice-design.md`; plan: `docs/superpowers/plans/2026-11-14-humanized-voice.md`.

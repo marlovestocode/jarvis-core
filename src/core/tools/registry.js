@@ -206,7 +206,7 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null, toolIndex =
         if (alt?.tool) return reroute(await scopedRun(alt.tool, { ...(args || {}), ...alt.args }, ctx), name, alt.tool);
         if (alt?.group) {          // a group's name called as a tool: load the group and say which tools it has
           const r = load(alt.group);
-          return r.ok ? { ok: true, text: `${name} is a skill group, not a tool. ${r.text} Call one of those tools.` } : r;
+          return r.ok ? { ok: true, groupLoad: true, text: `${name} is a skill group, not a tool. ${r.text} Call one of those tools.` } : r;
         }
         return unknown(name);
       }

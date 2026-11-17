@@ -2,6 +2,9 @@
 html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
 body { font-family: var(--font-sans); color: var(--text); font-size: 13px; user-select: none; }
 button, select, input { font: inherit; color: inherit; }
+button { background: rgba(var(--accent-rgb), 0.06); border: var(--line) solid rgba(var(--accent-rgb), 0.3); border-radius: var(--radius); padding: 5px 8px; cursor: pointer; }
+button:hover { border-color: var(--accent); color: var(--accent); }
+button:disabled { cursor: not-allowed; opacity: 0.4; }
 .panel { position: absolute; inset: 6px; display: grid; grid-template-rows: auto 1fr; background: rgba(var(--base-rgb), 0.92); border: var(--line) solid rgba(var(--accent-rgb), var(--a-line)); border-radius: 6px; box-shadow: 0 0 var(--glow-r) rgba(var(--accent-rgb), 0.25); overflow: hidden; }
 .head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: var(--line) solid rgba(var(--accent-rgb), 0.2); -webkit-app-region: drag; }
 .head button { -webkit-app-region: no-drag; }

@@ -483,6 +483,18 @@ function Do-Battery {
   @{ percent = [int]$b.EstimatedChargeRemaining; charging = (@(2, 3, 6, 7, 8, 9) -contains [int]$b.BatteryStatus); minutes = $min }
 }
 
+# the heaviest apps, grouped by name (Chrome is one line, not forty): memory is the working set, cpu is total CPU seconds used so far (not a live percent)
+function Do-ProcessTop($m) {
+  $n = [Math]::Max(1, [Math]::Min(25, [int]$m.count))
+  $rows = Get-Process -ErrorAction SilentlyContinue | Group-Object ProcessName | ForEach-Object {
+    $mem = ($_.Group | Measure-Object WorkingSet64 -Sum).Sum
+    $cpu = ($_.Group | Where-Object { $null -ne $_.CPU } | Measure-Object CPU -Sum).Sum
+    @{ name = $_.Name; count = $_.Count; memMB = [Math]::Round($mem / 1MB); cpuSec = [Math]::Round([double]$cpu) }
+  }
+  $key = if ($m.by -eq 'cpu') { 'cpuSec' } else { 'memMB' }
+  @($rows | Sort-Object { $_[$key] } -Descending | Select-Object -First $n)
+}
+
 function Do-PowerPlans {
   @(powercfg /list | ForEach-Object { if ($_ -match 'GUID:\s*([0-9a-fA-F-]{36})\s+\((.+?)\)\s*(\*)?\s*$') { @{ id = $Matches[1]; name = $Matches[2]; active = [bool]$Matches[3] } } })
 }
@@ -582,6 +594,7 @@ function Handle($line) {
       'setBluetooth' { Set-Radio 'Bluetooth' ([bool]$m.on) }
       'battery' { Do-Battery }
       'powerPlans' { Do-PowerPlans }
+      'processTop' { Do-ProcessTop $m }
       'setPowerPlan' { Do-SetPowerPlan $m }
       'focusAssist' { Do-FocusAssist $m }
       'clipboardRead' { Do-ClipboardRead }

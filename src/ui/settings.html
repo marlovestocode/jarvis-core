@@ -39,8 +39,10 @@
       <label class="row"><span>Only my voice wakes "Jarvis"</span><input type="checkbox" id="speakerGate"></label>
       <label class="row"><span>Other voices</span><select id="speakerMode"><option value="guest">Answer as a guest</option><option value="block">Ignore them</option></select></label>
       <label class="row"><span>Learn my voice as I use it</span><input type="checkbox" id="speakerLearn"></label>
-      <label class="row"><span id="voiceState">Your voice</span><span><button type="button" id="voiceEnroll">Enroll</button> <button type="button" id="voiceClear" hidden>Remove</button></span></label>
+      <label class="row"><span id="voiceState">Your voice</span><span><button type="button" id="voiceEnroll">Enroll</button> <button type="button" id="voiceAdd" hidden title="Let another person's voice count as yours">Add another person</button> <button type="button" id="voiceClear" hidden>Remove</button></span></label>
+      <label class="row"><span>Name for the next voice</span><input type="text" id="voiceName" maxlength="40" placeholder="e.g. Alex"></label>
       <p class="hint" id="voiceDetail"></p>
+      <ul class="items" id="voiceList"></ul>
       <label class="row"><span>Log what I listen to</span><input type="checkbox" id="logPlays"></label>
       <p class="hint" id="logDetail">Stays on this PC. Needs the JARVIS YouTube Music extension 1.3 or newer.</p>
       <label class="row"><span>Browser control (tabs, pages, history)</span><input type="checkbox" id="browserOn"></label>

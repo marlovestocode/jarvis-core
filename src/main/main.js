@@ -89,7 +89,7 @@ const { loadOrCreateLinkKey } = require('../core/media/link-key');
 const { createYtMusic } = require('../core/media/ytmusic');
 const { createYtPlaylists } = require('../core/media/ytplaylists');
 const { createSpeaker } = require('../core/voice/speaker/speaker');
-const { enrollVoice } = require('../core/voice/speaker/enroll');
+const { enrollVoice, recordPhrase, finishEnroll, cancelEnroll } = require('../core/voice/speaker/enroll');
 const { createPlayLog } = require('../core/music/log');
 const { createMemorySystem } = require('../core/memory/system');
 const { isUntrustedTool } = require('../core/brain/guard');
@@ -296,6 +296,7 @@ ctx.actionLog = createActionLog({ file: path.join(DATA_DIR, 'actions.log'), log:
 ctx.confirm = createConfirm({ actionLog: ctx.actionLog, onResolved: r => ctx.tasks?.onConfirmResolved(r), onReasked: r => ctx.tasks?.onConfirmReasked(r) });   // a task step waiting on this yes/no hears the outcome
 ctx.timerStore = createTimerStore({ file: path.join(DATA_DIR, 'timers.json'), log: ctx.log });
 ctx.scheduler = createScheduler({ store: ctx.timerStore, bus: ctx.bus, log: ctx.log });
+ctx.lists = require('../core/lists/store').createListStore({ file: path.join(DATA_DIR, 'lists.json'), log: ctx.log });
 // Saved multi-step tasks (src/core/tasks): steps run through ctx.tools, which is built after the catalog, so it is read lazily.
 // Any failure here leaves JARVIS without task tools, as before.
 try {
@@ -314,8 +315,8 @@ try {
   ctx.taskTools = createTaskTools({ runner: ctx.tasks });
 } catch (err) { ctx.log('tasks unavailable:', err?.message || err); ctx.tasks = null; ctx.tasksSkill = null; ctx.taskTools = null; }
 // JARVIS's own introspection tools: the checks read ctx live each time they run (src/main/checks.js)
-const self = { getChecks: () => selfChecks(ctx), about: () => ({ version, electron: process.versions.electron, node: process.versions.node, startedAt: ctx.startedAt, dataDir: DATA_DIR }), logFile: LOG_FILE, dataDir: DATA_DIR };
-ctx.catalog = brain.defaultCatalog({ self, analytics: { metrics: ctx.metrics, openDashboard: ctx.openDashboard }, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, getConfig: ctx.getConfig, applySettings: patch => { const { config, errors } = applyPatch(ctx.config, patch, { providers: ctx.providers, engines: ctx.engines }); ctx.saveConfig(config); return errors; }, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, lyrics: ctx.lyrics, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog }, ...(ctx.taskTools ? { tasks: ctx.taskTools } : {}) });
+const self = { getChecks: () => selfChecks(ctx), about: () => ({ version, electron: process.versions.electron, node: process.versions.node, startedAt: ctx.startedAt, dataDir: DATA_DIR, model: (() => { try { return ctx.getConfig()?.ollama?.model || ''; } catch { return ''; } })(), embedder: (() => { try { return ctx.cortex?.health?.()?.embedder || null; } catch { return null; } })() }), logFile: LOG_FILE, dataDir: DATA_DIR };
+ctx.catalog = brain.defaultCatalog({ self, analytics: { metrics: ctx.metrics, openDashboard: ctx.openDashboard }, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, wallpaperClients: () => (ctx.bridge ? ctx.bridge.clients() : null), getConfig: ctx.getConfig, applySettings: patch => { const { config, errors } = applyPatch(ctx.config, patch, { providers: ctx.providers, engines: ctx.engines }); ctx.saveConfig(config); return errors; }, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, lyrics: ctx.lyrics, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, lists: ctx.lists, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog }, ...(ctx.taskTools ? { tasks: ctx.taskTools } : {}) });
 ctx.toolList = ctx.catalog.tools;
 for (const m of ctx.catalog.missing) if (m.error) ctx.log(`skill group ${m.id} failed to load: ${m.error}`);
 // tool discovery: embeddings come from the memory system's embedder (none installed: lexical only, within 250 ms)
@@ -567,7 +568,10 @@ app.whenReady().then(async () => {
   // the hidden mic page loads on first voice use, not at startup
   ctx.windows.ensureChat();
   ctx.bus.on('*', ev => ctx.windows.sendAll('ai:event', ev));
-  ctx.enrollVoice = () => enrollVoice(ctx);
+  ctx.enrollVoice = opts => enrollVoice(ctx, opts);
+  ctx.enrollPhrase = () => recordPhrase(ctx);
+  ctx.enrollFinish = opts => finishEnroll(ctx, opts);
+  ctx.enrollCancel = () => cancelEnroll(ctx);
   registerIpc(ctx);
   ctx.memorySystem.start();   // startup sweep (newest 5 ready chats) and the 5 s idle tick
   ctx.tray = createTray({

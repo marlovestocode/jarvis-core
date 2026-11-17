@@ -33,7 +33,7 @@ JARVIS's tools are grouped into **skill groups**. Each turn, a small router pick
 | `media` | Play, pause, skip and volume for whatever is playing on Windows |
 | `ytmusic` | YouTube Music: play any song, album, artist or playlist, queue, like, your playlists (add/remove with undo), listening stats, "secret" surprise picks |
 | `timers` | Timers, alarms and reminders, spoken when they fire (also after a restart) |
-| `knowledge` | Wikipedia (offline library via Kiwix, or online), weather and alerts, news headlines, sports scores |
+| `knowledge` | Wikipedia (offline library via Kiwix, or online), weather and alerts, news headlines, sports scores, and `globe_focus`: fly the wallpaper globe to any place (geocoded with Open-Meteo) or to the Moon, the Sun, any planet or the whole solar system (real positions and distances), zoom or go home, and describe it from Wikipedia |
 | `web` | Web search and reading the pages it finds, with an audit log of what was fetched |
 | `system` | Live CPU/GPU/RAM/VRAM, temperatures, network and disk |
 | `pc` | Open apps, manage windows, lock, sleep, shut down (asks first) |

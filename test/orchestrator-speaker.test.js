@@ -414,12 +414,12 @@ test('refusal wording names the speaker: plan validation, task step and clipboar
 });
 
 test('guest window: earlier chat is never sent; the saved session keeps it; the guest message is marked', async () => {
-  const c = setup([say('Got it.'), say('Hello.')]);
+  const c = setup([say('Stored in the vault.'), say('Hello.')]);
   await c.orc.send(c.s.id, 'my locker code is SECRETCHAT', { source: 'text' });
   await c.orc.send(c.s.id, 'hello who are you', { source: 'voice', speaker: 'guest' });
   const sent = c.fp.calls[1].messages.map(m => String(m.content)).join('\n');
   assert.ok(!sent.includes('SECRETCHAT'));
-  assert.ok(!sent.includes('Got it.'));
+  assert.ok(!sent.includes('Stored in the vault.'));
   assert.ok(sent.includes('hello who are you'));
   const msgs = c.sessions.load(c.s.id).messages;
   assert.equal(msgs[0].content, 'my locker code is SECRETCHAT');
@@ -428,7 +428,7 @@ test('guest window: earlier chat is never sent; the saved session keeps it; the 
 });
 
 test('unsure window keeps the chat history; the unsure message is marked', async () => {
-  const c = setup([say('Got it.'), say('Hello.')]);
+  const c = setup([say('Stored in the vault.'), say('Hello.')]);
   await c.orc.send(c.s.id, 'my locker code is SECRETCHAT', { source: 'text' });
   await c.orc.send(c.s.id, 'what was it', { source: 'voice', speaker: 'unsure' });
   assert.ok(c.fp.calls[1].messages.some(m => String(m.content).includes('SECRETCHAT')));

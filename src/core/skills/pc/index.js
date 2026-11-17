@@ -21,7 +21,8 @@ function createGroup({ pc, media } = {}) {
     { re: /\bsystem volume\b|\b(?:what(?:'s| is)|which (?:windows|apps|programs)(?: are)?|show me what(?:'s| is)) (?:open|running)\b/i, w: 3 },
     { re: /\b(?:open|launch|close|quit)\s+(?!it\b|that\b|this\b|them\b)\w+/i, w: 3 },
     { re: /\bswitch to\b|\bshut ?down\b/i, w: 3 },
-    { words: ['open', 'launch', 'close', 'quit'], w: 1 },
+    { re: /\bfocus\s+(?:on\s+)?(?!assist\b|mode\b)\w+/i, w: 3 },
+    { words: ['open', 'launch', 'close', 'quit', 'focus'], w: 1 },
     { words: ['window', 'windows', 'folder', 'folders', 'file', 'files', 'move', 'delete', 'recycle', 'undo', 'lock', 'shutdown', 'restart', 'sleep'], w: 2 },
   ], tools: tools.map(t => own(t, ALIASES[t.name] || [], {})) };
 }

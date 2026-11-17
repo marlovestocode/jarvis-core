@@ -10,9 +10,10 @@ function createCaptureScheduler({ sessions, extractor, chats, isIdle = () => tru
   let current = null; // { id, ac }
   let batch = 0;      // facts proposed since the queue was last empty
   const counts = { done: 0, failed: 0, aborted: 0 };
+  const cooling = new Map();   // id -> { n, until }: a failed capture waits 60 s, then 2 min, 4 min... up to 15 min, instead of retrying every tick
 
   const on = () => getConfig()?.memory?.autoCapture !== false;
-  const enqueue = id => { if (id && !queue.includes(id) && current?.id !== id) queue.push(String(id)); };
+  const enqueue = id => { if (id && !queue.includes(id) && current?.id !== id && !(cooling.get(String(id))?.until > now())) queue.push(String(id)); };
 
   // ≥ 4 messages, ≥ 2 from the user, and no summary (or stub) newer than the chat
   function ready(s) {
@@ -53,10 +54,16 @@ function createCaptureScheduler({ sessions, extractor, chats, isIdle = () => tru
       try {
         const r = await extractor.run(s, { signal: ac.signal, alive: () => !!sessions.load(id) });
         counts.done++;
+        cooling.delete(id);
         batch += r?.proposed || 0;
       } catch (err) {
         if (err?.name === 'AbortError' || ac.signal.aborted) { counts.aborted++; queue.unshift(id); }
-        else { counts.failed++; log('memory capture failed: ' + (err?.message || err)); }
+        else {
+          counts.failed++;
+          const n = (cooling.get(id)?.n || 0) + 1;
+          cooling.set(id, { n, until: now() + Math.min(900000, 60000 * 2 ** (n - 1)) });
+          log('memory capture failed: ' + (err?.message || err));
+        }
       } finally { current = null; }
     }
     if (!queue.length && batch > 0) {

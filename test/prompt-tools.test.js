@@ -52,15 +52,21 @@ test('prompt: group hints and the more_skills hint are rendered', () => {
 
 test('prompt: JARVIS has a voice of his own, and the spoken version carries the speaking habits', () => {
   const { systemPrompt } = require('../src/core/brain/prompt');
+  const { resolve } = require('../src/core/voice/dialect');
+  const def = systemPrompt({ source: 'voice', tools: [] });
+  assert.match(def, /how a sharp friend talks/, 'the default dialect is human-jarvis');
+  assert.match(def, /Fragments are fine/);
+  assert.match(def, /Never open with "Certainly!"/);
+  const formal = resolve({ dialect: 'british-formal' });
   for (const brief of [false, true]) {
-    const p = systemPrompt({ source: 'voice', brief, tools: [] });
+    const p = systemPrompt({ source: 'voice', brief, tools: [], dialect: formal });
     assert.match(p, /Character: J\.A\.R\.V\.I\.S\. as in the films/, `brief=${brief}`);
     assert.match(p, /Diction: British English in a formal but natural register/, `brief=${brief}`);
     assert.match(p, /Use contractions where a person would say them aloud/, `brief=${brief}`);
     assert.match(p, /never "yeah"/, `brief=${brief}`);
     assert.match(p, /Never open with "Certainly!"/, `brief=${brief}`);
   }
-  const text = systemPrompt({ source: 'text', tools: [] });
+  const text = systemPrompt({ source: 'text', tools: [], dialect: formal });
   assert.match(text, /Character: J\.A\.R\.V\.I\.S\. as in the films/);
   assert.doesNotMatch(text, /Diction:/, 'typed chat is not told to speak');
 });
@@ -73,7 +79,7 @@ test('prompt: the dialect is chosen in settings, not hard-coded, and the prompt 
   assert.doesNotMatch(neutral, /butler|never "yeah"/);
   const casual = systemPrompt({ source: 'voice', brief: true, tools: [], dialect: resolve({ dialect: 'casual' }) });
   assert.match(casual, /"yeah", "okay" and "no problem" are fine/);
-  assert.match(systemPrompt({ source: 'voice', tools: [], dialect: resolve({ dialect: 'no-such' }) }), /British English/, 'an unknown dialect falls back to the default');
+  assert.match(systemPrompt({ source: 'voice', tools: [], dialect: resolve({ dialect: 'no-such' }) }), /how a sharp friend talks/, 'an unknown dialect falls back to the default');
   const tools = [{ name: 'get_weather', hint: 'get_weather: x' }];
   const voice = systemPrompt({ source: 'voice', tools }), text = systemPrompt({ source: 'text', tools });
   assert.doesNotMatch(voice, /at least 5 significant figures/, 'voice is told to round, so it is not also told to quote 5 figures');

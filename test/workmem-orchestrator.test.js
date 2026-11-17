@@ -23,7 +23,7 @@ const say = text => [{ type: 'token', text }, { type: 'done' }];
 const call = (name, args) => [{ type: 'tool_call', id: 'c1', name, args }, { type: 'done' }];
 const P = { type: 'object', properties: { path: { type: 'string' } } };
 
-function setup(script, { untrusted = false } = {}) {
+function setup(script, { untrusted = false, route } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jc-wm-'));
   const turns = [];
   // read_doc lives in core (always offered); the weak 'file' trigger leaves the rule pick unsure, so the interpreter gate opens
@@ -43,7 +43,7 @@ function setup(script, { untrusted = false } = {}) {
     bus: c.bus, sessions: c.sessions, providers, tools: createToolRunner(groups.flatMap(g => g.tools), { groups }), catalog, workmem: c.workmem,
     getConfig: () => ({ ...DEFAULTS, provider: c.fp.id }),
     selectGroups: (t, o) => selectGroups(t, o, catalog),
-    route: () => ({ tier: 'deep', think: false, tools: true, reason: 'test' }),
+    route: route || (() => ({ tier: 'deep', think: false, tools: true, reason: 'test' })),
   });
   c.s = c.sessions.create(); c.sessions.save(c.s);
   c.lastUser = n => [...c.fp.calls[n].messages].reverse().find(m => m.role === 'user').content;
@@ -73,6 +73,26 @@ test('the saved wm text of an earlier turn stays the same on later turns (provid
   const later = c.sessions.load(c.s.id).messages.filter(m => m.role === 'user').map(m => m.wm);
   assert.deepEqual(later.slice(0, 2), saved);
   assert.ok(saved[1]?.includes(FILE));
+  c.done();
+});
+
+test('only the newest user message renders wm to the model; a finished task stops riding along', async () => {
+  const c = setup([call('read_doc', { path: FILE }), say('Done.'), say('a'), say('b')]);
+  await c.orc.send(c.s.id, 'read the file');
+  await c.orc.send(c.s.id, 'open that file');
+  await c.orc.send(c.s.id, 'and again');
+  const users = c.fp.calls[3].messages.filter(m => m.role === 'user');
+  assert.equal(users[0].content, 'read the file', 'the older message goes to the model without its block');
+  assert.ok(users.at(-1).content.includes(HEADER), 'the current turn still sees recent results');
+  const savedUsers = c.sessions.load(c.s.id).messages.filter(m => m.role === 'user');
+  assert.ok(savedUsers[1].wm.includes(FILE), 'the saved block stays for the UI');
+  c.done();
+});
+
+test('a chat turn that errors does not leave an open goal (a complaint is not a task)', async () => {
+  const c = setup([{ type: 'throw', message: 'boom' }], { route: () => ({ tier: 'fast', think: false, tools: false, reason: 'chat' }) });
+  await c.orc.send(c.s.id, 'why did you mention chrome');
+  assert.equal(c.workmem.goal(c.s.id).open, false);
   c.done();
 });
 

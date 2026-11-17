@@ -85,6 +85,7 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
     modelfail: { model: word },
     speaker: { ok: bool, score: num, verdict: oneOf('owner', 'unsure', 'guest') },
     retract: {},
+    globe: { op: oneOf('focus', 'zoom', 'home', 'time'), target: word, lat: num, lon: num, span: num, dir: num, mode: oneOf('jump', 'run', 'pause', 'now'), ts: num, rate: num },   // where to look: numbers and a continent name, no free text
   };
   function publicEvent(ev) {
     const out = { type: ev.type, t: ev.t };

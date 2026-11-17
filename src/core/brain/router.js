@@ -4,10 +4,10 @@ const MATH = /\d\s*[-+*/^×÷=]\s*\d|\b(calculat|comput|solve|equation|integra|d
 const SCIENCE = /\b(physic|velocity|speed of|accelerat|force|energy|momentum|mass|gravity|gravitational|orbit|wavelength|frequency|photon|electron|quantum|relativ|thermo|entropy|pressure|voltage|current|resistance|circuit|chemi|molecul|reaction|moles?|atom|biolog|dna|enzyme|projectile|escape velocity|pendulum)/i;
 const UNITS = /\b(convert|conversion|in (?:meters|feet|miles|km|kilograms|pounds|celsius|fahrenheit|kelvin)|mph|km\/h|m\/s|kwh|psi)\b/i;
 const CODE = /```|\b(code|function|script|python|javascript|typescript|node|powershell|c\+\+|rust|java|sql|regex|bug|error|exception|stack trace|compile|debug|api|algorithm)\b/i;
-const MUSIC_STATS = /\b(listen(?:ed|ing)? (?:to|stats|history|habits)|my (?:top|most played|favou?rite|most listened)|music (?:taste|stats|profile|habits|history)|skip(?:ped|ping)? rate|how (?:often|much|many) (?:do|did) i (?:skip|listen|play|replay)|what (?:do|did) i (?:listen|play)|most played|listening (?:time|stats|history|habits)|taste in music|(?:my|the) (?:top|favou?rite) (?:artists?|songs?|tracks?)|how long (?:have|did) i (?:been )?listen)/i;
+const MUSIC_STATS = /\b(listen(?:ed|ing)? (?:to|stats|history|habits)|my (?:top|most played|favou?rite|most listened)|music (?:taste|stats|statistics|analytics|profile|habits|history)|skip(?:ped|ping)? rate|how (?:often|much|many) (?:do|did) i (?:skip|listen|play|replay)|what (?:do|did) i (?:listen|play)|most played|listening (?:time|stats|statistics|analytics|history|habits)|taste in music|(?:my |the )?(?:top|favou?rite) (?:artists?|songs?|tracks?)|how long (?:have|did) i (?:been )?listen)/i;
 const SYSTEM = /\b(my (?:pc|computer|gpu|cpu|ram|system|machine)|this (?:pc|computer)|gpu|cpu|vram|temperature|temps|fps|sysmon|wallpaper|jarvis status|play|pause|next track|volume|music|song)\b/i;
 // JARVIS asked about itself: its health, skills, version, settings, log (the self skill group triggers on this too)
-const SELF = /\b(?:diagnos\w*|self[- ]?(?:check|test)|health check|troubleshoot\w*|what can you do|are you (?:working|running|functioning) (?:properly|correctly|ok|okay|fine)|(?:what|which) version (?:are you|is this|of jarvis)|what (?:skills|tools|abilities) do you have|(?:your|jarvis'?s?) (?:skills|tools|abilities|capabilities|version|settings|config\w*|logs?)|(?:list|show)(?: me)?(?: all)?(?: of)? (?:your|the) (?:skills?|tools)|(?:give|tell|show) me (?:your|the) (?:skill|tool|ability) ?(?:list|set|sets)|(?:your|the) (?:skill|tool) ?(?:list|set)|what version are you|errors? log|(?:recent|last|latest) errors?|what went wrong|is (?:everything|anything) (?:working|broken|ok(?:ay)?))\b/i;
+const SELF = /\b(?:(?:what|which) (?:model|llm) (?:are you|do you (?:run|use))|how (?:fast|slow) are you|your (?:latency|response time)|diagnos\w*|self[- ]?(?:check|test)|health check|troubleshoot\w*|what can you do|are you (?:working|running|functioning) (?:properly|correctly|ok|okay|fine)|(?:what|which) version (?:are you|is this|of jarvis)|what (?:skills|tools|abilities) do you have|(?:your|jarvis'?s?) (?:skills|tools|abilities|capabilities|version|settings|config\w*|logs?)|(?:list|show)(?: me)?(?: all)?(?: of)? (?:your|the) (?:skills?|tools)|(?:give|tell|show) me (?:your|the) (?:skill|tool|ability) ?(?:list|set|sets)|(?:your|the) (?:skill|tool) ?(?:list|set)|what version are you|errors? log|(?:recent|last|latest) errors?|what went wrong|is (?:everything|anything) (?:working|broken|ok(?:ay)?))\b/i;
 const DATES = /\b(days? (?:between|until|since|from)|how many (?:days|weeks|months)|what day|weekday|date|what time|time is it|the time|time\?|today)\b|^time\b/i;
 const EXPLAIN = /\b(explain|why|how does|how do|compare|difference between|analy[sz]e|design|plan|strategy|summari[sz]e|essay|write)\b/i;
 const THINK = /\b(prove|proof|derive|derivation|show that|step by step|puzzle|riddle|logic|paradox|optimi[sz]e|trade-?offs?|catch up|how far|how long until|word problem)\b/i;
@@ -21,6 +21,8 @@ const ACTION = /\b(resume|unpause|skip|replay|rewind|mute|unmute|louder|quieter|
 // A statement, not a request: no question mark and nothing that asks for a tool. Short or long, it is quick chat
 // ("I'm feeling tired today", "Hey Jarvis, I was just wondering how your day is going ...").
 const STATEMENT = /^(?:hey|hi|hello|yo|good (?:morning|evening|afternoon|night)|i['’]?m|i am|i feel|i['’]?ve|i was|i have been|that['’]?s|this is|it['’]?s been|what a)\b/i;
+// Moving the desktop globe (globe_focus): a request for a tool even when it is short ("take me to Israel", "zoom into Kenya").
+const GLOBE = /\b(?:globe|zoom(?:ed|ing)?(?: (?:in|out|into|on|to))?|fly(?:ing)? (?:me |us )?(?:to|over|into)|take me to|show me (?:\w+ ){0,3}on (?:the )?(?:globe|map)|(?:show me|go to|take me to|fly to|zoom (?:in )?(?:on|to|into)) (?:the )?(?:moon|sun|solar system|planets?|mercury|venus|mars|jupiter|saturn|uranus|neptune|galilean moons|io|europa|ganymede|callisto|mimas|enceladus|tethys|dione|rhea|titan|iapetus|miranda|ariel|umbriel|titania|oberon|triton|phobos|deimos|halley'?s? comet|haley'?s? comet|comet halley|encke|67p|swift[- ]?tuttle|hale[- ]?bopp|comets?)|solar system|(?:world )?map of|(?:rewind|fast[- ]?forward|time[- ]?lapse) (?:the )?(?:planets|solar system|time)|(?:planets?|solar system|orbits?) (?:in|on|as (?:they|it) (?:were|was|will be)) (?:the )?(?:year )?(?:-?\d{3,5}|(?:\d+|a|one) (?:years?|centuries|decades|millennia) (?:ago|from now))|(?:run|speed up|slow down) (?:the )?(?:planets|time)|planets? (?:move|moving|orbit(?:ing)?) (?:faster|forward|backward))\b/i;
 const STEPS = /\b(?:and then|then|after that|afterwards|and also|also|and)\b/gi;
 
 // depth: 0 = chat, 1 = a task or a lookup (tools, no thinking), 2 = reasoning (thinking on). steps = how many things the request asks for.
@@ -28,10 +30,10 @@ function route(text, { source = 'text' } = {}) {
   const t = String(text || '').trim();
   const words = t.split(/\s+/).filter(Boolean).length;
   const asked = ASK_THINK.test(t);
-  const technical = MATH.test(t) || MUSIC_STATS.test(t) || SCIENCE.test(t) || UNITS.test(t) || CODE.test(t) || SYSTEM.test(t) || SELF.test(t) || DATES.test(t) || ACTION.test(t);
+  const technical = MATH.test(t) || MUSIC_STATS.test(t) || SCIENCE.test(t) || UNITS.test(t) || CODE.test(t) || SYSTEM.test(t) || SELF.test(t) || DATES.test(t) || ACTION.test(t) || GLOBE.test(t);
   const knowledge = LIVE.test(t) || (!CHAT.test(t) && FACT.test(t));
   // a statement with no task in it is chat even when a stray word ("today") or its length looks technical
-  const strong = MATH.test(t) || MUSIC_STATS.test(t) || SCIENCE.test(t) || UNITS.test(t) || CODE.test(t) || SYSTEM.test(t) || SELF.test(t) || LIVE.test(t) || ACTION.test(t);
+  const strong = MATH.test(t) || MUSIC_STATS.test(t) || SCIENCE.test(t) || UNITS.test(t) || CODE.test(t) || SYSTEM.test(t) || SELF.test(t) || LIVE.test(t) || ACTION.test(t) || GLOBE.test(t);
   if (!asked && STATEMENT.test(t) && !strong && !EXPLAIN.test(t) && !FACT.test(t) && !t.includes('?') && words <= 60) return { tier: 'fast', think: false, tools: false, depth: 0, steps: 0, reason: 'chat' };
   const heavy = technical || knowledge || EXPLAIN.test(t) || words > 25 || (t.match(/\?/g) || []).length > 1;
   // quick chat: no tools and a short prompt — answers start in well under a second
@@ -43,4 +45,4 @@ function route(text, { source = 'text' } = {}) {
   return { tier: 'deep', tools: true, think, depth: think ? 2 : 1, steps, reason: asked ? 'asked to think' : reasoning ? 'reasoning' : knowledge ? 'knowledge' : technical ? 'technical' : 'long' };
 }
 
-module.exports = { route, MATH, SCIENCE, UNITS, DATES, FACT, SELF };
+module.exports = { route, GLOBE, MATH, SCIENCE, UNITS, DATES, FACT, SELF };

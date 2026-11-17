@@ -381,7 +381,7 @@ function fakeBlock({ memo = 'Relevant from memory: Rex is a dog', ids = [7, 8], 
   };
 }
 
-test('memory: the memo is on the current user message and identical on the next turn render', async () => {
+test('memory: the memo is on the current user message; only the newest message renders it', async () => {
   const fp = createFakeProvider([{ type: 'token', text: 'ok' }, { type: 'done' }]);
   const block = fakeBlock();
   const { sessions, orc, s } = setup(fp, { orc: { memoryBlock: block, stamp: d => `Now: ${d.getTime()}.`, systemPrompt: () => 'SYS' } });
@@ -393,7 +393,8 @@ test('memory: the memo is on the current user message and identical on the next 
   assert.deepEqual(users(fp.calls[0]), [`how is Rex\n\nRelevant from memory: Rex is a dog\n\nNow: ${saved[0].at}.`]);
   block.forTurn = async () => ({ memo: 'Relevant from memory: something else', ids: [9] });
   await orc.send(s.id, 'and his vet?', { source: 'text' });
-  assert.equal(users(fp.calls[1])[0], users(fp.calls[0])[0], 'the older message is byte-identical');
+  assert.equal(users(fp.calls[1])[0], `how is Rex\n\nNow: ${saved[0].at}.`, 'the older message no longer carries its memo');
+  assert.equal(sessions.load(s.id).messages[0].memo, 'Relevant from memory: Rex is a dog', 'the saved memo stays for the UI');
   assert.match(users(fp.calls[1])[1], /something else/);
 });
 
@@ -448,7 +449,7 @@ test('memory: "no, that\'s wrong" after a recall → onUserMessage gets the last
   assert.deepEqual(block.calls.onUserMessage[2].lastIds, [], 'another chat has no last recall');
 });
 
-test('memory: a forgotten item is pruned from older saved memos before they are sent', async () => {
+test('memory: a forgotten item is pruned from the saved memo; older messages send no memo at all', async () => {
   const fp = createFakeProvider([{ type: 'token', text: 'ok' }, { type: 'done' }]);
   const block = fakeBlock({ memo: 'HEADER\nRex is a dog\nRex likes walks', ids: [7, 8] });
   let dead = new Set();
@@ -464,9 +465,35 @@ test('memory: a forgotten item is pruned from older saved memos before they are 
   block.forTurn = async () => ({ memo: '', ids: [] });
   await orc.send(s.id, 'forget that he is a dog', { source: 'text' });
   const first = fp.calls[1].messages.filter(m => m.role === 'user')[0].content;
-  assert.doesNotMatch(first, /Rex is a dog/);
-  assert.match(first, /Rex likes walks/);
+  assert.equal(first, 'how is Rex', 'the older message goes to the model without any memo');
   const saved = sessions.load(s.id).messages[0];
   assert.deepEqual(saved.memoIds, [8]);
   assert.doesNotMatch(saved.memo, /Rex is a dog/);
+  assert.match(saved.memo, /Rex likes walks/);
+});
+
+test('a reply that gives up or asks back, with a skill matched and no tool called, is retried once with the tool names', async () => {
+  const fp = createFakeProvider([
+    [{ type: 'token', text: 'Are you referring to the media queue or a specific playlist?' }, { type: 'done' }],
+    [{ type: 'tool_call', id: 'c1', name: 'get_time', args: {} }, { type: 'done' }],
+    [{ type: 'token', text: 'It is NOON.' }, { type: 'done' }],
+  ]);
+  const { orc, s, ran, events } = setup(fp, { orc: {
+    route: () => ({ tier: 'deep', think: false, tools: true, steps: 2, reason: 'test' }),
+    selectGroups: () => ['core', 'media'],
+  } });
+  const res = await orc.send(s.id, 'What are the next 12 songs in queue?', { source: 'text' });
+  assert.equal(ran.length, 1, 'the tool was called after the nudge');
+  assert.match(res.reply, /NOON/);
+  assert.ok(events.some(e => e.type === 'log' && /gave up without trying a tool/.test(e.text)));
+  const second = fp.calls[1].messages.map(m => m.content).join('\n');
+  assert.match(second, /these tools are loaded for this request: get_time/);
+});
+
+test('a refusal with only core/knowledge matched is not retried (no skill area to try)', async () => {
+  const fp = createFakeProvider([[{ type: 'token', text: 'I cannot do that.' }, { type: 'done' }]]);
+  const { orc, s } = setup(fp, { orc: { route: () => ({ tier: 'deep', think: false, tools: true, steps: 1, reason: 'test' }), selectGroups: () => ['core', 'knowledge'] } });
+  const res = await orc.send(s.id, 'do the impossible', { source: 'text' });
+  assert.equal(fp.calls.length, 1);
+  assert.match(res.reply, /cannot/);
 });

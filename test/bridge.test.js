@@ -266,3 +266,10 @@ test('public stream: the speaker event passes ok, score and a known verdict; a j
   assert.ok(!('text' in sp[0]));
   assert.ok(!('verdict' in sp[1]));
 });
+
+test('public stream: the globe command carries numbers and a continent word, never text', async () => {
+  const out = await publicOf([['globe', { op: 'focus', lat: 1.5, lon: 38, span: 14, target: 'asia', name: SECRET, text: SECRET }]]);
+  const g = out.find(e => e.event === 'globe');
+  assert.deepEqual({ op: g.data.op, lat: g.data.lat, lon: g.data.lon, span: g.data.span, target: g.data.target }, { op: 'focus', lat: 1.5, lon: 38, span: 14, target: 'asia' });
+  assert.ok(!JSON.stringify(g).includes(SECRET));
+});

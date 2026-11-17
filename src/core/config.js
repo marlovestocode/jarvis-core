@@ -35,7 +35,7 @@ const DEFAULTS = Object.freeze({
   constrainTools: true,                // repair a tool call that names no tool or has bad arguments with a schema-constrained decode (tools/constrain.js)
   port: 47801,
   // knowledge & live data (spec 2026-11-10-knowledge §3): allowlisted lookups only
-  online: Object.freeze({ enabled: true, weather: true, news: true, sports: true, wiki: true, web: true, lyrics: true }),
+  online: Object.freeze({ enabled: true, weather: true, news: true, sports: true, wiki: true, web: true, lyrics: true, finance: true }),
   // who the user is: JARVIS addresses them by name and treats this as known (settings or "call me ...")
   user: Object.freeze({ name: '', about: '' }),
   location: Object.freeze({ city: 'Abilene, TX', lat: 32.4487, lon: -99.7331, country: 'US', units: 'F' }),
@@ -67,7 +67,7 @@ const DEFAULTS = Object.freeze({
   // wallpaperLabels: the wallpaper may ask for a few words per memory node it shows (strict local route, see core/bridge.js)
   cortex: Object.freeze({ embedModel: 'nomic-embed-text', wallpaperLabels: true }),
   // how he talks (core/voice/dialect.js): the dialect names his word choice and register, the rest tunes the spoken text
-  speech: Object.freeze({ dialect: 'british-formal', contractions: true, pauses: true, dateOrder: 'mdy' }),
+  speech: Object.freeze({ dialect: 'human-jarvis', contractions: true, pauses: true, dateOrder: 'mdy', speakChatReplies: false }),   // speakChatReplies: also say the answer to a typed message out loud
   // the offline library (Kiwix/ZIM store): an absolute folder, default where scripts/install-library.ps1 puts it
   library: Object.freeze({ dir: 'C:\\JarvisData\\library' }),
   // live state: windowTitle puts the title of the window in front into the live picture (it can hold private text; never sent on any stream or into the prompt)

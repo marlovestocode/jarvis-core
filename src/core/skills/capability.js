@@ -29,6 +29,7 @@ const GROUP_META = {
   browser: { summary: 'Works with Chrome tabs, page text, downloads, history and bookmarks through the extension.', examples: ['what tabs do I have open', 'read this page', 'search my history'] },
   self: { summary: 'JARVIS self-check: diagnostics, skills list, version, settings and error log.', examples: ['run a self check', 'what can you do'] },
   web: { summary: 'Searches the web and reads the pages it finds.', examples: ['search the web for node 22 release notes', 'read this article'], sideEffects: 'external' },
+  lists: { summary: 'Keeps named lists such as grocery or todo: add, show, remove and clear.', examples: ['add milk to my grocery list', 'what is on my todo list'] },
   lyrics: { summary: 'Fetches song lyrics and finds a song from a line of its lyrics.', examples: ['lyrics for this song', 'which song goes never gonna give you up'] },
 };
 

@@ -2,7 +2,7 @@
 // "I dimmed the lights") must be backed by a tool that ran and did not fail in the same turn.
 // Past chats show a small model confirming actions it never took.
 //   unbackedClaim(reply, okTools) → true when the reply claims an action and no tool confirmed anything.
-const DONE_VERB = '(?:opened|opening|launched|dimmed|paused|played|started|stopped|set|turned|switched|added|saved|muted|unmuted|skipped|closed|adjusted|restarted|activated|deactivated|toggled|changed|sent|deleted|removed|raised|lowered|increased|decreased|resumed|queued|liked|enabled|disabled)';
+const DONE_VERB = '(?:opened|opening|launched|dimmed|paused|played|started|stopped|set|turned|switched|added|saved|muted|unmuted|skipped|closed|adjusted|restarted|activated|deactivated|toggled|changed|sent|deleted|removed|raised|lowered|increased|decreased|resumed|queued|liked|enabled|disabled|focused|brought)';
 
 const CLAIMS = [
   new RegExp(`\\bI(?:'ve| have|'m| am)?\\s+(?:just\\s+|now\\s+|already\\s+)?${DONE_VERB}\\b`, 'i'),
@@ -16,6 +16,8 @@ const CLAIMS = [
   /^\s*already\s+(?:paused|playing|muted|stopped|queued|added)\b/i,
   // "I'll queue five songs now" said with no tool call is a promise nothing backs
   /\bI(?:'ll| will)\s+(?:go ahead and\s+)?(?:queue|play|add|skip|pause|resume)\b/i,
+  // "Let me check YouTube Music for the next songs." and then no tool call: a promise to look, nothing backs it
+  /\b(?:let me|I(?:'ll| will)|I(?:'m| am) going to)\s+(?:go ahead and\s+)?(?:check|look|pull|fetch|find|search|grab|retrieve|try)\b/i,
 ];
 // not a claim: offers, hypotheticals, refusals, questions about the user's own actions
 const NOT_CLAIM = /\b(?:I (?:cannot|can't|can not|couldn't|could not|did not|didn't|don't|do not|won't|will not)|if I|would you like|should I|unable to)\b/i;

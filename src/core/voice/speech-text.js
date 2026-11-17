@@ -56,6 +56,24 @@ function ordinalWords(n) {
 }
 const MONTH_RE = MONTHS.join('|');
 const YEAR_CTX = new RegExp(String.raw`(\b(?:${MONTH_RE})\s+(?:\d{1,2}(?:st|nd|rd|th)?,?\s+)?|\b(?:in|since|from|until|till|by|during|of|before|after|circa|early|late|mid)\s+|\()(1[1-9]\d\d|20\d\d)(?![\d,.]*\d|\s*(?:%|(?:meters?|metres?|kilometers?|km|cm|mm|ms|seconds?|minutes?|hours?|days?|miles?|feet|ft|kg|grams?|pounds?|lbs?|dollars?|euros?|people|files?|items?|users?|points?|words?|bytes?|mb|gb|kb|hz|mhz|ghz|rpm|watts?|degrees?|m|g|w)\b))`, 'gi');
+// human-jarvis ("spoken: natural"): times and dates the way a person says them
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const PAST_TO = { 5: 'five past', 10: 'ten past', 15: 'quarter past', 20: 'twenty past', 25: 'twenty-five past', 30: 'half past', 35: 'twenty-five to', 40: 'twenty to', 45: 'quarter to', 50: 'ten to', 55: 'five to' };
+function naturalTime(h24, m) {
+  const hr = n => intWords(((n % 12) || 12));
+  if (m === 0) return `${hr(h24)} o'clock`;
+  if (PAST_TO[m]) return `${PAST_TO[m]} ${hr(m > 30 ? h24 + 1 : h24)}`;
+  return `${hr(h24)} ${m < 10 ? 'oh ' + ONES[m] : intWords(m)}`;
+}
+function naturalDate(y, mo, dd, today) {
+  const day = Date.UTC(y, mo - 1, dd), now = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  const diff = Math.round((day - now) / 86400000);
+  if (diff === 0) return 'today';
+  if (diff === 1) return 'tomorrow';
+  if (diff === -1) return 'yesterday';
+  if (diff > 1 && diff < 7) return WEEKDAYS[new Date(day).getUTCDay()];
+  return `${MONTHS[mo - 1]} ${ordinalWords(dd)}${y === today.getFullYear() ? '' : ', ' + yearWords(y)}`;
+}
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 // Words a voice says well: times, dates, money, ranges, abbreviations, acronyms, and pauses
@@ -65,18 +83,20 @@ function articulate(s, d = DEFAULT_DIALECT) {
   // a number glued to its unit ("5km", "2.5GB", "30ms") is split so the unit rules below see it
   s = s.replace(/(\d)(?=(?:km\/h|km|kg|cm|mm|ms|mb|gb|tb|kb|mph|ghz|mhz|khz|hz|kw|ft|lbs?|oz|mi|mins?|secs?|hrs?|fps|mbps|gbps)\b)/gi, '$1 ');
   // dates: "2026-11-12" → "12 November 2026" (British order) or "November 12, 2026"
-  s = s.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (m, y, mo, dd) => (+mo >= 1 && +mo <= 12 && +dd >= 1 && +dd <= 31 ? (d.dateOrder === 'dmy' ? `${+dd} ${MONTHS[+mo - 1]} ${y}` : `${MONTHS[+mo - 1]} ${+dd}, ${y}`) : m));
+  s = s.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (m, y, mo, dd) => (+mo >= 1 && +mo <= 12 && +dd >= 1 && +dd <= 31 ? (d.spoken === 'natural' ? naturalDate(+y, +mo, +dd, d.today ? d.today() : new Date()) : d.dateOrder === 'dmy' ? `${+dd} ${MONTHS[+mo - 1]} ${y}` : `${MONTHS[+mo - 1]} ${+dd}, ${y}`) : m));
+  if (d.spoken === 'natural') s = s.replace(/\bon (today|tomorrow|yesterday)\b/gi, (m, w) => w);   // "on tomorrow" is not said
   // ordinals: "3rd" → "third", "21st" → "twenty-first"
   s = s.replace(/\b(\d{1,2})(?:st|nd|rd|th)\b/g, (m, n) => ordinalWords(+n));
   s = s.replace(YEAR_CTX, (m, pre, y) => pre + yearWords(+y));
   // clock times: "3:05 PM" → "3 oh 5 P M", "3:00 pm" → "3 P M", "15:00" → "15 hundred", "9:00" → "9 o'clock"
   s = s.replace(/\b(\d{1,2}):(\d{2})(?::\d{2})?(?:\s*([AaPp])\.?\s?[Mm](?![a-z])(?:\.(?=\s+[a-z]))?)?/g, (m, h, mm, ap) => {
+    if (d.spoken === 'natural' && +h <= 24 && +mm < 60) return naturalTime(+h, +mm);
     const ampm = ap ? ` ${ap.toUpperCase()} M` : '';
     if (!ap && +h > 12) return mm === '00' ? `${intWords(+h)} hundred` : `${intWords(+h)} ${mm[0] === '0' ? 'oh ' + ONES[+mm[1]] : intWords(+mm)}`;   // 24-hour: "fourteen thirty", "fifteen hundred"
     if (mm === '00') return ap ? `${+h}${ampm}` : `${+h} o'clock`;
     return `${+h} ${mm[0] === '0' ? 'oh ' + mm[1] : mm}${ampm}`;
   });
-  s = s.replace(/\b(\d{1,2})\s*([AaPp])\.?[Mm](?![a-z])(?:\.(?=\s+[a-z]))?/g, (m, h, ap) => `${h} ${ap.toUpperCase()} M`);
+  s = s.replace(/\b(\d{1,2})\s*([AaPp])\.?[Mm](?![a-z])(?:\.(?=\s+[a-z]))?/g, (m, h, ap) => (d.spoken === 'natural' && +h >= 1 && +h <= 12 ? naturalTime(+h, 0) : `${h} ${ap.toUpperCase()} M`));
   // money: "$5.99" → "5 dollars 99 cents", "$1.5 million" → "1.5 million dollars"
   s = s.replace(/\$(\d[\d,]*)(?:\.(\d+))?(\s*(?:thousand|million|billion|trillion))?\b/g, (m, d, c, big) => {
     if (big || (c && c.length !== 2)) return `${d}${c ? '.' + c : ''}${big || ''} dollars`;

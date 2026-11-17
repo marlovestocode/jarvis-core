@@ -35,13 +35,15 @@ function createSpeaker({ ort, modelPath, profileFile, getConfig = () => ({}), ex
   let session = null, loading = null, failed = false;
   let prints = [];      // unit-length embeddings, oldest first
   let learned = [];     // parallel to prints: true = learned from use, false = enrolled
+  let ids = [];         // parallel to prints: which person (voice) each print belongs to
+  let names = {};       // person id -> display name
   let recentScores = [];
   // over the cap: drop the oldest learned print first, then the oldest enrolled one
   const cap = () => {
     while (prints.length > MAX_PRINTS) {
       let i = learned.indexOf(true);
       if (i < 0) i = 0;
-      prints.splice(i, 1); learned.splice(i, 1);
+      prints.splice(i, 1); learned.splice(i, 1); ids.splice(i, 1);
     }
   };
   try {
@@ -51,10 +53,12 @@ function createSpeaker({ ort, modelPath, profileFile, getConfig = () => ({}), ex
         if (!Array.isArray(p) || p.length !== 256) return;
         prints.push(norm(Float32Array.from(p)));
         learned.push(Array.isArray(j.learned) && j.learned[i] === true);
+        ids.push(Array.isArray(j.ids) && typeof j.ids[i] === 'string' ? j.ids[i] : 'v0');
       });
+      names = j.names && typeof j.names === 'object' ? { ...j.names } : {};
       cap();
     }
-  } catch { prints = []; learned = []; /* not enrolled yet */ }
+  } catch { prints = []; learned = []; ids = []; names = {}; /* not enrolled yet */ }
 
   const available = () => !failed && exists(modelPath);
   const enrolled = () => prints.length > 0;
@@ -80,11 +84,11 @@ function createSpeaker({ ort, modelPath, profileFile, getConfig = () => ({}), ex
   function save() {
     fs.mkdirSync(path.dirname(profileFile), { recursive: true });
     const tmp = profileFile + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify({ prints: prints.map(p => Array.from(p, x => Math.round(x * 1e6) / 1e6)), learned: learned.slice(), at: new Date().toISOString() }));
+    fs.writeFileSync(tmp, JSON.stringify({ prints: prints.map(p => Array.from(p, x => Math.round(x * 1e6) / 1e6)), learned: learned.slice(), ids: ids.slice(), names, at: new Date().toISOString() }));
     fs.renameSync(tmp, profileFile);
   }
 
-  async function enroll(clips, { append = false } = {}) {
+  async function enroll(clips, { append = false, name = '' } = {}) {
     const made = [];
     for (const c of clips) {
       if ((c.pcm.length / c.rate) * 1000 < MIN_ENROLL_MS) continue;
@@ -96,17 +100,22 @@ function createSpeaker({ ort, modelPath, profileFile, getConfig = () => ({}), ex
     const c0 = norm(made.reduce((a, p) => a.map((x, i) => x + p[i]), new Float32Array(256)));
     const low = made.filter(p => dot(p, c0) < 0.5).length;
     if (low > made.length / 2) return { ok: false, reason: 'The clips did not sound like one voice. Try again in a quiet room.' };
-    if (!append) { prints = []; learned = []; }
-    prints.push(...made); learned.push(...made.map(() => false));
+    if (!append) { try { if (prints.length) fs.copyFileSync(profileFile, profileFile + '.bak'); } catch { /* nothing to back up */ } prints = []; learned = []; ids = []; names = {}; }   // replacing keeps the old voices in voiceprint.json.bak
+    const id = 'v' + Date.now().toString(36);
+    names[id] = String(name || '').trim().slice(0, 40) || (append ? 'Another person' : 'Main voice');
+    prints.push(...made); learned.push(...made.map(() => false)); ids.push(...made.map(() => id));
     cap(); save();
     return { ok: true, count: prints.length };
   }
 
-  function clear() { prints = []; learned = []; recentScores = []; try { fs.rmSync(profileFile, { force: true }); } catch { /* gone */ } }
+  function clear() { prints = []; learned = []; ids = []; names = {}; recentScores = []; try { fs.rmSync(profileFile, { force: true }); } catch { /* gone */ } }
 
   // add the utterance as a learned print; at a cap it only ever replaces the closest learned print
   function learn(e) {
-    if (prints.length < MAX_PRINTS && counts().learned < MAX_LEARNED) { prints.push(e); learned.push(true); }
+    if (prints.length < MAX_PRINTS && counts().learned < MAX_LEARNED) {
+      let bi = 0, bd = -Infinity; prints.forEach((p, i) => { const d = dot(e, p); if (d > bd) { bd = d; bi = i; } });   // a learned print joins the person it matched best
+      prints.push(e); learned.push(true); ids.push(ids[bi] || 'v0');
+    }
     else {
       let best = -1, bs = -Infinity;
       learned.forEach((isL, i) => { if (!isL) return; const d = dot(e, prints[i]); if (d > bs) { bs = d; best = i; } });
@@ -136,7 +145,26 @@ function createSpeaker({ ort, modelPath, profileFile, getConfig = () => ({}), ex
     return { ok, score, verdict, threshold };
   }
 
-  return { available, enrolled, embed, enroll, verify, clear, count: () => prints.length, counts, recent: () => recentScores.slice(), warm: () => load().then(() => true, () => false) };
+  // each registered person: { id, name, enrolled, learned } (prints from the guided sentences, prints learned from use)
+  function voices() {
+    const out = [];
+    prints.forEach((_, i) => {
+      let v = out.find(x => x.id === ids[i]);
+      if (!v) { v = { id: ids[i], name: names[ids[i]] || (ids[i] === 'v0' ? 'Main voice' : 'Voice'), enrolled: 0, learned: 0 }; out.push(v); }
+      if (learned[i]) v.learned++; else v.enrolled++;
+    });
+    return out;
+  }
+  // forget one person; the last one removed clears the profile
+  function remove(id) {
+    const keep = prints.map((_, i) => i).filter(i => ids[i] !== id);
+    if (keep.length === prints.length) return false;
+    if (!keep.length) { clear(); return true; }
+    prints = keep.map(i => prints[i]); learned = keep.map(i => learned[i]); ids = keep.map(i => ids[i]); delete names[id];
+    save(); return true;
+  }
+
+  return { available, enrolled, embed, enroll, verify, clear, voices, remove, count: () => prints.length, counts, recent: () => recentScores.slice(), warm: () => load().then(() => true, () => false) };
 }
 
 module.exports = { createSpeaker, MIN_ENROLL_MS };

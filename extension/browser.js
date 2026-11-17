@@ -29,7 +29,14 @@ function webUrl(v) {
   if ((u.protocol !== 'http:' && u.protocol !== 'https:') || !u.hostname) throw new Error('Only http and https addresses can be opened');
   return u.href;
 }
-const cleanTab = t => ({ id: t.id, windowId: t.windowId, title: String(t.title ?? ''), url: String(t.url ?? ''), active: !!t.active, pinned: !!t.pinned, audible: !!t.audible });
+const cleanTab = t => ({ id: t.id, windowId: t.windowId, title: String(t.title ?? ''), url: String(t.url ?? ''), active: !!t.active, pinned: !!t.pinned, audible: !!t.audible, groupId: Number.isInteger(t.groupId) && t.groupId >= 0 ? t.groupId : null, splitViewId: Number.isInteger(t.splitViewId) && t.splitViewId >= 0 ? t.splitViewId : null });
+const COLORS = new Set(['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange']);
+function idList(v, min, max) {
+  if (!Array.isArray(v) || v.length < min || v.length > max) throw new Error(`Bad ids (${min === max ? min : `${min} to ${max}`} tab ids)`);
+  const ids = v.map(intId);
+  if (new Set(ids).size !== ids.length) throw new Error('Bad ids (each tab once)');
+  return ids;
+}
 
 async function need(chromeApi, permission, label = permission) {
   if (!(await chromeApi.permissions.contains({ permissions: [permission] }))) throw new Error(`permission not granted: ${label}`);
@@ -74,6 +81,32 @@ export async function browserCommand(cmd, args, chromeApi) {
       const pinned = bool(a.pinned, 'pinned');
       await chromeApi.tabs.update(id, { pinned });
       return { id, pinned };
+    }
+    case 'browser_reload': {
+      const id = intId(a.id);
+      await chromeApi.tabs.reload(id);
+      return { id };
+    }
+    case 'browser_group': {
+      const ids = idList(a.ids, 1, 50);
+      const title = a.title === undefined ? undefined : query(a.title);
+      if (a.color !== undefined && !COLORS.has(a.color)) throw new Error('Bad color');
+      const groupId = await chromeApi.tabs.group({ tabIds: ids });
+      if (title !== undefined || a.color !== undefined) await chromeApi.tabGroups.update(groupId, { ...(title !== undefined ? { title } : {}), ...(a.color !== undefined ? { color: a.color } : {}) });
+      return { groupId, ids };
+    }
+    case 'browser_ungroup': {
+      const ids = idList(a.ids, 1, 50);
+      await chromeApi.tabs.ungroup(ids);
+      return { ids };
+    }
+    case 'browser_split': {
+      // Chrome's own tab split view (Chrome 155+); an older Chrome has no such call and says so instead of pretending
+      if (typeof chromeApi.tabs.createSplit !== 'function') throw new Error('split view is not available: Chrome 155 or newer is needed');
+      const ids = idList(a.ids, 2, 2);
+      await chromeApi.tabs.createSplit(ids);
+      const after = await chromeApi.tabs.get(ids[0]);
+      return { ids, splitViewId: Number.isInteger(after?.splitViewId) && after.splitViewId >= 0 ? after.splitViewId : null };
     }
     case 'browser_search': {
       const text = query(a.query);

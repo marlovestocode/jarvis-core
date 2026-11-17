@@ -179,3 +179,44 @@ test('controller: with a pending action, a spoken yes must come from the enrolle
   notYes.vc.listen(); feedAll(notYes.vc, speech()); await tick(40);
   assert.deepEqual(notYes.sends, ['what time is it'], 'only a yes is gated');
 });
+
+test('enrollVoice: append is passed through so a second voice joins the first', async () => {
+  let got = null;
+  const frames = Array.from({ length: 6 }, () => ({ pcm: new Int16Array(16000).fill(3000), rate: 16000 }));
+  const ctx = { speaker: { available: () => true, enroll: async (c, o) => { got = o; return { ok: true, count: c.length }; } }, enrollBuf: null, voice: { cancel() {} }, mic: { start() {} }, updateMic() {} };
+  await enrollVoice(ctx, { seconds: 1, append: true, wait: async () => { ctx.enrollBuf.push(...frames); } });
+  assert.deepEqual(got, { append: true });
+});
+
+test('guided enrolment: one clip per sentence, needs four, passes append through', async () => {
+  const { recordPhrase, finishEnroll, PHRASES } = require('../src/core/voice/speaker/enroll');
+  let got = null;
+  const loud = () => Array.from({ length: 3 }, () => ({ pcm: new Int16Array(16000).fill(3000), rate: 16000 }));
+  const ctx = { speaker: { available: () => true, enroll: async (c, o) => { got = { n: c.length, o }; return { ok: true, count: c.length }; } }, enrollBuf: null, voice: { cancel() {} }, mic: { start() {} }, updateMic() {} };
+  assert.ok(PHRASES.length >= 6 && PHRASES.some(p => /Jarvis/.test(p)));
+  const quiet = await recordPhrase(ctx, { seconds: 1, wait: async () => { ctx.enrollBuf.push({ pcm: new Int16Array(16000), rate: 16000 }); } });
+  assert.equal(quiet.ok, false);
+  for (let i = 0; i < 3; i++) assert.equal((await recordPhrase(ctx, { seconds: 1, wait: async () => { ctx.enrollBuf.push(...loud()); } })).ok, true);
+  assert.equal((await finishEnroll(ctx, {})).ok, false, 'three sentences are not enough');
+  for (let i = 0; i < 5; i++) await recordPhrase(ctx, { seconds: 1, wait: async () => { ctx.enrollBuf.push(...loud()); } });
+  assert.equal((await finishEnroll(ctx, { append: true })).ok, true);
+  assert.deepEqual(got, { n: 5, o: { append: true, name: '' } });
+});
+
+test('speaker: each person is listed with a name, both voices pass, removing one keeps the other and survives a reload', async () => {
+  const voice = { dir: 3 }, file = tmpFile();
+  const mk = () => createSpeaker({ ort: fakeOrt(voice), modelPath: 'm', profileFile: file, exists: () => true });
+  const sp = mk(), clips = () => [{ pcm: secs(2), rate: 16000 }, { pcm: secs(3), rate: 16000 }];
+  await sp.enroll(clips(), { name: 'Dan' });
+  voice.dir = 60; await sp.enroll(clips(), { append: true, name: 'Alex' });
+  const v = sp.voices();
+  assert.deepEqual(v.map(x => [x.name, x.enrolled, x.learned]), [['Dan', 2, 0], ['Alex', 2, 0]]);
+  voice.dir = 3; assert.equal((await sp.verify(secs(2), 16000)).ok, true);
+  voice.dir = 60; assert.equal((await sp.verify(secs(2), 16000)).ok, true);
+  assert.equal(mk().voices().length, 2, 'names and groups reload');
+  assert.equal(sp.remove(v[1].id), true);
+  assert.deepEqual(sp.voices().map(x => x.name), ['Dan']);
+  voice.dir = 60; assert.equal((await sp.verify(secs(2), 16000)).ok, false, 'a removed voice is a guest again');
+  assert.equal(sp.remove(sp.voices()[0].id), true);
+  assert.equal(sp.enrolled(), false);
+});
