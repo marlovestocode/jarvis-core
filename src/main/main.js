@@ -174,6 +174,15 @@ ctx.openDashboard = async ({ range = 'day' } = {}) => {
   await shell.openExternal(url);
   return url;
 };
+// the StockMan page (src/ui/stockman): served by the same bridge at /ai/stockman, numbers from the engine process (worker op `dashboard`)
+const STOCKMAN_UI = path.join(__dirname, '../ui/stockman');
+const readStockman = f => { try { return fs.readFileSync(path.join(STOCKMAN_UI, f)); } catch { return Buffer.from(''); } };
+ctx.openStockman = async () => {
+  if (!ctx.bridge) return null;
+  const url = `http://127.0.0.1:${ctx.bridge.port}/ai/stockman`;
+  await shell.openExternal(url);
+  return url;
+};
 // deleting a chat (or the prune of the oldest files) also removes its summary from the cortex
 ctx.sessions = createSessionStore(DATA_DIR, { onRemove: id => ctx.memorySystem?.onChatRemoved(id) });
 ctx.providers = createRegistry();
@@ -567,6 +576,7 @@ app.whenReady().then(async () => {
       // the skill groups (and their tool names) are neurons too: a tool call fires its group
       skills: () => ctx.catalog.groups.map(g => ({ id: g.id, label: g.label, tools: g.tools.map(t => t.name) })) },
     dashboard: { query: o => ctx.metrics.query(o), files: { html: readDash('index.html'), js: readDash('dashboard.js'), css: readDash('dashboard.css'), hudCss: readUi('hud.css'), hudJs: readUi('hud.js'), palette: readUi('palette.css') } },
+    stockman: ctx.stockman ? { state: () => ctx.stockman.request('dashboard'), files: { html: readStockman('index.html'), js: readStockman('stockman.js'), css: readStockman('stockman.css') } } : null,
     onOpen: mode => { ctx.log(`open from wallpaper: ${mode}`); if (mode === 'voice') ctx.startVoice(); else ctx.windows?.showChat(); },
   });
   bridgeStarting.catch(() => {});
@@ -604,6 +614,7 @@ app.whenReady().then(async () => {
     openSettings: () => ctx.windows.showSettings(),
     copyLinkKey: () => clipboard.writeText(ctx.linkKey),
     openDashboard: () => { ctx.openDashboard({ range: 'day' }).catch(err => ctx.log('dashboard:', err.message)); },
+    openStockman: () => { ctx.openStockman().catch(err => ctx.log('stockman dashboard:', err.message)); },
     openWebLog: () => { try { if (!fs.existsSync(ctx.webAudit.file)) fs.writeFileSync(ctx.webAudit.file, ''); } catch { /* shown empty */ } shell.openPath(ctx.webAudit.file); },
     quit: () => app.quit(),
   });

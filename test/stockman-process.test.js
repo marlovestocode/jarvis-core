@@ -187,6 +187,9 @@ test('stockman-process: the real worker starts, answers, survives being killed, 
   assert.equal((await engine.request('health')).db.version, 12);
   assert.deepEqual((await engine.request('health')).features, ['universe', 'bars', 'calendar', 'earnings', 'spreads', 'runs', 'scoring', 'shadow', 'calibration', 'ledger', 'backtest', 'paper']);
   assert.ok(Array.isArray(await engine.request('events', { limit: 5 })));
+  const dash = await engine.request('dashboard');                                      // the dashboard page's numbers, built in the worker
+  assert.equal(dash.engine.started, true); assert.equal(dash.engine.dbVersion, 12); assert.ok(Array.isArray(dash.forward) && dash.forward.length === 7);
+  assert.match(dash.note, /never predictions/);
   assert.ok(events.includes('ready'));                                                // the framework's own link event arrived on jarvis's bus
 
   const pid = engine.health().process.pid;

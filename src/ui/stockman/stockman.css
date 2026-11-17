@@ -1,0 +1,52 @@
+/* StockMan page. Look and motion come from the shared HUD kit (/ai/hud.css); this file only lays the page out.
+   Colours are classes, not inline styles: the page's content security policy forbids inline styles. */
+* { box-sizing: border-box; }
+html { color-scheme: dark; }
+body { margin: 0; min-height: 100vh; color: var(--h-text); font: 14px/1.45 var(--h-sans);
+  background:
+    linear-gradient(rgba(var(--h-a), .035) 1px, transparent 1px) 0 0 / 40px 40px,
+    linear-gradient(90deg, rgba(var(--h-a), .035) 1px, transparent 1px) 0 0 / 40px 40px,
+    radial-gradient(ellipse at 50% -10%, rgba(var(--h-a), .14), transparent 60%),
+    rgb(var(--h-base)); }
+h1, h2, h3 { margin: 0; }
+.pad { padding: 14px 16px; }
+.top { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; justify-content: space-between; padding: 10px max(16px, 2vw); background: rgba(var(--h-base), .86); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(var(--h-a), .28); }
+.brand { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.brand h1 { font-size: 14px; font-weight: normal; letter-spacing: .34em; color: var(--h-accent); text-shadow: 0 0 14px rgba(var(--h-a), .5); }
+.brand h1 span { color: var(--h-muted); letter-spacing: .3em; margin-left: 6px; }
+.clock { display: flex; gap: 14px; align-items: baseline; font-family: var(--h-mono); font-size: 13px; color: var(--h-soft); }
+main { padding: 12px max(16px, 2vw) 40px; display: grid; gap: 12px; }
+.tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.tile { padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tile .hud-readout .v { white-space: nowrap; font-size: 22px; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 12px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; }
+.plot { width: 100%; margin-top: 8px; }
+.plot svg { width: 100%; height: 170px; display: block; overflow: visible; }
+.plot .axis { stroke: rgba(var(--h-a), .2); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.plot .ref { stroke: rgba(var(--h-g), .7); stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+.plot .line { fill: none; stroke: var(--h-accent); stroke-width: 1.8; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 3px rgba(var(--h-a), .6)); }
+.plot .pt { fill: var(--h-accent); }
+.plot text { fill: var(--h-muted); font-size: 10px; font-family: var(--h-mono); }
+.plot .empty { fill: var(--h-muted); font-size: 12px; }
+.tablebox { padding: 0; }
+.scroll { overflow: auto; max-height: 340px; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th, td { text-align: left; padding: 5px 12px; border-bottom: 1px solid rgba(var(--h-a), .1); white-space: nowrap; }
+th { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--h-muted); font-weight: normal; position: sticky; top: 0; background: rgba(var(--h-base), .96); }
+.n { text-align: right; font-family: var(--h-mono); font-variant-numeric: tabular-nums; }
+td.pos { color: var(--h-soft); } td.neg { color: var(--h-gold); } td.yes { color: var(--h-soft); } td.no { color: var(--h-muted); }
+.two table td:first-child { color: var(--h-text); }
+.spark { width: 120px; height: 22px; display: block; }
+.spark .line { fill: none; stroke: var(--h-accent); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.spark .zero { stroke: rgba(var(--h-a), .25); stroke-width: 1; vector-effect: non-scaling-stroke; }
+dl { margin: 10px 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; font-size: 12px; }
+dt { color: var(--h-muted); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; padding-top: 2px; }
+dd { margin: 0; color: var(--h-text); overflow-wrap: anywhere; }
+dd.warn { color: var(--h-gold); } dd.crit { color: var(--h-crit); }
+ul#events { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; max-height: 260px; overflow: auto; font-family: var(--h-mono); font-size: 11px; }
+ul#events li { color: var(--h-muted); overflow-wrap: anywhere; } ul#events li.warn { color: var(--h-gold); } ul#events li.error { color: var(--h-crit); } ul#events li b { color: var(--h-soft); font-weight: normal; margin-right: 8px; }
+.foot { margin: 6px 0 0; }
+#status { font-family: var(--h-mono); font-size: 11px; }
+@media (max-width: 1100px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } .grid2 { grid-template-columns: 1fr; } }
+@media (max-width: 620px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .two { grid-template-columns: 1fr; } }

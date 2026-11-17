@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>JARVIS StockMan</title>
+<link rel="stylesheet" href="/ai/palette.css">
+<link rel="stylesheet" href="/ai/hud.css">
+<link rel="stylesheet" href="/ai/stockman.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="hud-dot hud-pulse" id="live" aria-hidden="true"></span><h1>J.A.R.V.I.S <span>STOCKMAN</span></h1><span class="hud-chip" id="engine">LINKING…</span><span class="hud-chip" id="market">MARKET —</span><span class="hud-chip warn" id="paper">PAPER ONLY</span></div>
+  <div class="clock"><span id="clock">—</span><span id="age" class="hud-sub"></span></div>
+</header>
+<main>
+  <section class="tiles" id="tiles" aria-label="Key numbers"></section>
+  <section class="grid2">
+    <div class="hud-panel pad hud-reveal" id="p-spread">
+      <h2 class="hud-title">COST <b>SAMPLER</b> <i class="hud-sub">quoted bid and ask during market hours; the backtests assume 10 bps</i></h2>
+      <div class="plot" id="c-spread"></div>
+      <div class="two"><div><h3 class="hud-title">WIDEST <b>TODAY</b></h3><table id="t-wide"><tbody></tbody></table></div><div><h3 class="hud-title">TIGHTEST <b>TODAY</b></h3><table id="t-tight"><tbody></tbody></table></div></div>
+    </div>
+    <div class="hud-panel pad hud-reveal" id="p-quotes">
+      <h2 class="hud-title">LATEST <b>QUOTES</b> <i class="hud-sub">newest first</i></h2>
+      <div class="scroll"><table id="t-quotes"><thead><tr><th>Symbol</th><th class="n">Bid</th><th class="n">Ask</th><th class="n">Spread bps</th><th>Seen</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+  <section class="hud-panel hud-reveal tablebox" id="p-forward">
+    <h2 class="hud-title pad">LIVE <b>FORWARD RESULTS</b> <i class="hud-sub">each variant's top 20 each day, excess over SPY after the open-to-5th-close hold, gross and after 10 bps. Days overlap: a mean, not a proof.</i></h2>
+    <div class="scroll"><table id="t-forward"><thead><tr><th>Variant</th><th class="n">Days</th><th class="n">Names</th><th class="n">Mean gross</th><th class="n">After 10 bps</th><th class="n">Days beating SPY</th><th>Last 60 days</th></tr></thead><tbody></tbody></table></div>
+  </section>
+  <section class="grid2">
+    <div class="hud-panel hud-reveal tablebox" id="p-bt">
+      <h2 class="hud-title pad">BACKTEST <b>RESULTS</b> <i class="hud-sub">tuning period, simulations of past data</i></h2>
+      <div class="scroll"><table id="t-bt"><thead><tr><th>Variant</th><th>Period</th><th class="n">Windows</th><th class="n">Gross</th><th class="n">After 10 bps</th><th>95% interval</th><th>Lower bound &gt; 0</th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div class="hud-panel pad hud-reveal" id="p-data">
+      <h2 class="hud-title">DATA <b>LAYER</b> <i class="hud-sub">what each stage says about itself</i></h2>
+      <dl id="lines"></dl>
+    </div>
+  </section>
+  <section class="grid2">
+    <div class="hud-panel pad hud-reveal" id="p-sys"><h2 class="hud-title">ENGINE <b>&amp; SWITCHES</b></h2><dl id="sys"></dl></div>
+    <div class="hud-panel pad hud-reveal" id="p-events"><h2 class="hud-title">ENGINE <b>LOG</b> <i class="hud-sub">info and above</i></h2><ul id="events"></ul></div>
+  </section>
+  <p class="hud-sub foot"><span id="status" role="status">Loading…</span> · Simulations of past data and a live quote feed, never predictions. Paper only: no order is ever placed from this page. Numbers come from StockMan's own database on this PC.</p>
+</main>
+<script src="/ai/hud.js"></script>
+<script src="/ai/stockman.js"></script>
+</body>
+</html>

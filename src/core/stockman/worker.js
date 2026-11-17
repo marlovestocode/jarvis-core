@@ -3,7 +3,7 @@
 //
 // Messages from jarvis:   { type: 'init', dataDir, online }   first message; builds and starts the framework
 //                         { type: 'online', online }           jarvis's config.online (the finance switch), pushed when it changes
-//                         { type: 'request', id, op, args }    op: health | quote | quotes | history | events
+//                         { type: 'request', id, op, args }    op: health | quote | quotes | history | events | dashboard
 //                         { type: 'stop' }                     orderly shutdown (also on IPC disconnect: jarvis quit or crashed)
 // Messages to jarvis:     { type: 'ready', health } | { type: 'fatal', error }  (fatal exits with code 2: do not restart)
 //                         { type: 'reply', id, ok, result | error: { code, message, retryable } }
@@ -17,12 +17,13 @@ const { createFetcher } = require('../net/fetcher');
 const { createPolicy } = require('../net/policy');
 const { createDataLayer } = require('./features');
 const { createTradingLayer } = require('./trading');
+const { buildState } = require('./jarvis/dashboard');
 
 const HEALTH_EVERY_MS = 5000;
 const FATAL_EXIT = 2;
 
 function run() {
-  let app = null, online = { enabled: true, finance: true }, stopping = false;
+  let app = null, online = { enabled: true, finance: true }, stopping = false, dash = null;
   const send = m => { try { if (process.connected) process.send(m); } catch { /* the parent is gone */ } };
   const fail = err => ({ code: err?.code || 'UNKNOWN', message: String(err?.message || err).slice(0, 500), retryable: err?.retryable === true });
 
@@ -32,6 +33,8 @@ function run() {
     quotes: ({ symbols }) => app.stocks.getQuotes(symbols),
     history: req => app.stocks.getHistory(req),
     events: o => (app.events ? app.events.recent(o || {}) : []),
+    // everything the StockMan dashboard page shows, in one read-only call (jarvis/dashboard.js)
+    dashboard: () => { if (!dash) throw Object.assign(new Error('the engine is still starting'), { code: 'TRANSIENT', retryable: true }); return buildState({ app, api: dash.api, config: dash.config }); },
   };
 
   async function shutdown(code) {
@@ -58,7 +61,9 @@ function run() {
       for (const f of layer.features) app.use(f);
       // the paper ledger and backtest tables (migrations 8 and 9). Registered here so this build can open a database they have touched.
       // the paper-trade opener is part of it and stays OFF unless STOCKMAN_PAPER_TRADING or paperTrading.enabled turns it on (vault note 06 gate)
-      for (const f of createTradingLayer({ data: layer.api, options: { paper: { enabled: config.paperTrading.enabled, autoRun: config.provider.name === 'yahoo' } } }).features) app.use(f);
+      const trading = createTradingLayer({ data: layer.api, options: { paper: { enabled: config.paperTrading.enabled, autoRun: config.provider.name === 'yahoo' } } });
+      for (const f of trading.features) app.use(f);
+      dash = { api: { ...layer.api, ...trading.api }, config };
       await app.start();
     } catch (err) {
       send({ type: 'fatal', error: String(err?.message || err) });

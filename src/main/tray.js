@@ -6,7 +6,7 @@ function tooltipText(failed) {
   return failed.length ? `JARVIS Core — hotkey taken: ${failed.join(', ')}` : 'JARVIS Core';
 }
 
-function createTray({ openChat, talk, openSettings, copyLinkKey, openWebLog, openDashboard, quit }) {
+function createTray({ openChat, talk, openSettings, copyLinkKey, openWebLog, openDashboard, openStockman, quit }) {
   const icon = nativeImage.createFromPath(path.join(__dirname, '..', '..', 'assets', 'tray.png'));
   const tray = new Tray(icon);
   tray.setContextMenu(Menu.buildFromTemplate([
@@ -16,6 +16,7 @@ function createTray({ openChat, talk, openSettings, copyLinkKey, openWebLog, ope
     { label: 'Copy extension link key', click: copyLinkKey },
     { label: 'Web activity log', click: openWebLog },
     { label: 'Analytics dashboard', click: openDashboard || (() => {}), enabled: !!openDashboard },
+    { label: 'StockMan dashboard', click: openStockman || (() => {}), enabled: !!openStockman },
     { type: 'separator' },
     { label: 'Quit', click: quit },
   ]));

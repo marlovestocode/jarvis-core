@@ -29,8 +29,10 @@ const okLabelOrigin = o => !o || o === 'file://';
 const idList = v => String(v || '').split(',').map(Number).filter(Number.isInteger).slice(0, 48);
 
 // dashboard = { query(opts) → summary, files: { html, js, css } } | null: the analytics page (src/ui/dashboard) and its numbers, same-origin only
+// stockman = { state() → Promise<object>, files: { html, js, css } } | null: the StockMan page (src/ui/stockman) at /ai/stockman and its numbers at
+//   /ai/stockman/state; same-origin only, like the analytics page. The numbers are the engine's own read-only measurements (no conversation text).
 // brain = { view(opts), labels(ids), labelsOn(), skills() } | null: the cortex picture for the wallpaper (skills() = the skill groups, so tools can fire their neuron)
-async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PORTS, pingMs = 15000, clientMaxBuffer = CLIENT_MAX_BUFFER, brain = null, dashboard = null }) {
+async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PORTS, pingMs = 15000, clientMaxBuffer = CLIENT_MAX_BUFFER, brain = null, dashboard = null, stockman = null }) {
   const clients = new Set();
   let dropped = 0;
   let port = null;
@@ -169,6 +171,23 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
         return res.end(JSON.stringify(body));
       }
       const asset = KIT[url] ? [KIT[url][0], dashboard.files[KIT[url][1]]] : url === '/ai/dashboard' ? ['text/html; charset=utf-8', dashboard.files.html] : url === '/ai/dashboard.js' ? ['text/javascript; charset=utf-8', dashboard.files.js] : ['text/css; charset=utf-8', dashboard.files.css];
+      res.writeHead(200, { 'Content-Type': asset[0], 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
+        'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" });
+      return res.end(asset[1]);
+    }
+    if (stockman && (url === '/ai/stockman' || url === '/ai/stockman.js' || url === '/ai/stockman.css' || url === '/ai/stockman/state' || (KIT[url] && dashboard?.files?.[KIT[url][1]]))) {
+      if (origin && origin !== `http://${HOST}:${port}` && origin !== `http://localhost:${port}`) { res.writeHead(403, cors); return res.end(); }
+      if (url === '/ai/stockman/state') {
+        return Promise.resolve().then(() => stockman.state()).then(body => {
+          res.writeHead(200, { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify(body));
+        }, err => {
+          // the engine may be starting, restarting or off: say so as data, so the page shows a state, not a blank
+          res.writeHead(503, { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify({ error: String(err?.message || err).slice(0, 200), code: err?.code || 'UNAVAILABLE' }));
+        });
+      }
+      const asset = KIT[url] ? [KIT[url][0], dashboard.files[KIT[url][1]]] : url === '/ai/stockman' ? ['text/html; charset=utf-8', stockman.files.html] : url === '/ai/stockman.js' ? ['text/javascript; charset=utf-8', stockman.files.js] : ['text/css; charset=utf-8', stockman.files.css];
       res.writeHead(200, { 'Content-Type': asset[0], 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
         'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" });
       return res.end(asset[1]);
