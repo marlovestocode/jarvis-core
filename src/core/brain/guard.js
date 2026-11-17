@@ -4,15 +4,18 @@
 //   unbackedClaim(reply, okTools) → true when the reply claims an action and no tool confirmed anything.
 const DONE_VERB = '(?:opened|opening|launched|dimmed|paused|played|started|stopped|set|turned|switched|added|saved|muted|unmuted|skipped|closed|adjusted|restarted|activated|deactivated|toggled|changed|sent|deleted|removed|raised|lowered|increased|decreased|resumed|queued|liked|enabled|disabled)';
 
+// Passive forms ("was opened", "is set") are claims only when the subject is something JARVIS controls; elsewhere they are plain facts.
+const SUBJ_PREFIX = '\\b(?:volume|music|playback|media|brightness|timer|window|app|it|that)\\b(?:\\s+\\w+){0,2}?\\s+';
+
 const CLAIMS = [
   new RegExp(`\\bI(?:'ve| have|'m| am)?\\s+(?:just\\s+|now\\s+|already\\s+)?${DONE_VERB}\\b`, 'i'),
-  new RegExp(`\\b(?:is|are|has been|have been|was|were|has|have) (?:now |successfully )?${DONE_VERB}\\b`, 'i'),
+  new RegExp(`${SUBJ_PREFIX}(?:is|are|has been|have been|was|were|has|have) (?:now |successfully )?${DONE_VERB}\\b`, 'i'),
   /\b(?:volume|brightness|playback|music|media) (?:is|are) now\b/i,
   /^\s*(?:done|opening|playing|now playing|pausing|stopping|muting|skipping|queued|queueing|queuing|added|adding|resumed|resuming|liked|unmuted|turned|switched)\b/i,
   // "Sure. Queued five." / "Got it. Playing X.": a claim that opens a later sentence
   /(?:^|[.!?]\s+)(?:playing(?!\s+(?:it|them|that|this)\s+again)|queued|added|skipped|queueing|queuing)\b/i,
   // a state read from nowhere: "The media is already paused", "it is still playing" with no tool checking it this turn
-  /\b(?:is|are|was|were)\s+(?:already|currently|still|now)\s+(?:paused|playing|muted|stopped|queued|added|open|closed|running)\b/i,
+  new RegExp(`${SUBJ_PREFIX}(?:is|are|was|were)\\s+(?:already|currently|still|now)\\s+(?:paused|playing|muted|stopped|queued|added|open|closed|running)\\b`, 'i'),
   /^\s*already\s+(?:paused|playing|muted|stopped|queued|added)\b/i,
   // "I'll queue five songs now" said with no tool call is a promise nothing backs
   /\bI(?:'ll| will)\s+(?:go ahead and\s+)?(?:queue|play|add|skip|pause|resume)\b/i,
