@@ -128,6 +128,16 @@ Paper only. Nothing here can place an order (vault D1, D14); the broker route (A
 - **CLI:** `node src/core/stockman/cli.js backtest run [variant|all]` (tuning only), `backtest run <variant> --holdout` (locked; once), `backtest status`, `backtest show [variant]`. It reads and writes `stockman.db` in `STOCKMAN_DATA_DIR`; point it at a copy when the live worker owns the real file.
 - **Tests:** `test/stockman-ledger.test.js`, `test/stockman-backtest.test.js` (synthetic data, no network).
 
+## Learning layer (`learning/`, vault Phases 3 to 5, CL-0039 to CL-0041)
+
+| Feature (migration) | File | What it does |
+|---|---|---|
+| `scoring` (none) | `scoring.js` | The note 06 rule: score = -r5 / (vol20 x sqrt 5) on adjusted closes, eligibility filters, top-20 basket, six logged variants. Pure code: no LLM, randomness, clock or network. Build id `rev-v1.0`, bumped on any change. |
+| `shadow` (10) | `shadow.js` | Per ingested session, scores every point-in-time member and logs it (`candidate`, with reasons, flags, features, build id); after the 5th session fills `candidate_outcome` (adjusted entry open to exit close, excess vs SPY, gross of costs). Gaps are recorded, never filled. Catch-up after a closed app. Refuses days up to 2026-11-13 (the backtest holdout). |
+| `calibration` (11) | `calibration.js` | Win probability per bucket with a 95% interval, shrunk toward the base rate, "insufficient data" under 200 outcomes or 30 windows, walk-forward Brier skill with a window bootstrap, versioned by scoring build. |
+
+Wired in `features/index.js` after `runs`. Each feature's `health()` adds a one-line summary to `stockman_status`. Tests: `test/stockman-{scoring,shadow,calibration}.test.js`. Simulated and shadow numbers are not predictions or guarantees.
+
 ## What is verified and what is not
 
 Verified: the Yahoo response shape for quote and history, the unknown-symbol HTTP 404, and that this phase passes the full jarvis suite. **Not verified:** quote delay and behaviour during US market hours, the rate-limit threshold (HTTP 429 did occur under a burst of probes), the error JSON body for an unknown symbol, and intervals other than `1d` and `1m` (so only those are offered). The Yahoo endpoint is unofficial and may change.
