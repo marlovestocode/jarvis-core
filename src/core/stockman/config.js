@@ -27,6 +27,9 @@ const DEFAULTS = Object.freeze({
   // Alpaca PAPER order methods (trading/alpaca.js, vault D23): OFF by default. Reading (account, clock, quotes) needs only online.broker in jarvis's config.
   // The keys are never configured here: ALPACA_PAPER_KEY_ID and ALPACA_PAPER_SECRET_KEY, environment only.
   broker: Object.freeze({ enabled: false, maxNotionalUsd: 1000, capitalUsd: 20000 }),
+  // the sandbox strategy track (trading/sandbox, vault D28): OFF by default. The third of three switches (online.broker, broker.enabled, sandbox.enabled);
+  // the strategy file cannot turn any of them on. `killed` is written by the daily-loss kill switch in the sandbox state file, not here.
+  sandbox: Object.freeze({ enabled: false }),
 });
 
 const LEVELS = ['debug', 'info', 'warn', 'error'];
@@ -51,6 +54,7 @@ const RULES = [
   ['provider', 'breakerCooldownMs', v => Number.isInteger(v) && v >= 100 && v <= 3600000, 'milliseconds, 100 to 3600000'],
   ['paperTrading', 'enabled', v => typeof v === 'boolean', 'true or false'],
   ['broker', 'enabled', v => typeof v === 'boolean', 'true or false'],
+  ['sandbox', 'enabled', v => typeof v === 'boolean', 'true or false'],
   ['broker', 'capitalUsd', v => typeof v === 'number' && v >= 100 && v <= 1000000, 'US dollars the router spreads over 5 sleeves and the basket, 100 to 1000000'],
   ['broker', 'maxNotionalUsd', v => typeof v === 'number' && v > 0 && v <= 100000, 'a number of US dollars, above 0 and at most 100000'],
   ['log', 'level', v => LEVELS.includes(v), `one of ${LEVELS.join(', ')}`],
@@ -82,6 +86,7 @@ function fromEnv(env) {
   if (env.STOCKMAN_LOG_LEVEL) out.log = { level: env.STOCKMAN_LOG_LEVEL };
   if (env.STOCKMAN_DB_FILE) out.db = { file: env.STOCKMAN_DB_FILE };
   if (env.STOCKMAN_PAPER_TRADING) out.paperTrading = { enabled: bool('STOCKMAN_PAPER_TRADING', env.STOCKMAN_PAPER_TRADING) };
+  if (env.STOCKMAN_SANDBOX) out.sandbox = { enabled: bool('STOCKMAN_SANDBOX', env.STOCKMAN_SANDBOX) };
   if (env.STOCKMAN_BROKER_ORDERS) out.broker = { enabled: bool('STOCKMAN_BROKER_ORDERS', env.STOCKMAN_BROKER_ORDERS) };
   return out;
 }
@@ -101,7 +106,7 @@ function loadConfig({ env = process.env, dataDir, file, readFile = p => fs.readF
     if (err.code !== 'ENOENT') throw new ConfigError(`${cfgFile}: cannot read (${err.message})`, { cause: err });
   }
   const layers = [merge(fileCfg, cfgFile), merge(fromEnv(env), 'environment'), merge(overrides, 'overrides')];
-  const out = { enabled: DEFAULTS.enabled, db: { ...DEFAULTS.db }, provider: { ...DEFAULTS.provider }, log: { ...DEFAULTS.log }, paperTrading: { ...DEFAULTS.paperTrading }, broker: { ...DEFAULTS.broker } };
+  const out = { enabled: DEFAULTS.enabled, db: { ...DEFAULTS.db }, provider: { ...DEFAULTS.provider }, log: { ...DEFAULTS.log }, paperTrading: { ...DEFAULTS.paperTrading }, broker: { ...DEFAULTS.broker }, sandbox: { ...DEFAULTS.sandbox } };
   for (const layer of layers) {
     for (const [section, key, , ] of RULES) {
       const v = section ? (isObj(layer[section]) ? layer[section][key] : undefined) : layer[key];

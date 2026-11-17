@@ -116,6 +116,12 @@ function createAlpaca({ http, opts = {} } = {}) {
     if (!r || typeof r.snapshots !== 'object' || r.snapshots === null || Array.isArray(r.snapshots)) throw new ProviderDataError('alpaca: the option snapshots answer is not in the expected shape');
     return { snapshots: r.snapshots, nextPageToken: r.next_page_token || null };
   }
+  // the paper account's open positions (read-only): [{ symbol, qty, marketValue, avgEntry }]
+  async function positions() {
+    const list = await http.request('GET', PAPER_BASE, '/v2/positions');
+    if (!Array.isArray(list)) throw new ProviderDataError('alpaca: the positions answer is not an array');
+    return list.map(p => ({ symbol: String(p.symbol), qty: num(p.qty), marketValue: num(p.market_value), avgEntry: num(p.avg_entry_price) }));
+  }
   async function getOrder(id) { return mapOrder(await http.request('GET', PAPER_BASE, `/v2/orders/${encodeURIComponent(id)}`)); }
   async function getOrderByClientId(clientOrderId) {
     return mapOrder(await http.request('GET', PAPER_BASE, '/v2/orders:by_client_order_id', { query: { client_order_id: clientOrderId } }));
@@ -130,9 +136,13 @@ function createAlpaca({ http, opts = {} } = {}) {
   const clientOrderId = (positionId, leg) => `sm-${positionId}-${leg}`;
   // a ledger position (source broker-paper, open) and its leg → one paper order. buy for the entry, sell for the exit; market orders only.
   //   notionalUsd (fractional) or qty (whole shares), one of them; timeInForce: day (default), opg (market on open: must be sent before 9:28 NY) or cls.
-  async function placeOrder({ positionId, leg, symbol, notionalUsd = null, qty = null, timeInForce = 'day' }) {
+  //   clientId (optional): the sandbox strategy's own id (sm-sbx-<day>-<symbol>-<leg>) instead of sm-<positionId>-<leg>.
+  //   limitPrice (optional): a limit order at that price; it needs a whole-share qty (a limit order cannot be placed by notional).
+  async function placeOrder({ positionId = null, clientId = null, leg, symbol, notionalUsd = null, qty = null, timeInForce = 'day', limitPrice = null }) {
     if (!o.enabled) throw new PolicyError('alpaca: orders are switched off (config.broker.enabled is false)');
-    if (!Number.isInteger(positionId) || positionId < 1) throw new InvalidRequestError('alpaca: a ledger position id is required');
+    if (clientId !== null) { if (typeof clientId !== 'string' || !/^[A-Za-z0-9._:-]{1,120}$/.test(clientId)) throw new InvalidRequestError('alpaca: the client order id has characters or a length Alpaca does not take'); }
+    else if (!Number.isInteger(positionId) || positionId < 1) throw new InvalidRequestError('alpaca: a ledger position id is required');
+    if (limitPrice !== null && !(pos(limitPrice) && qty !== null && Number.isInteger(qty))) throw new InvalidRequestError('alpaca: a limit order needs a limit price above 0 and a whole-share qty');
     if (leg !== 'entry' && leg !== 'exit') throw new InvalidRequestError('alpaca: leg is entry or exit');
     if (!TIFS.includes(timeInForce)) throw new InvalidRequestError(`alpaca: time in force is one of ${TIFS.join(', ')}`);
     if ((notionalUsd === null) === (qty === null)) throw new InvalidRequestError('alpaca: give notionalUsd or qty, not both and not neither');
@@ -141,8 +151,8 @@ function createAlpaca({ http, opts = {} } = {}) {
     if (qty !== null && !(typeof qty === 'number' && Number.isFinite(qty) && qty > 0 && qty < 1e7)) throw new InvalidRequestError('alpaca: qty must be a number above 0');
     if (qty !== null && !Number.isInteger(qty) && timeInForce !== 'day') throw new InvalidRequestError('alpaca: a fractional quantity needs time in force day');
     const s = normalizeSymbol(symbol);
-    const cid = clientOrderId(positionId, leg);
-    const body = { symbol: s, side: leg === 'entry' ? 'buy' : 'sell', type: 'market', time_in_force: timeInForce, client_order_id: cid, ...(notionalUsd !== null ? { notional: String(notionalUsd) } : { qty: String(Number(qty.toFixed(9))) }) };
+    const cid = clientId !== null ? clientId : clientOrderId(positionId, leg);
+    const body = { symbol: s, side: leg === 'entry' ? 'buy' : 'sell', type: limitPrice !== null ? 'limit' : 'market', time_in_force: timeInForce, client_order_id: cid, ...(limitPrice !== null ? { limit_price: String(Number(limitPrice.toFixed(2))) } : {}), ...(notionalUsd !== null ? { notional: String(notionalUsd) } : { qty: String(Number(qty.toFixed(9))) }) };
     try {
       return { ...mapOrder(await http.request('POST', PAPER_BASE, '/v2/orders', { body })), duplicate: false };
     } catch (err) {
@@ -165,7 +175,7 @@ function createAlpaca({ http, opts = {} } = {}) {
     };
   }
 
-  return { account, clock, latestQuote, stockMid, optionSnapshots, getOrder, getOrderByClientId, listOrders, placeOrder, cancelOrder, clientOrderId, options: o, configured: http.configured };
+  return { account, clock, positions, latestQuote, stockMid, optionSnapshots, getOrder, getOrderByClientId, listOrders, placeOrder, cancelOrder, clientOrderId, options: o, configured: http.configured };
 }
 
 // ---- fills into the ledger (subscribe-only port: it has no order method, as ledger.attachFillSource requires) ------------------------

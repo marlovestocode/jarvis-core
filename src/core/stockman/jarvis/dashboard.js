@@ -83,6 +83,7 @@ function buildState({ app, api, config = {}, now = Date.now }) {
     spreads: part(() => spreadPanel(db, api.spreads, day)),
     options: part(() => (api.options ? api.options.summary({ from: day, to: day }) : null)),
     router: part(() => (api.router ? api.router.status() : null)),
+    sandbox: part(() => (api.sandbox ? api.sandbox.status() : null)),
     shadow: part(() => ({ reversal: api.shadow.status('reversal'), momentum: api.shadow.status('momentum') })),
     forward: part(() => forwardResults(db, api.scoring)),
     calibration: part(() => api.calibration.health()),

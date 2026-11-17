@@ -130,6 +130,13 @@ function selectBasket(rows, size = PARAMS.basketSize) {
   return out;
 }
 
+// the return over `lookback` sessions that ends `skip` sessions before the last session (skip 0 = to the last session): adj(skip) / adj(skip + lookback) - 1.
+// Shared by the momentum rule below and the sandbox strategy (trading/sandbox), so there is one formula; null when a close is missing.
+function pastReturn(adj, skip, lookback) {
+  const a = adj(skip), b = adj(skip + lookback);
+  return a !== null && b !== null ? a / b - 1 : null;
+}
+
 // ===== Rule 2: momentum, "mom-v1" (note 06 "Rule 2: momentum", decision D25; pre-registered before any result) =====
 //   m      adjusted return over L sessions that ends 21 sessions before D:  adjclose(D-21) / adjclose(D-21-L) - 1,  L = 63, 126 or 252
 //   vol60  sample standard deviation of the 60 daily adjusted returns to D
@@ -268,4 +275,4 @@ function createScoring() {
   return { feature, api };
 }
 
-module.exports = { MOM_BUILD, MOM_PARAMS, MOM_VARIANTS, MOM_SESSIONS_NEEDED, momVariantId, computeMomentumFeatures, momentumVariantScores, scoreMomentumCandidate, RULES, isCleanBar, variantId, createScoring, SCORING_BUILD, PARAMS, VARIANTS, PRIMARY_VARIANT, MAX_VARIANTS, computeFeatures, variantScores, scoreCandidate, selectBasket, horizonDays, sessionsEnding, CLEAN_SQL };
+module.exports = { adjReader, dailyVol, pastReturn, MOM_BUILD, MOM_PARAMS, MOM_VARIANTS, MOM_SESSIONS_NEEDED, momVariantId, computeMomentumFeatures, momentumVariantScores, scoreMomentumCandidate, RULES, isCleanBar, variantId, createScoring, SCORING_BUILD, PARAMS, VARIANTS, PRIMARY_VARIANT, MAX_VARIANTS, computeFeatures, variantScores, scoreCandidate, selectBasket, horizonDays, sessionsEnding, CLEAN_SQL };

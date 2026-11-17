@@ -59,7 +59,7 @@ function createBrokerRouter({ ledger, shadow, scoring, alpaca, now = Date.now, o
       FROM candidate c JOIN shadow_day s ON s.day = c.day AND s.scoring_build = c.scoring_build
       WHERE c.scoring_build = ? AND c.in_basket = 1 AND c.entry_day = ? AND c.day > ? AND s.late = 0 ORDER BY c.rank`).all(scoring.build, c.day, shadow.HOLDOUT_END);
     const res = { candidates: rows.length, opened: 0, sent: 0, failed: 0 };
-    const openNow = Number(d.stmt("SELECT COUNT(*) AS n FROM paper_position WHERE source = ? AND status = 'open'").get(SOURCE).n);
+    const openNow = Number(d.stmt("SELECT COUNT(*) AS n FROM paper_position WHERE source = ? AND scoring_build = ? AND status = 'open'").get(SOURCE, ledgerBuild).n);
     for (const r of rows) {
       if (stopping) break;
       let p = d.stmt('SELECT * FROM paper_position WHERE source = ? AND run_id = ? AND symbol = ? AND scoring_build = ?').get(SOURCE, r.runId, r.symbol, ledgerBuild);
@@ -84,7 +84,7 @@ function createBrokerRouter({ ledger, shadow, scoring, alpaca, now = Date.now, o
 
   async function exit(c) {
     const d = need();
-    const open = d.stmt("SELECT * FROM paper_position WHERE source = ? AND status = 'open' AND exit_day <= ? AND fill_entry_price IS NOT NULL ORDER BY id").all(SOURCE, c.day);
+    const open = d.stmt("SELECT * FROM paper_position WHERE source = ? AND status = 'open' AND scoring_build = ? AND exit_day <= ? AND fill_entry_price IS NOT NULL ORDER BY id").all(SOURCE, ledgerBuild, c.day);
     const res = { due: open.length, sent: 0, failed: 0 };
     for (const p of open) {
       if (stopping) break;
@@ -105,7 +105,7 @@ function createBrokerRouter({ ledger, shadow, scoring, alpaca, now = Date.now, o
   function closeFilled() {
     const d = need();
     let n = 0;
-    for (const p of d.stmt("SELECT * FROM paper_position WHERE source = ? AND status = 'open' AND fill_entry_price IS NOT NULL AND fill_exit_price IS NOT NULL").all(SOURCE)) {
+    for (const p of d.stmt("SELECT * FROM paper_position WHERE source = ? AND status = 'open' AND scoring_build = ? AND fill_entry_price IS NOT NULL AND fill_exit_price IS NOT NULL").all(SOURCE, ledgerBuild)) {
       const e = barOn(o.benchmark, p.entry_day), x = barOn(o.benchmark, p.exit_day);
       const bench = usable(e) && usable(x) ? x.adj / (e.open * (e.adj / e.close)) - 1 : null;
       try { ledger.close(p.id, { costBps: 0, benchmarkReturn: bench }); n++; } catch (err) { log?.warn?.('broker router: could not close', { id: p.id, message: String(err.message).slice(0, 200) }); }

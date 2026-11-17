@@ -185,7 +185,7 @@ test('stockman-process: the real worker starts, answers, survives being killed, 
   assert.equal((await engine.request('quote', { symbol: 'bad symbol' }).catch(e => e)).code, 'INVALID_REQUEST');
   assert.equal((await engine.request('nope').catch(e => e)).code, 'INVALID_REQUEST');
   assert.equal((await engine.request('health')).db.version, 13);
-  assert.deepEqual((await engine.request('health')).features, ['universe', 'bars', 'calendar', 'earnings', 'spreads', 'runs', 'scoring', 'shadow', 'calibration', 'ledger', 'backtest', 'paper', 'options', 'broker-router']);
+  assert.deepEqual((await engine.request('health')).features, ['universe', 'bars', 'calendar', 'earnings', 'spreads', 'runs', 'scoring', 'shadow', 'calibration', 'ledger', 'backtest', 'paper', 'options', 'broker-router', 'sandbox']);
   assert.ok(Array.isArray(await engine.request('events', { limit: 5 })));
   const dash = await engine.request('dashboard');                                      // the dashboard page's numbers, built in the worker
   assert.equal(dash.engine.started, true); assert.equal(dash.engine.dbVersion, 13); assert.ok(Array.isArray(dash.forward) && dash.forward.length === 7);

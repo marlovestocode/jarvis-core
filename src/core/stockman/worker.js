@@ -21,6 +21,10 @@ const { buildState } = require('./jarvis/dashboard');
 const { createAlpacaHttp, createAlpaca } = require('./trading/alpaca');
 const { createOptions } = require('./features/options');
 const { createBrokerRouter } = require('./trading/broker-router');
+const path = require('node:path');
+const { createStrategyStore } = require('./trading/sandbox/strategy');
+const { createSandbox } = require('./trading/sandbox/sandbox');
+const { createTuner } = require('./trading/sandbox/tuner');
 
 const HEALTH_EVERY_MS = 5000;
 const FATAL_EXIT = 2;
@@ -75,7 +79,17 @@ function run() {
       const router = createBrokerRouter({ ledger: trading.api.ledger, shadow: layer.api.shadow, scoring: layer.api.scoring, alpaca,
         opts: { enabled: config.paperTrading.enabled && config.broker.enabled, capitalUsd: config.broker.capitalUsd, autoRun: config.provider.name === 'yahoo' } });
       app.use(router.feature);
-      dash = { api: { ...layer.api, ...trading.api, options: options.api, router: router.api, alpaca }, config };
+      // the sandbox strategy track (vault D28): the user-edited stockman.strategy.json run against the Alpaca PAPER account. Orders need all three
+      // switches: online.broker (the policy), broker.enabled and sandbox.enabled (stockman.config.json, re-read every 30 s so `strategy enable` needs no restart).
+      let cfgAt = 0, cfgOn = false;
+      const sandboxOn = () => { if (Date.now() - cfgAt > 30000) { cfgAt = Date.now(); try { const c = loadConfig({ dataDir: msg.dataDir }); cfgOn = Boolean(c.sandbox.enabled && c.broker.enabled); } catch { cfgOn = false; } } return cfgOn; };
+      const strategyStore = createStrategyStore({ file: path.join(config.dataDir, 'stockman.strategy.json'), log: l => send({ type: 'log', line: `stockman ${l}` }) });
+      const sbEvents = { append: e => app.events?.append(e) };
+      const sandbox = createSandbox({ ledger: trading.api.ledger, alpaca, data: layer.api, store: strategyStore, stateFile: path.join(config.dataDir, 'stockman.sandbox-state.json'), events: sbEvents,
+        opts: { enabled: sandboxOn, autoRun: config.provider.name === 'yahoo' && !/^(off|false|0|no)$/i.test(process.env.STOCKMAN_AUTORUN || '') } });
+      sandbox.api.options.tuner = createTuner({ store: strategyStore, data: layer.api, getDb: () => app.db, sandbox: sandbox.api, dataDir: config.dataDir, events: sbEvents });
+      app.use(sandbox.feature);
+      dash = { api: { ...layer.api, ...trading.api, options: options.api, router: router.api, sandbox: sandbox.api, alpaca }, config };
       await app.start();
     } catch (err) {
       send({ type: 'fatal', error: String(err?.message || err) });

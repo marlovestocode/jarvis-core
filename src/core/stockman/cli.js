@@ -29,6 +29,9 @@ function buildDataApp() {
   for (const f of layer.features) app.use(f);
   const trading = createTradingLayer({ data: layer.api });
   for (const f of trading.features) app.use(f);
+  // the options sampler's table (migration 13) must be known to every command that opens the database, or it refuses a file the engine has upgraded;
+  // here it is registered switched off with a stub adapter, so no CLI command samples anything on its own
+  app.use(require('./features/options').createOptions({ alpaca: { optionSnapshots() { throw new Error('off'); }, stockMid() { throw new Error('off'); } }, opts: { enabled: false, autoRun: false } }).feature);
   return { app, layer, trading };
 }
 
@@ -126,6 +129,82 @@ async function broker(args, out) {
   }
 }
 
+// strategy show | validate [file] | diff [file] | dry-run [day] | status | tune [--apply] | enable | disable   (vault D28: the sandbox strategy track)
+// The strategy lives in <data folder>/stockman.strategy.json. No command here sends an order (the scheduler does, when all three switches are on).
+// enable and disable edit stockman.config.json's sandbox.enabled; the running engine re-reads it within 30 seconds.
+async function strategy(args, out) {
+  const fs = require('node:fs'), path = require('node:path');
+  const { loadConfig } = require('./config');
+  const { normalize, diff, PRESET, createStrategyStore } = require('./trading/sandbox/strategy');
+  const config = loadConfig({});
+  const file = path.join(config.dataDir, 'stockman.strategy.json');
+  const [sub, ...rest] = args;
+  const flags = rest.filter(a => a.startsWith('--')), words = rest.filter(a => !a.startsWith('--'));
+  const readJson = p => JSON.parse(fs.readFileSync(p, 'utf8').replace(/^﻿/, ''));
+  if (sub === 'validate') {
+    const target = words[0] || file;
+    const n = normalize(readJson(target));
+    out(n.ok ? `OK: ${target} is a valid strategy` : `REFUSED: ${n.errors.length} problem(s) in ${target}:\n- ${n.errors.join('\n- ')}`);
+    return n.ok ? 0 : 1;
+  }
+  if (sub === 'diff') {
+    const a = normalize(readJson(file)), b = words[0] ? normalize(readJson(words[0])) : { ok: true, value: PRESET };
+    if (!a.ok || !b.ok) { out(`cannot diff: ${(a.ok ? b : a).errors.join('; ')}`); return 1; }
+    const d = diff(b.value, a.value);
+    out(d.length ? d.map(([p, x, y]) => `${p}: ${JSON.stringify(x)} -> ${JSON.stringify(y)}`).join('\n') : 'no differences');
+    out(`(${file} against ${words[0] || 'the built-in preset'})`);
+    return 0;
+  }
+  if (sub === 'enable' || sub === 'disable') {
+    const cfgFile = path.join(config.dataDir, 'stockman.config.json');
+    let c = {}; try { c = readJson(cfgFile); } catch { /* none yet */ }
+    c.sandbox = { ...(c.sandbox || {}), enabled: sub === 'enable' };
+    fs.writeFileSync(cfgFile, `${JSON.stringify(c, null, 2)}\n`);
+    if (sub === 'enable') { try { const sf = path.join(config.dataDir, 'stockman.sandbox-state.json'); const st = JSON.parse(fs.readFileSync(sf, 'utf8')); if (st.killed) { st.killed = null; fs.writeFileSync(sf, JSON.stringify(st)); out('the kill switch was cleared'); } } catch { /* no state yet */ } }
+    out(`sandbox.enabled is now ${sub === 'enable'} in ${cfgFile} (orders also need broker.enabled and online.broker)`);
+    return 0;
+  }
+  // the rest need the database and the adapter (reads only)
+  const { createPolicy } = require('../net/policy');
+  const { createAlpacaHttp, createAlpaca } = require('./trading/alpaca');
+  const { createSandbox } = require('./trading/sandbox/sandbox');
+  const { createTuner } = require('./trading/sandbox/tuner');
+  const policy = createPolicy(() => ({ online: { enabled: true, finance: true, broker: /^(1|true|yes|on)$/i.test(process.env.STOCKMAN_BROKER || '') } }));
+  const alpaca = createAlpaca({ http: createAlpacaHttp({ policy }), opts: { enabled: false, maxNotionalUsd: config.broker.maxNotionalUsd } });   // reads only: orders stay off in the CLI
+  const store = createStrategyStore({ file, log: l => out(l) });
+  const { app, layer, trading } = buildDataApp();
+  await app.start();
+  try {
+    const sb = createSandbox({ ledger: trading.api.ledger, alpaca, data: layer.api, store, stateFile: path.join(config.dataDir, 'stockman.sandbox-state.json'), opts: { enabled: false, autoRun: false } });
+    await sb.feature.start({ db: app.db });
+    const tuner = createTuner({ store, data: layer.api, getDb: () => app.db, sandbox: sb.api, dataDir: config.dataDir });
+    if (sub === 'show') { const s = store.load(); out(JSON.stringify({ hash: s.hash, buildId: s.buildId, error: s.error, file, strategy: s.strategy }, null, 2)); return s.error ? 1 : 0; }
+    if (sub === 'status') { store.load(); out(JSON.stringify(sb.api.status(), null, 2)); return 0; }
+    if (sub === 'dry-run') {
+      store.load();
+      const day = words[0] || layer.api.bars.lastBarDay();
+      const p = await sb.api.runPlan({ day, scheduled: false });
+      out(`DRY RUN for the close of ${p.day} (orders would go out in the session of ${p.entryDay}); ${p.label}; strategy ${p.strategyHash}; NOTHING WAS SENT`);
+      out(`regime: ${p.regime.reason}; rebalance day: ${p.rebalance} (${p.rule}); members ${p.counts.members}, scored ${p.counts.scored}; left out: ${['noBars', 'price', 'dollarVolume', 'earnings', 'history'].map(k => `${k} ${p.counts[k]}`).join(', ')}`);
+      out('targets:'); for (const t of p.targets) out(`  ${t.symbol.padEnd(6)} score ${t.score.toFixed(3).padStart(7)}  weight ${(t.weight * 100).toFixed(1).padStart(5)}%  USD ${String(t.notionalUsd).padStart(8)}  price ${t.price.toFixed(2)}${t.clipped ? '  (clipped to maxPositionPct)' : ''}`);
+      out(`orders (${p.orders.length}):`); for (const x of p.orders) out(`  ${x.leg.toUpperCase().padEnd(5)} ${x.symbol.padEnd(6)} ${x.notionalUsd ? `USD ${x.notionalUsd}` : `qty ${x.qty}`}  ${x.reason}  [${x.cid}]`);
+      if (p.refused.length) { out(`refused (${p.refused.length}):`); for (const r of p.refused) out(`  ${r.leg} ${r.symbol}: ${r.reason}`); }
+      return 0;
+    }
+    if (sub === 'tune') {
+      store.load();
+      const r = await tuner.run({ force: true, apply: flags.includes('--apply') });
+      out(`TUNER (${r.label}): ${r.status}; ${r.note || ''}`);
+      if (r.current) out(`current: ${r.current.periods} periods, later-part mean excess ${(r.current.testMean * 100).toFixed(3)}% per period (lower bound ${(r.current.testLower95 * 100).toFixed(3)}%), earlier ${(r.current.fitMean * 100).toFixed(3)}%`);
+      for (const c of r.candidates.filter(x => Object.keys(x.changes).length)) out(`  ${JSON.stringify(c.changes).padEnd(70)} later ${(c.testMean * 100).toFixed(3)}%  earlier ${(c.fitMean * 100).toFixed(3)}%`);
+      if (r.data) out(`data: ${r.data.tuningFirst} to ${r.data.tuningEnd}; the holdout (to ${r.data.holdoutEndNeverRead}) was never read`);
+      return r.status === 'failed' ? 1 : 0;
+    }
+    out('usage: stockman strategy <show | validate [file] | diff [file] | dry-run [day] | status | tune [--apply] | enable | disable>');
+    return 2;
+  } finally { await app.stop(); }
+}
+
 async function data(args, out) {
   const [sub, ...rest] = args;
   const { app, layer } = buildDataApp();
@@ -165,11 +244,14 @@ async function data(args, out) {
 async function main(argv, out = console.log) {
   const [cmd, ...args] = argv;
   if (!cmd || cmd === 'help' || cmd === '--help') {
-    out('usage: stockman <migrate | status | events [n] | quote SYMBOL... | history SYMBOL [range] [interval] | data ... | backtest ...>');
+    out('usage: stockman <migrate | status | events [n] | quote SYMBOL... | history SYMBOL [range] [interval] | data ... | backtest ... | broker ... | strategy ...>');
     return cmd ? 0 : 1;
   }
   if (cmd === 'data') {
     try { return await data(args, out); } catch (err) { out(`error [${err.code || 'UNKNOWN'}]: ${err.message}`); return 1; }
+  }
+  if (cmd === 'strategy') {
+    try { return await strategy(args, out); } catch (err) { out(`error [${err.code || 'UNKNOWN'}]: ${err.message}`); return 1; }
   }
   if (cmd === 'broker') {
     try { return await broker(args, out); } catch (err) { out(`error [${err.code || 'UNKNOWN'}]: ${err.message}`); return 1; }
