@@ -141,3 +141,21 @@ test('relative library.dir is rejected with a reported key', () => {
   assert.equal(loadConfig(d).library.dir, 'C:\\JarvisData\\library');
   assert.ok(inspectConfig(d).ignored.includes('library.dir'));
 });
+
+test('config: brief defaults', () => {
+  assert.deepEqual(DEFAULTS.brief, { auto: true, onFirstWake: true, newsCount: 3, lastDate: '' });
+});
+
+test('config: brief newsCount clamps to 1-5 and lastDate must be a date or empty', () => {
+  const d = tmp();
+  fs.writeFileSync(path.join(d, 'config.json'), JSON.stringify({ brief: { newsCount: 9, lastDate: 'x', auto: false } }));
+  const c = loadConfig(d);
+  assert.equal(c.brief.newsCount, 5);
+  assert.equal(c.brief.lastDate, '');
+  assert.equal(c.brief.auto, false);
+  assert.equal(c.brief.onFirstWake, true);
+  fs.writeFileSync(path.join(d, 'config.json'), JSON.stringify({ brief: { newsCount: 0, lastDate: '2026-11-16' } }));
+  const c2 = loadConfig(d);
+  assert.equal(c2.brief.newsCount, 1);
+  assert.equal(c2.brief.lastDate, '2026-11-16');
+});
