@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('jarvis', {
   status: () => ipcRenderer.invoke('ai:status'),
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
+    health: () => ipcRenderer.invoke('settings:health'),
     set: patch => ipcRenderer.invoke('settings:set', patch),
     capture: on => ipcRenderer.invoke('settings:capture', !!on),
     places: query => ipcRenderer.invoke('settings:places', String(query)),

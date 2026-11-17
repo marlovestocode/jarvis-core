@@ -100,6 +100,7 @@
       const d = await S.set(patch);
       render(d);
       $('saved').textContent = d.errors?.length ? 'NOT SAVED' : 'SAVED';
+      $('saved').classList.remove('hud-flash'); void $('saved').offsetWidth; $('saved').classList.add('hud-flash');
       clearTimeout(savedT);
       savedT = setTimeout(() => { $('saved').textContent = ''; }, 1200);
       return !d.errors?.length;
