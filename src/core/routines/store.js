@@ -63,7 +63,7 @@ function createRoutineStore({ file, log = () => {} }) {
       const list = load();
       const i = index(routine.name);
       if (i < 0 && list.length >= MAX_ROUTINES) return { ok: false, error: `At most ${MAX_ROUTINES} routines.` };
-      const next = { name: String(routine.name).trim(), steps: routine.steps.map(s => ({ tool: s.tool, args: { ...(s.args || {}) } })) };
+      const next = { name: String(routine.name).trim(), steps: routine.steps.map(s => { const { token, ...args } = s.args || {}; return { tool: s.tool, args }; }) };   // a run token is never stored
       if (i >= 0 && list[i].lastRun) next.lastRun = list[i].lastRun;
       if (i >= 0) list[i] = next; else list.push(next);
       write();

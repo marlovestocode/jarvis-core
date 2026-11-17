@@ -8,7 +8,7 @@ const DIALECTS = require('./voice/dialect').list().map(d => d.id);
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 function applyPatch(current, patch = {}, { providers, engines }) {
-  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama }, online: { ...current.online }, location: { ...current.location }, news: { feeds: [...current.news.feeds] }, sports: { follow: current.sports.follow.map(x => ({ ...x })) }, music: { ...current.music, aliases: (current.music?.aliases || []).map(x => ({ ...x })) }, proactive: { ...current.proactive, monitors: cleanMonitors(current.proactive?.monitors) }, browser: { ...current.browser }, user: { ...current.user }, memory: { ...current.memory }, cortex: { ...current.cortex }, speech: { ...current.speech }, library: { ...current.library }, livestate: { ...current.livestate } };
+  const config = { ...current, engines: { ...current.engines }, hotkeys: { ...current.hotkeys }, ollama: { ...current.ollama }, online: { ...current.online }, location: { ...current.location }, news: { feeds: [...current.news.feeds] }, sports: { follow: current.sports.follow.map(x => ({ ...x })) }, music: { ...current.music, aliases: (current.music?.aliases || []).map(x => ({ ...x })) }, proactive: { ...current.proactive, monitors: cleanMonitors(current.proactive?.monitors) }, browser: { ...current.browser }, user: { ...current.user }, memory: { ...current.memory }, cortex: { ...current.cortex }, speech: { ...current.speech }, library: { ...current.library }, livestate: { ...current.livestate }, brief: { ...current.brief } };
   const errors = [];
   if (!isObj(patch)) return { config, errors: ['bad patch'] };
 
@@ -156,6 +156,18 @@ function applyPatch(current, patch = {}, { providers, engines }) {
   if (isObj(patch.livestate) && 'windowTitle' in patch.livestate) {
     if (typeof patch.livestate.windowTitle === 'boolean') config.livestate.windowTitle = patch.livestate.windowTitle;
     else errors.push('Window title switch must be true or false');
+  }
+  if (isObj(patch.brief)) {
+    for (const k of ['auto', 'onFirstWake']) {
+      if (!(k in patch.brief)) continue;
+      if (typeof patch.brief[k] === 'boolean') config.brief[k] = patch.brief[k];
+      else errors.push(`Brief ${k} must be true or false`);
+    }
+    if ('newsCount' in patch.brief) {
+      const n = Number(patch.brief.newsCount);
+      if (Number.isFinite(n)) config.brief.newsCount = clampNumber(n, 1, 5);
+      else errors.push('Brief news count must be a number');
+    }
   }
   if (isObj(patch.hotkeys)) {
     const next = { ...config.hotkeys };

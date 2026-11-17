@@ -109,6 +109,22 @@
       <p class="hint" id="memDetail" role="status"></p>
     </section>
     <section>
+      <h2>MORNING BRIEF</h2>
+      <label class="row"><span>Offer it on the first wake of the day</span><input type="checkbox" id="briefAuto"></label>
+      <p class="hint">Say "morning brief" any time: weather, timers, news, battery and what is open. Quiet hours and Do not disturb still apply.</p>
+    </section>
+    <section id="routines">
+      <h2>ROUTINES</h2>
+      <p class="hint">A named list of steps. Say its name to run it, or "undo game mode" to put things back. A routine that closes apps asks once first.</p>
+      <ul id="routineList" class="items"></ul>
+      <form id="routineForm" class="editor routine-editor">
+        <input id="routineName" aria-label="Routine name" placeholder="Name, e.g. game mode" maxlength="40">
+        <div id="routineSteps" class="routine-steps"></div>
+        <div class="editor"><button type="button" id="routineAddStep">ADD STEP</button><button type="submit">SAVE ROUTINE</button><button type="button" id="routineClear">CLEAR</button></div>
+      </form>
+      <p class="hint" id="routineDetail" role="status"></p>
+    </section>
+    <section>
       <h2>STARTUP</h2>
       <label class="row"><span>Start with Windows (tray)</span><input type="checkbox" id="startAtLogin"></label>
     </section>

@@ -25,6 +25,11 @@ contextBridge.exposeInMainWorld('jarvis', {
     speakerStatus: () => ipcRenderer.invoke('speaker:status'),
     speakerEnroll: () => ipcRenderer.invoke('speaker:enroll'),
     speakerClear: () => ipcRenderer.invoke('speaker:clear'),
+    routines: {
+      list: () => ipcRenderer.invoke('routines:list'),
+      save: routine => ipcRenderer.invoke('routines:save', routine),
+      remove: name => ipcRenderer.invoke('routines:remove', String(name)),
+    },
     memory: {
       list: q => ipcRenderer.invoke('memory:list', q),
       edit: p => ipcRenderer.invoke('memory:edit', p),
