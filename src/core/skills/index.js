@@ -3,7 +3,7 @@
 // status() → { ok, detail } (may be async): whether the group can work right now (extension connected, sysmon up...).
 const { buildCardsNow } = require('./capability');
 const { buildToolCard } = require('./toolcards');
-const ORDER = ['core', 'media', 'ytmusic', 'timers', 'monitors', 'knowledge', 'system', 'pc', 'math', 'memory', 'windows', 'audio-display', 'connectivity', 'clipboard-capture', 'screen-vision', 'files', 'browser', 'self', 'web', 'lyrics', 'lists'];
+const ORDER = ['core', 'media', 'ytmusic', 'timers', 'monitors', 'knowledge', 'system', 'pc', 'math', 'memory', 'windows', 'audio-display', 'connectivity', 'clipboard-capture', 'screen-vision', 'files', 'browser', 'self', 'web', 'lyrics', 'lists', 'stockman'];
 
 // The groups that loaded, in ORDER. The array also carries .missing: [{ id, error? }], the groups left out:
 // error is set when the group file threw (one broken group must not stop the app), absent when it simply

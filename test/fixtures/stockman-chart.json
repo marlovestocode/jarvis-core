@@ -1,0 +1,24 @@
+{
+  "_note": "SYNTHETIC test data in the shape of the Yahoo chart response confirmed on 2026-11-17. Not real prices. Bar 3 has null values (the provider does this for gaps).",
+  "chart": {
+    "result": [{
+      "meta": {
+        "currency": "USD", "symbol": "ABC", "exchangeName": "NMS",
+        "regularMarketPrice": 104.5, "regularMarketTime": 1794862801, "regularMarketVolume": 1234567,
+        "validRanges": ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"]
+      },
+      "timestamp": [1794321000, 1794407400, 1794493800, 1794580200],
+      "indicators": {
+        "quote": [{
+          "open": [100, 101, null, 103],
+          "high": [102, 103, null, 105],
+          "low": [99, 100, null, 102],
+          "close": [101, 102, null, 104.5],
+          "volume": [1000, 1100, null, 1300]
+        }],
+        "adjclose": [{ "adjclose": [100.5, 101.5, null, 104.5] }]
+      }
+    }],
+    "error": null
+  }
+}

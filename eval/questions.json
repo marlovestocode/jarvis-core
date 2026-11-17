@@ -39,6 +39,7 @@
   { "id": "t-windows", "group": "tools", "q": "Which windows do I have open?", "pick": "list_windows" },
   { "id": "t-snap", "group": "tools", "q": "Snap the Chrome window to the left half of the screen.", "pick": "window_arrange" },
   { "id": "t-list-add", "group": "tools", "q": "Add milk and eggs to my grocery list.", "pick": "list_add" },
+  { "id": "t-stockman-status", "group": "tools", "q": "Is StockMan up and running?", "pick": "stockman_status" },
   { "id": "t-monitor", "group": "tools", "q": "Move the Chrome window to my second monitor.", "pick": "window_to_monitor" },
   { "id": "t-desktop", "group": "tools", "q": "Switch to the next virtual desktop.", "pick": "desktop_switch" },
   { "id": "t-hung", "group": "tools", "q": "Notepad is not responding. End it.", "pick": "end_unresponsive_app" },

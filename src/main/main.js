@@ -307,6 +307,12 @@ ctx.confirm = createConfirm({ actionLog: ctx.actionLog, onResolved: r => ctx.tas
 ctx.timerStore = createTimerStore({ file: path.join(DATA_DIR, 'timers.json'), log: ctx.log });
 ctx.scheduler = createScheduler({ store: ctx.timerStore, bus: ctx.bus, log: ctx.log });
 ctx.lists = require('../core/lists/store').createListStore({ file: path.join(DATA_DIR, 'lists.json'), log: ctx.log });
+// StockMan engine (src/core/stockman, vault: Finance/StockMan, D16): its own child process, started at boot and stopped on quit, which
+// owns <data>/stockman.db. jarvis only supervises it (restart after a crash) and asks it through messages. The worker builds its own
+// fetcher with the same host policy and is told jarvis's online switches, so online.finance still applies. A failure here leaves JARVIS without it.
+try {
+  ctx.stockman = require('../core/stockman/process').createStockmanProcess({ bus: ctx.bus, log: ctx.log, getConfig: ctx.getConfig, dataDir: DATA_DIR });
+} catch (err) { ctx.log(`stockman unavailable: ${err.message}`); }
 // Saved multi-step tasks (src/core/tasks): steps run through ctx.tools, which is built after the catalog, so it is read lazily.
 // Any failure here leaves JARVIS without task tools, as before.
 try {
@@ -334,7 +340,7 @@ const visionResize = async png => {
   const k = (Number(ctx.config.vision?.maxEdge) || 1280) / Math.max(width, height);
   return k >= 1 ? png : img.resize({ width: Math.round(width * k), height: Math.round(height * k), quality: 'best' }).toPNG();
 };
-ctx.catalog = brain.defaultCatalog({ vision: { client: ctx.vision, resize: visionResize }, self, analytics: { metrics: ctx.metrics, openDashboard: ctx.openDashboard }, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, wallpaperClients: () => (ctx.bridge ? ctx.bridge.clients() : null), getConfig: ctx.getConfig, applySettings: patch => { const { config, errors } = applyPatch(ctx.config, patch, { providers: ctx.providers, engines: ctx.engines }); ctx.saveConfig(config); return errors; }, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, lyrics: ctx.lyrics, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, lists: ctx.lists, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog }, ...(ctx.taskTools ? { tasks: ctx.taskTools } : {}) });
+ctx.catalog = brain.defaultCatalog({ vision: { client: ctx.vision, resize: visionResize }, self, analytics: { metrics: ctx.metrics, openDashboard: ctx.openDashboard }, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, wallpaperClients: () => (ctx.bridge ? ctx.bridge.clients() : null), getConfig: ctx.getConfig, applySettings: patch => { const { config, errors } = applyPatch(ctx.config, patch, { providers: ctx.providers, engines: ctx.engines }); ctx.saveConfig(config); return errors; }, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, lyrics: ctx.lyrics, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, lists: ctx.lists, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog }, ...(ctx.taskTools ? { tasks: ctx.taskTools } : {}), ...(ctx.stockman ? { stockman: ctx.stockman } : {}) });
 ctx.toolList = ctx.catalog.tools;
 for (const m of ctx.catalog.missing) if (m.error) ctx.log(`skill group ${m.id} failed to load: ${m.error}`);
 // tool discovery: embeddings come from the memory system's embedder (none installed: lexical only, within 250 ms)
@@ -539,7 +545,7 @@ ctx.memwatch = createMemWatch({
 });
 ctx.memwatch.start();
 ctx.metrics.start();
-ctx.onQuit = [() => ctx.memwatch.stop(), () => ctx.metrics.close(), () => ctx.monitors.stop(), () => ctx.proactive.stop(), () => ctx.scheduler.stop(), () => ctx.pcHostProc.close(), () => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close(), () => ctx.memorySystem.close(), () => ctx.live.close(), () => livePersist.flush()];
+ctx.onQuit = [() => ctx.memwatch.stop(), () => ctx.metrics.close(), () => ctx.monitors.stop(), () => ctx.proactive.stop(), () => ctx.scheduler.stop(), () => ctx.pcHostProc.close(), () => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close(), () => ctx.memorySystem.close(), () => ctx.live.close(), () => livePersist.flush(), () => { ctx.stockman?.stop().catch(() => {}); }];
 
 app.on('web-contents-created', (_e, wc) => guardWebContents(wc));
 app.on('second-instance', () => ctx.windows?.showChat());
@@ -644,6 +650,12 @@ app.whenReady().then(async () => {
     } },
     { stage: 'pc', run: async () => `${(await pcAllowlist()).length} apps allowed` },
     { stage: 'timers', run: async () => { let r; try { r = ctx.scheduler.start(); } finally { ctx.monitors.start(); } return `${r.armed} set${r.fired ? `, ${r.fired} missed while off` : ''}`; } },
+    { stage: 'stockman', run: async () => {
+      if (!ctx.stockman) return { ok: false, detail: 'unavailable' };
+      await ctx.stockman.start();
+      const h = ctx.stockman.health();
+      return h.started ? `database v${h.db.version}, ${h.stocks.provider}` : { ok: false, detail: 'off' };
+    } },
     { stage: 'sysmon', run: async () => {
       return (await sysmonUp(fetch, 1000)) ? 'linked' : { ok: false, detail: 'not running' };
     } },
