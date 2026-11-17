@@ -66,11 +66,12 @@
   }
 
   // Follow new text only while the reader is at the bottom (or just switched chats), so scrolling up to read stays put
-  let shownId = null;
+  let shownId = null, drawnCount = 0;
   const nearBottom = () => log.scrollHeight - log.scrollTop - log.clientHeight < 60;
 
   function drawLog() {
-    const stick = shownId !== (session?.id ?? null) || nearBottom(), keep = log.scrollTop;
+    const same = shownId === (session?.id ?? null);
+    const stick = !same || nearBottom(), keep = log.scrollTop;
     shownId = session?.id ?? null;
     log.replaceChildren();
     const msgs = session?.messages || [];
@@ -113,6 +114,9 @@
       if (lookupEvents.length) live.el.appendChild(lookupNote(lookupEvents));
       log.appendChild(live.el);
     }
+    // only what is new since the last draw animates in; a full redraw of the same chat stays still
+    if (same) [...log.children].forEach((c, i) => { if (i >= drawnCount) c.classList.add('fresh'); });
+    drawnCount = log.children.length;
     log.scrollTop = stick ? log.scrollHeight : keep;
   }
 
