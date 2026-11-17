@@ -94,6 +94,20 @@
       fillTop('t-wide', sp.widest); fillTop('t-tight', sp.tightest);
       rows($('t-quotes').tBodies[0], sp.latest, r => [td(r.symbol), td(fix(r.bid, 2), 'n'), td(fix(r.ask, 2), 'n'), td(fix(r.bps, 2), 'n'), td(clock(r.at))]);
     }
+    const sb = s.sandbox && !s.sandbox.error ? s.sandbox : null, sl = $('sbx'); clear(sl);
+    if (sb) {
+      const adds = (k, v, cls) => sl.append(el('dt', { text: k }), el('dd', { class: cls || '', text: v }));
+      adds('Strategy', `${sb.strategyName || '—'} · ${sb.hash || 'not loaded'}`);
+      adds('State', sb.killed ? `KILLED: ${sb.killed.reason}` : !sb.enabled ? 'OFF (sandbox.enabled is false)' : sb.dryRun ? 'DRY RUN: plans are stored, nothing is sent' : 'live paper orders', sb.killed ? 'crit' : sb.dryRun || !sb.enabled ? 'warn' : '');
+      if (sb.strategyError) adds('File refused', `${sb.strategyError[0]} (the last good version keeps running)`, 'crit');
+      adds('Rebalance', `${sb.rebalance || '—'}; last plan ${sb.lastPlanDay || '—'}; last rebalance ${sb.lastRebalanceDay || '—'}`);
+      adds('Open positions', String(sb.openPositions.length));
+      if (sb.pnl) adds('P&L since ' + sb.pnl.since, `account ${sb.pnl.equityPct.toFixed(2)}% vs SPY ${sb.pnl.spyPct === null ? '—' : sb.pnl.spyPct.toFixed(2) + '%'}`);
+      if (sb.lastTune) adds('Tuner', `${sb.lastTune.status} on ${sb.lastTune.day}: ${sb.lastTune.note || ''} (sandbox, in-sample-adjacent, not evidence)`);
+      if (sb.lastPlan) adds('Regime', sb.lastPlan.regime && sb.lastPlan.regime.reason);
+    }
+    rows($('t-sbx-targets').tBodies[0], sb && sb.lastPlan ? sb.lastPlan.targets.slice(0, 20) : [], r => [td(r.symbol), td(fix(r.score, 2), 'n'), td(`${(r.weight * 100).toFixed(1)}%`, 'n'), td(fix(r.notionalUsd, 0), 'n')]);
+    rows($('t-sbx-orders').tBodies[0], sb && sb.lastPlan ? [...sb.lastPlan.orders.map(x => ({ leg: x.leg, symbol: x.symbol, size: x.notionalUsd ? `USD ${x.notionalUsd}` : `qty ${x.qty}`, reason: x.reason })), ...sb.lastPlan.refused.map(x => ({ leg: x.leg, symbol: x.symbol, size: 'REFUSED', reason: x.reason }))].slice(0, 30) : [], r => [td(r.leg), td(r.symbol), td(r.size), td(r.reason)]);
     const op = s.options && !s.options.error ? s.options : null;
     rows($('t-odte').tBodies[0], op ? Object.entries(op.byDte || {}).map(([k, v]) => ({ k, ...v })) : [], r => [td(`${r.k} days`), td(String(r.samples), 'n'), td(r.medianSpreadPct === null ? '—' : `${(r.medianSpreadPct * 100).toFixed(1)}%`, 'n'), td(fix(r.medianSpreadAbs, 2), 'n')]);
     rows($('t-ounder').tBodies[0], op ? (op.perUnderlying || []).slice(0, 12) : [], r => [td(r.underlying), td(String(r.samples), 'n'), td(`${(r.medianSpreadPct * 100).toFixed(1)}%`, 'n')]);
