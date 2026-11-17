@@ -26,6 +26,7 @@ const WAKE_ANY = /\b(?:(?:hey|ok|okay|hi|yo)[\s,]+)?(?:jarvis|jarvas|jervis|javi
 const STT_CAPTURE_TIMEOUT_MS = 60000;
 const STT_WAKE_TIMEOUT_MS = 30000;   // idle (≤ 8 s) and speaking (≤ 3 s) windows are one inference each
 
+const MODEL_DOWN = /not running|not ready|no model|ECONNREFUSED|unreachable|couldn't reach/i;   // the model server is down: say so
 const norm = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 // Continuation guard: a turn that ends on one of these words was probably cut by a pause, not finished.
@@ -414,7 +415,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       } else {
         bus.emit('log', { level: 'warn', text: `Voice turn failed: ${err?.message || err}` });
         setState('idle');
-        await sayLine('failed', my);
+        await sayLine(MODEL_DOWN.test(err?.message || '') ? 'noModel' : 'failed', my);
       }
       return;
     }
@@ -425,7 +426,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       if (stream) abortOp();
       mode = 'idle';
       if (!res.error && !res.stopped) setState('idle'); // the orchestrator already ended error/stop turns
-      if (res.error && !res.stopped) await sayLine('failed', my);
+      if (res.error && !res.stopped) await sayLine(MODEL_DOWN.test(String(res.error)) ? 'noModel' : 'failed', my);
       return;
     }
     if (!streaming) { await speak(res.reply, my); return; }

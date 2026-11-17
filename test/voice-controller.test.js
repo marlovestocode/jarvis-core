@@ -760,3 +760,10 @@ test('voice: no filler for a fast tool, or when reply text already arrived', asy
   capture(r.vc); await tick(300);
   assert.ok(!r.tts.pushes.some(p => p.s === LINES.working));
 });
+
+test('voice: a model that is not running is named in the spoken failure', async () => {
+  const { orchestrator, tts, vc } = setup();
+  orchestrator.send = async () => ({ reply: '', stopped: false, error: 'Ollama is not running', sessionId: 's' });
+  capture(vc); await tick(20);
+  assert.deepEqual(tts.spoken.map(s => s.text), [LINES.noModel]);
+});
