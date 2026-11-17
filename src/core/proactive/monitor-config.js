@@ -8,8 +8,9 @@ const DEFAULT_MONITORS = Object.freeze({
   sysmon: Object.freeze({ enabled: false, cpu: 90, ram: 90, disk: 95, temp: 85 }),
   weatherAlerts: Object.freeze({ enabled: false }),
   followedTeams: Object.freeze({ enabled: false }),
+  lowBattery: Object.freeze({ enabled: false, percent: 20 }),
 });
-const RANGES = { leadMin: [1, 120], cpu: [1, 100], ram: [1, 100], disk: [1, 100], temp: [30, 110] };
+const RANGES = { leadMin: [1, 120], cpu: [1, 100], ram: [1, 100], disk: [1, 100], temp: [30, 110], percent: [5, 50] };
 
 const num = v => (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) ? Number(v) : NaN;
 

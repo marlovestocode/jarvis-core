@@ -231,3 +231,29 @@ test('followedTeams: an old final on first sight is not replayed; a fresh one is
   const none = createFollowedTeamsMonitor({ getGames: async () => [game({ score: null })] });
   assert.equal(await none.check({}, {}, {}, 1e9), null);
 });
+
+// ---- lowBattery ----
+const { createLowBatteryMonitor } = require('../src/core/proactive/monitors/low-battery');
+
+test('lowBattery: off by default; fires once at the limit, only when not charging; re-arms after charging', async () => {
+  assert.deepEqual(DM.lowBattery, { enabled: false, percent: 20 });
+  let b = { percent: 50, charging: false };
+  const mon = createLowBatteryMonitor({ getBattery: async () => b });
+  assert.equal(mon.enabled({ lowBattery: { enabled: true } }), true);
+  const cfg = { lowBattery: { enabled: true, percent: 20 } }, st = {};
+  assert.equal(await mon.check({}, cfg, st, 0), null);
+  b = { percent: 19, charging: true };
+  assert.equal(await mon.check({}, cfg, st, MIN), null, 'charging is fine');
+  b = { percent: 19, charging: false, minutes: 75 };
+  assert.equal((await mon.check({}, cfg, st, 2 * MIN)).text, 'Battery is at 19% and not charging, about 1 h 15 min left.');
+  b = { percent: 15, charging: false };
+  assert.equal(await mon.check({}, cfg, st, 30 * MIN), null, 'told once until it recovers');
+  b = { percent: 80, charging: true };
+  await mon.check({}, cfg, st, 31 * MIN);
+  b = { percent: 18, charging: false };
+  assert.equal((await mon.check({}, cfg, st, 60 * MIN)).text, 'Battery is at 18% and not charging.');
+});
+
+test('lowBattery: a desktop (null) or unreadable battery says nothing', async () => {
+  for (const v of [null, { percent: NaN, charging: false }]) assert.equal(await createLowBatteryMonitor({ getBattery: async () => v }).check({}, { lowBattery: { percent: 20 } }, {}, 0), null);
+});

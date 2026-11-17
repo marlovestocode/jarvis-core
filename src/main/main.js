@@ -43,6 +43,7 @@ const timersSoon = require('../core/proactive/monitors/timers-soon');
 const { createSysmonMonitor, createSysmonStats } = require('../core/proactive/monitors/sysmon-threshold');
 const { createWeatherAlertsMonitor } = require('../core/proactive/monitors/weather-alerts');
 const { createFollowedTeamsMonitor } = require('../core/proactive/monitors/followed-teams');
+const { createLowBatteryMonitor } = require('../core/proactive/monitors/low-battery');
 const { getAlerts } = require('../core/knowledge/weather');
 const { getScores } = require('../core/knowledge/sports');
 const { resolvePlace } = require('../core/knowledge/location');
@@ -473,7 +474,9 @@ ctx.monitors = createMonitors({ engine: ctx.proactive, live: ctx.live, getConfig
   // weather alerts for the home place, through the allowlisted fetcher; no home set → nothing to check
   createWeatherAlertsMonitor({ getAlerts: async () => { const l = ctx.getConfig().location; if (!Number.isFinite(l?.lat) || !Number.isFinite(l?.lon)) return { alerts: [] }; return getAlerts(ctx.fetcher, await resolvePlace(ctx.fetcher, '', ctx.getConfig())); } }),
   // games of the teams followed in Settings → Knowledge, through the allowlisted fetcher
-  createFollowedTeamsMonitor({ getGames: async () => (ctx.getConfig().sports?.follow?.length ? (await getScores(ctx.fetcher, {}, ctx.getConfig())).games : []) })] });
+  createFollowedTeamsMonitor({ getGames: async () => (ctx.getConfig().sports?.follow?.length ? (await getScores(ctx.fetcher, {}, ctx.getConfig())).games : []) }),
+  // the PC's own battery reading (same call connectivity_status uses); an unreadable one is treated as none
+  createLowBatteryMonitor({ getBattery: () => ctx.pcHost.battery().catch(() => null) })] });
 // warnings keep their level in the log, and a failed tool or turn is written down too (self_log reads these)
 ctx.bus.on('log', ev => ctx.log(ev.level === 'warn' || ev.level === 'error' ? `${ev.level}: ${ev.text}` : ev.text));
 ctx.bus.on('tool', ev => {
