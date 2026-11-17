@@ -48,6 +48,9 @@ const { createActionLog } = require('../core/pc/actions-log');
 const { createTaskStore } = require('../core/tasks/store');
 const { createTaskRunner } = require('../core/tasks/runner');
 const { createTasksSkill } = require('../core/tasks/skill');
+const { createBrief } = require('../core/brief');
+const { createBriefSkill } = require('../core/skills/brief');
+const { createFirstWake } = require('../core/brief/firstwake');
 const { createTaskTools } = require('../core/tools/tasks');
 const { createOrchestrator } = require('../core/orchestrator');
 const { createLiveState, liveLine } = require('../core/livestate');
@@ -311,6 +314,9 @@ ctx.catalog = brain.defaultCatalog({ self, analytics: { metrics: ctx.metrics, op
 ctx.toolList = ctx.catalog.tools;
 for (const m of ctx.catalog.missing) if (m.error) ctx.log(`skill group ${m.id} failed to load: ${m.error}`);
 ctx.tools = createToolRunner(ctx.toolList, { groups: ctx.catalog.groups });
+// morning brief: a text built from read-only tools; spoken on the phrase, or on the first wake of the day (wired below)
+ctx.brief = createBrief({ tools: ctx.tools, getConfig: ctx.getConfig });
+ctx.briefSkill = createBriefSkill({ brief: ctx.brief });
 // which tool a request is about, ranked from the tools' own text and from the requests that worked before (this run): the model sees the likeliest tools first
 const toolRanker = createRanker(ctx.toolList);
 // a request that names nothing to act on, or something JARVIS has no tool for, is answered here instead of guessed at by the model
@@ -326,6 +332,7 @@ const liveInstant = async (text, o = {}) => {
 };
 // "task status", "pause the task"...: a failing task skill falls through to the rest of the chain
 const tasksFast = async (text, o) => { if (!ctx.tasksSkill) return null; try { return await ctx.tasksSkill.handle(text, o); } catch (err) { ctx.log('task skill failed:', err?.message || err); return null; } };
+const briefFast = async (text, o) => { try { return await ctx.briefSkill.handle(text, o); } catch (err) { ctx.log('brief skill failed:', err?.message || err); return null; } };
 // LiveState: what is happening right now, for the prompt and for follow-ups ("again", "undo that"). A missing service just omits its source.
 let lastMedia = null;   // { st, at } from the media state promptInfo already fetches
 ctx.live = createLiveState({ bus: ctx.bus, log: ctx.log, restore: livePersist.load(DATA_DIR), save: snap => livePersist.save(DATA_DIR, snap) });
@@ -351,7 +358,7 @@ ctx.orchestrator = createOrchestrator({
     return { dialect: resolveDialect(ctx.config.speech), hardware: ctx.hardware.cached() || undefined, media, library: ctx.ytPlaylists.digest() || undefined, memory: profile.text || undefined, memoryIds: profile.ids, user: userInfo(), caps: capsLine(), hotkeys: ctx.config.hotkeys, live: (() => { try { return liveLine(ctx.live.snapshot()); } catch { return ''; } })() };
   },
   // a pending PC action reads the user's own reply first (yes / no); nothing else can confirm it
-  fastPath: async (text, o) => (await ctx.confirm.handle(text, o)) || (await ctx.memorySkill.handle(text, o)) || (await ctx.lyricsSkill.handle(text, o)) || (await tasksFast(text, o)) || ctx.mediaSkill.handle(text, o) || askOrDecline(text, o) || instant(text, { now: new Date() }) || (await liveInstant(text, o)),
+  fastPath: async (text, o) => (await ctx.confirm.handle(text, o)) || (await ctx.memorySkill.handle(text, o)) || (await ctx.lyricsSkill.handle(text, o)) || (await tasksFast(text, o)) || (await briefFast(text, o)) || ctx.mediaSkill.handle(text, o) || askOrDecline(text, o) || instant(text, { now: new Date() }) || (await liveInstant(text, o)),
   rankTools: (text, specs) => toolRanker.order(text, specs),
   learnTool: (text, name) => toolRanker.learn(text, name),
   onQuestionLost: () => ctx.confirm.clear(),
@@ -462,6 +469,8 @@ ctx.proactive = createProactiveEngine({
     ctx.sessions.save(s);
   },
 });
+ctx.proactive.briefing.set(() => ctx.brief.build());
+ctx.firstWake = createFirstWake({ bus: ctx.bus, getConfig: ctx.getConfig, log: ctx.log, saveBriefDate: d => ctx.saveConfig({ ...ctx.config, brief: { ...ctx.config.brief, lastDate: d } }), run: () => ctx.proactive.briefing.run() });
 // monitors only produce text for the engine above; they never act
 ctx.monitors = createMonitors({ engine: ctx.proactive, live: ctx.live, getConfig: ctx.getConfig, log: ctx.log, monitors: [timersSoon, createSysmonMonitor({ getStats: createSysmonStats({ fetch }), log: ctx.log })] });
 // warnings keep their level in the log, and a failed tool or turn is written down too (self_log reads these)
