@@ -61,7 +61,7 @@ function regimeAt(strategy, bench, d) {
 // → { regime, targets: [{ symbol, score, weight, notionalUsd, price, vol }], counts: { members, eligible, ... } }
 function buildTargets(strategy, ctx) {
   const { d, members, series, bench } = ctx;
-  const counts = { members: members.length, noBars: 0, price: 0, dollarVolume: 0, earnings: 0, history: 0, scored: 0 };
+  const counts = { members: members.length, noBars: 0, price: 0, dollarVolume: 0, pinned: 0, earnings: 0, history: 0, scored: 0 };
   const cand = [];
   for (const symbol of members) {
     const s = series.get(symbol);
@@ -71,7 +71,10 @@ function buildTargets(strategy, ctx) {
     if (ctx.excluded && strategy.universe.excludeEarningsDays > 0 && ctx.excluded(symbol)) { counts.earnings++; continue; }
     const sig = signalsOf(strategy, s, d);
     if (!sig) { counts.history++; continue; }
-    cand.push({ symbol, sig, price: s.close[d], vol: dailyVol(adjBefore(s, d), 60) });
+    const vol = dailyVol(adjBefore(s, d), 60);
+    // a name that barely moves (a pending takeover, a halted stock) would top a low-volatility ranking and dominate inverse-volatility weights: left out, counted
+    if (vol !== null && vol * 100 < strategy.universe.minVolPct) { counts.pinned++; continue; }
+    cand.push({ symbol, sig, price: s.close[d], vol });
   }
   counts.scored = cand.length;
   const names = Object.keys(strategy.signals).filter(n => strategy.signals[n].enabled && strategy.signals[n].weight > 0);
@@ -81,7 +84,8 @@ function buildTargets(strategy, ctx) {
   cand.sort((a, b) => (b.score - a.score) || (a.symbol < b.symbol ? -1 : a.symbol > b.symbol ? 1 : 0));
   const top = cand.slice(0, strategy.portfolio.topN);
   const regime = regimeAt(strategy, bench, d);
-  const inv = top.map(c => (c.vol > 0 ? 1 / c.vol : 0)), invSum = inv.reduce((a, b) => a + b, 0);
+  const floor = strategy.portfolio.volFloorPct / 100;
+  const inv = top.map(c => (c.vol > 0 ? 1 / Math.max(c.vol, floor) : 0)), invSum = inv.reduce((a, b) => a + b, 0);
   const R = strategy.risk, capital = R.capitalUsd, gross = capital * Math.min(R.maxGrossPct, 100) / 100 * regime.factor, cap = capital * R.maxPositionPct / 100;
   // weights, then the per-name cap by water-filling: a name above the cap is held at the cap and its excess goes to the others in proportion, until
   // none is above it (a few ultra-low-volatility names must not take the whole book). If the caps cannot hold the target gross, the rest stays cash.

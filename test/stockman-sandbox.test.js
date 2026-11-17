@@ -366,3 +366,15 @@ test('tuner: with a tiny margin it changes the file by at most one step per para
   assert.equal((await tuner.run({ force: false })).status, 'off');
   await X.app.stop();
 });
+
+test('engine: a pinned name (almost no price movement, like a pending deal) is left out and counted; the volatility floor keeps inverse-volatility weights sane', () => {
+  const rows = new Map([...SYMS, 'SPY'].map(s => [s, rowsOf(s)]));
+  rows.set('PIN', rowsOf('S01').map(r => ({ ...r, open: 50, high: 50, low: 50, close: 50 + (r.day.endsWith('5') ? 0.01 : 0), adj_close: 50 + (r.day.endsWith('5') ? 0.01 : 0) })));
+  const series = aligned(rows), d = 600, st = small();
+  st.signals.lowVol.weight = 5;                                        // a heavy low-volatility tilt would otherwise rank the pinned name first
+  const p = SE.buildTargets(st, { d, members: [...SYMS, 'PIN'], series, bench: series.get('SPY') });
+  assert.equal(p.counts.pinned, 1); assert.ok(!p.targets.some(t => t.symbol === 'PIN'));
+  const open = JSON.parse(JSON.stringify(st)); open.universe.minVolPct = 0;
+  assert.ok(SE.buildTargets(open, { d, members: [...SYMS, 'PIN'], series, bench: series.get('SPY') }).targets.some(t => t.symbol === 'PIN'), 'with the filter off it would have been bought');
+  assert.equal(SB.normalize({ universe: { minVolPct: -1 } }).ok, false);
+});

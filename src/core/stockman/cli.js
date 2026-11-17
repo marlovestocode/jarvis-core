@@ -185,7 +185,7 @@ async function strategy(args, out) {
       const day = words[0] || layer.api.bars.lastBarDay();
       const p = await sb.api.runPlan({ day, scheduled: false });
       out(`DRY RUN for the close of ${p.day} (orders would go out in the session of ${p.entryDay}); ${p.label}; strategy ${p.strategyHash}; NOTHING WAS SENT`);
-      out(`regime: ${p.regime.reason}; rebalance day: ${p.rebalance} (${p.rule}); members ${p.counts.members}, scored ${p.counts.scored}; left out: ${['noBars', 'price', 'dollarVolume', 'earnings', 'history'].map(k => `${k} ${p.counts[k]}`).join(', ')}`);
+      out(`regime: ${p.regime.reason}; rebalance day: ${p.rebalance} (${p.rule}); members ${p.counts.members}, scored ${p.counts.scored}; left out: ${['noBars', 'price', 'dollarVolume', 'pinned', 'earnings', 'history'].map(k => `${k} ${p.counts[k]}`).join(', ')}`);
       out('targets:'); for (const t of p.targets) out(`  ${t.symbol.padEnd(6)} score ${t.score.toFixed(3).padStart(7)}  weight ${(t.weight * 100).toFixed(1).padStart(5)}%  USD ${String(t.notionalUsd).padStart(8)}  price ${t.price.toFixed(2)}${t.clipped ? '  (clipped to maxPositionPct)' : ''}`);
       out(`orders (${p.orders.length}):`); for (const x of p.orders) out(`  ${x.leg.toUpperCase().padEnd(5)} ${x.symbol.padEnd(6)} ${x.notionalUsd ? `USD ${x.notionalUsd}` : `qty ${x.qty}`}  ${x.reason}  [${x.cid}]`);
       if (p.refused.length) { out(`refused (${p.refused.length}):`); for (const r of p.refused) out(`  ${r.leg} ${r.symbol}: ${r.reason}`); }
