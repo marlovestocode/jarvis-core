@@ -35,7 +35,7 @@ const DEFAULTS = Object.freeze({
   constrainTools: true,                // repair a tool call that names no tool or has bad arguments with a schema-constrained decode (tools/constrain.js)
   port: 47801,
   // knowledge & live data (spec 2026-11-10-knowledge §3): allowlisted lookups only
-  online: Object.freeze({ enabled: true, weather: true, news: true, sports: true, wiki: true, web: true, lyrics: true, finance: true }),
+  online: Object.freeze({ enabled: true, weather: true, news: true, sports: true, wiki: true, web: true, lyrics: true, finance: true, broker: false }),   // broker: Alpaca paper (StockMan, D23) is OFF until you switch it on
   // who the user is: JARVIS addresses them by name and treats this as known (settings or "call me ...")
   user: Object.freeze({ name: '', about: '' }),
   location: Object.freeze({ city: 'Abilene, TX', lat: 32.4487, lon: -99.7331, country: 'US', units: 'F' }),

@@ -1,10 +1,12 @@
 // The trading side of StockMan: the paper ledger (migration 8), the cost model, and the backtest tool (migration 9).
-// Paper only: nothing in this folder can place an order (vault D1, D14; the broker route in D23 is approved but NOT built).
+// Paper only (vault D1, D14). The ledger and the fill port cannot place an order. The ONE order-capable module is alpaca.js (D23, CL-0062): Alpaca's
+// PAPER account only, OFF by default, not wired to the paper opener; it is not created by createTradingLayer.
 // Registered by worker.js and cli.js AFTER the data layer, whose universe and earnings APIs the backtest reads (`data` = createDataLayer().api).
 const { createLedger, createMemoryFillPort } = require('./ledger');
 const { createBacktest } = require('./backtest');
 const { createPaper } = require('./paper');
 const costs = require('./costs');
+const alpaca = require('./alpaca');
 
 function createTradingLayer({ data = {}, now = Date.now, options = {} } = {}) {
   const ledger = createLedger({ now });
@@ -18,4 +20,4 @@ function createTradingLayer({ data = {}, now = Date.now, options = {} } = {}) {
   return out;
 }
 
-module.exports = { createTradingLayer, createMemoryFillPort, costs };
+module.exports = { createTradingLayer, createMemoryFillPort, costs, alpaca };

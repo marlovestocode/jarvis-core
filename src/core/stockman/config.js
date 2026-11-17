@@ -24,6 +24,9 @@ const DEFAULTS = Object.freeze({
   log: Object.freeze({ level: 'info', eventLevel: 'warn' }),   // eventLevel: lowest level also written to engine_event
   // paper-trade opener (trading/paper.js): OFF by default. Vault note 06: paper trading starts only after the rule passes the tuning period.
   paperTrading: Object.freeze({ enabled: false }),
+  // Alpaca PAPER order methods (trading/alpaca.js, vault D23): OFF by default. Reading (account, clock, quotes) needs only online.broker in jarvis's config.
+  // The keys are never configured here: ALPACA_PAPER_KEY_ID and ALPACA_PAPER_SECRET_KEY, environment only.
+  broker: Object.freeze({ enabled: false, maxNotionalUsd: 1000 }),
 });
 
 const LEVELS = ['debug', 'info', 'warn', 'error'];
@@ -47,6 +50,8 @@ const RULES = [
   ['provider', 'breakerFailures', v => Number.isInteger(v) && v >= 1 && v <= 100, 'a whole number, 1 to 100'],
   ['provider', 'breakerCooldownMs', v => Number.isInteger(v) && v >= 100 && v <= 3600000, 'milliseconds, 100 to 3600000'],
   ['paperTrading', 'enabled', v => typeof v === 'boolean', 'true or false'],
+  ['broker', 'enabled', v => typeof v === 'boolean', 'true or false'],
+  ['broker', 'maxNotionalUsd', v => typeof v === 'number' && v > 0 && v <= 100000, 'a number of US dollars, above 0 and at most 100000'],
   ['log', 'level', v => LEVELS.includes(v), `one of ${LEVELS.join(', ')}`],
   ['log', 'eventLevel', v => LEVELS.includes(v), `one of ${LEVELS.join(', ')}`],
 ];
@@ -76,6 +81,7 @@ function fromEnv(env) {
   if (env.STOCKMAN_LOG_LEVEL) out.log = { level: env.STOCKMAN_LOG_LEVEL };
   if (env.STOCKMAN_DB_FILE) out.db = { file: env.STOCKMAN_DB_FILE };
   if (env.STOCKMAN_PAPER_TRADING) out.paperTrading = { enabled: bool('STOCKMAN_PAPER_TRADING', env.STOCKMAN_PAPER_TRADING) };
+  if (env.STOCKMAN_BROKER_ORDERS) out.broker = { enabled: bool('STOCKMAN_BROKER_ORDERS', env.STOCKMAN_BROKER_ORDERS) };
   return out;
 }
 
@@ -94,7 +100,7 @@ function loadConfig({ env = process.env, dataDir, file, readFile = p => fs.readF
     if (err.code !== 'ENOENT') throw new ConfigError(`${cfgFile}: cannot read (${err.message})`, { cause: err });
   }
   const layers = [merge(fileCfg, cfgFile), merge(fromEnv(env), 'environment'), merge(overrides, 'overrides')];
-  const out = { enabled: DEFAULTS.enabled, db: { ...DEFAULTS.db }, provider: { ...DEFAULTS.provider }, log: { ...DEFAULTS.log }, paperTrading: { ...DEFAULTS.paperTrading } };
+  const out = { enabled: DEFAULTS.enabled, db: { ...DEFAULTS.db }, provider: { ...DEFAULTS.provider }, log: { ...DEFAULTS.log }, paperTrading: { ...DEFAULTS.paperTrading }, broker: { ...DEFAULTS.broker } };
   for (const layer of layers) {
     for (const [section, key, , ] of RULES) {
       const v = section ? (isObj(layer[section]) ? layer[section][key] : undefined) : layer[key];

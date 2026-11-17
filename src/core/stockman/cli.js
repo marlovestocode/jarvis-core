@@ -77,6 +77,40 @@ async function backtest(args, out) {
   } finally { await app.stop(); }
 }
 
+// broker status | quote SYMBOL | orders | reconcile: Alpaca PAPER, read-only here (no order command exists in the CLI on purpose).
+// Needs online.broker on (this CLI turns it on for itself only when STOCKMAN_BROKER=on) and ALPACA_PAPER_KEY_ID / ALPACA_PAPER_SECRET_KEY in the environment.
+async function broker(args, out) {
+  const { createPolicy } = require('../net/policy');
+  const { createAlpacaHttp, createAlpaca, createAlpacaFillPort, reconcile } = require('./trading/alpaca');
+  const { loadConfig } = require('./config');
+  const config = loadConfig({});
+  const on = /^(1|true|yes|on)$/i.test(process.env.STOCKMAN_BROKER || '');
+  const policy = createPolicy(() => ({ online: { enabled: true, finance: true, broker: on } }));
+  const http = createAlpacaHttp({ policy });
+  const alpaca = createAlpaca({ http, opts: { enabled: config.broker.enabled, maxNotionalUsd: config.broker.maxNotionalUsd } });
+  const [sub, arg] = args;
+  switch (sub) {
+    case 'status': {
+      out(`paper keys in the environment: ${http.configured() ? 'yes' : 'NO (set ALPACA_PAPER_KEY_ID and ALPACA_PAPER_SECRET_KEY)'}; broker switch for this CLI (STOCKMAN_BROKER=on): ${on ? 'on' : 'OFF'}; order methods (config.broker.enabled): ${config.broker.enabled ? 'on' : 'OFF'}`);
+      if (http.configured() && on) { out(JSON.stringify(await alpaca.account(), null, 2)); out(JSON.stringify(await alpaca.clock(), null, 2)); }
+      return 0;
+    }
+    case 'quote': out(JSON.stringify(await alpaca.latestQuote(arg), null, 2)); return 0;
+    case 'orders': out(JSON.stringify(await alpaca.listOrders({ status: 'all', limit: 20 }), null, 2)); return 0;
+    case 'reconcile': {
+      const { app, trading } = buildDataApp();
+      await app.start();
+      try {
+        const port = createAlpacaFillPort();
+        trading.api.ledger.attachFillSource(port, { onError: (e, f) => out(`fill not stored: ${e.message} ${JSON.stringify(f)}`) });
+        out(JSON.stringify(await reconcile({ alpaca, port }), null, 2));
+      } finally { await app.stop(); }
+      return 0;
+    }
+    default: out('usage: stockman broker <status | quote SYMBOL | orders | reconcile>   (Alpaca PAPER only; needs STOCKMAN_BROKER=on and the paper keys in the environment)'); return 2;
+  }
+}
+
 async function data(args, out) {
   const [sub, ...rest] = args;
   const { app, layer } = buildDataApp();
@@ -121,6 +155,9 @@ async function main(argv, out = console.log) {
   }
   if (cmd === 'data') {
     try { return await data(args, out); } catch (err) { out(`error [${err.code || 'UNKNOWN'}]: ${err.message}`); return 1; }
+  }
+  if (cmd === 'broker') {
+    try { return await broker(args, out); } catch (err) { out(`error [${err.code || 'UNKNOWN'}]: ${err.message}`); return 1; }
   }
   if (cmd === 'backtest') {
     try { return await backtest(args, out); } catch (err) { out(`error [${err.code || 'UNKNOWN'}]: ${err.message}`); return 1; }
