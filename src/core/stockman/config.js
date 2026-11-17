@@ -22,6 +22,8 @@ const DEFAULTS = Object.freeze({
     breakerCooldownMs: 30000,
   }),
   log: Object.freeze({ level: 'info', eventLevel: 'warn' }),   // eventLevel: lowest level also written to engine_event
+  // paper-trade opener (trading/paper.js): OFF by default. Vault note 06: paper trading starts only after the rule passes the tuning period.
+  paperTrading: Object.freeze({ enabled: false }),
 });
 
 const LEVELS = ['debug', 'info', 'warn', 'error'];
@@ -44,6 +46,7 @@ const RULES = [
   ['provider', 'burst', v => Number.isInteger(v) && v >= 1 && v <= 50, 'a whole number, 1 to 50'],
   ['provider', 'breakerFailures', v => Number.isInteger(v) && v >= 1 && v <= 100, 'a whole number, 1 to 100'],
   ['provider', 'breakerCooldownMs', v => Number.isInteger(v) && v >= 100 && v <= 3600000, 'milliseconds, 100 to 3600000'],
+  ['paperTrading', 'enabled', v => typeof v === 'boolean', 'true or false'],
   ['log', 'level', v => LEVELS.includes(v), `one of ${LEVELS.join(', ')}`],
   ['log', 'eventLevel', v => LEVELS.includes(v), `one of ${LEVELS.join(', ')}`],
 ];
@@ -72,6 +75,7 @@ function fromEnv(env) {
   if (env.STOCKMAN_PROVIDER) out.provider = { name: env.STOCKMAN_PROVIDER };
   if (env.STOCKMAN_LOG_LEVEL) out.log = { level: env.STOCKMAN_LOG_LEVEL };
   if (env.STOCKMAN_DB_FILE) out.db = { file: env.STOCKMAN_DB_FILE };
+  if (env.STOCKMAN_PAPER_TRADING) out.paperTrading = { enabled: bool('STOCKMAN_PAPER_TRADING', env.STOCKMAN_PAPER_TRADING) };
   return out;
 }
 
@@ -90,7 +94,7 @@ function loadConfig({ env = process.env, dataDir, file, readFile = p => fs.readF
     if (err.code !== 'ENOENT') throw new ConfigError(`${cfgFile}: cannot read (${err.message})`, { cause: err });
   }
   const layers = [merge(fileCfg, cfgFile), merge(fromEnv(env), 'environment'), merge(overrides, 'overrides')];
-  const out = { enabled: DEFAULTS.enabled, db: { ...DEFAULTS.db }, provider: { ...DEFAULTS.provider }, log: { ...DEFAULTS.log } };
+  const out = { enabled: DEFAULTS.enabled, db: { ...DEFAULTS.db }, provider: { ...DEFAULTS.provider }, log: { ...DEFAULTS.log }, paperTrading: { ...DEFAULTS.paperTrading } };
   for (const layer of layers) {
     for (const [section, key, , ] of RULES) {
       const v = section ? (isObj(layer[section]) ? layer[section][key] : undefined) : layer[key];

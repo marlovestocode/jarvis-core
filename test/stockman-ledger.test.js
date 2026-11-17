@@ -14,7 +14,7 @@ async function ledgerApp() {
   await app.start();
   return { app, ledger: l.api };
 }
-const POS = { source: 'paper-internal', symbol: 'AAA', scoringBuild: 'reversal-v1/L5/vol', entryDay: '2026-03-02', exitDay: '2026-03-06', runId: 'run-2026-02-27', basketId: 'b1', sleeve: 2, weight: 0.05, expectedEntryPrice: 100 };
+const POS = { source: 'paper-internal', symbol: 'AAA', scoringBuild: 'rev-v1.0/L5/vol', entryDay: '2026-03-02', exitDay: '2026-03-06', runId: 'run-2026-02-27', basketId: 'b1', sleeve: 2, weight: 0.05, expectedEntryPrice: 100 };
 
 // ---- costs ----------------------------------------------------------------------------------------------------------------------
 test('costs: 10 bps round trip is the base case and results are reported at 5, 10 and 25', () => {
@@ -53,7 +53,7 @@ test('ledger: migration 8 creates the tables; a position opens, takes two fills,
   assert.ok(Math.abs(p.net_return - (p.gross_return - 0.001)) < 1e-12);
   assert.equal(p.cost_bps, 10);
   assert.equal(p.benchmark_return, 0.01);
-  assert.equal(p.scoring_build, 'reversal-v1/L5/vol');
+  assert.equal(p.scoring_build, 'rev-v1.0/L5/vol');
   assert.equal(p.run_id, 'run-2026-02-27'); assert.equal(p.basket_id, 'b1'); assert.equal(p.sleeve, 2);
   assert.equal(r.id, id);
   assert.throws(() => ledger.close(id), /already closed/);

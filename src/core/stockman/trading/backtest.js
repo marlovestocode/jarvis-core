@@ -79,7 +79,7 @@ function createBacktest({ ledger, data = {}, now = Date.now, opts = {} } = {}) {
     const series = new Map();
     let sym = null, rows = [];
     const flush = () => { if (sym !== null) series.set(sym, E.alignSeries(sessions, index, rows)); rows = []; };
-    for (const r of need().stmt('SELECT symbol, day, open, close, adj_close FROM bar WHERE day >= ? AND day <= ? ORDER BY symbol, day').iterate(sessions[0], sessions.at(-1))) {
+    for (const r of need().stmt('SELECT symbol, day, open, high, low, close, adj_close, volume FROM bar WHERE day >= ? AND day <= ? ORDER BY symbol, day').iterate(sessions[0], sessions.at(-1))) {
       if (r.symbol !== sym) { flush(); sym = r.symbol; }
       rows.push(r);
     }

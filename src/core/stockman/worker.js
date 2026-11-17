@@ -57,7 +57,8 @@ function run() {
       const layer = createDataLayer({ fetcher, autoRun: config.provider.name === 'yahoo' && !/^(off|false|0|no)$/i.test(process.env.STOCKMAN_AUTORUN || '') });
       for (const f of layer.features) app.use(f);
       // the paper ledger and backtest tables (migrations 8 and 9). Registered here so this build can open a database they have touched.
-      for (const f of createTradingLayer({ data: layer.api }).features) app.use(f);
+      // the paper-trade opener is part of it and stays OFF unless STOCKMAN_PAPER_TRADING or paperTrading.enabled turns it on (vault note 06 gate)
+      for (const f of createTradingLayer({ data: layer.api, options: { paper: { enabled: config.paperTrading.enabled, autoRun: config.provider.name === 'yahoo' } } }).features) app.use(f);
       await app.start();
     } catch (err) {
       send({ type: 'fatal', error: String(err?.message || err) });

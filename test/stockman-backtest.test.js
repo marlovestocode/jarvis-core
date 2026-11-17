@@ -58,7 +58,7 @@ test('variants: exactly six exist, keyed by lookback and scaling; an unknown one
   assert.deepEqual(E.ALL_VARIANTS.map(v => v.key).sort(), ['rev-L10-raw', 'rev-L10-vol', 'rev-L3-raw', 'rev-L3-vol', 'rev-L5-raw', 'rev-L5-vol']);
   assert.equal(E.parseVariant('rev-L5-vol').lookback, 5);
   assert.throws(() => E.parseVariant('rev-L7-vol'), /six allowed/);
-  assert.equal(E.buildId(E.parseVariant('rev-L3-raw')), 'reversal-v1/L3/raw');
+  assert.equal(E.buildId(E.parseVariant('rev-L3-raw')), 'rev-v1.0/L3/raw');
 });
 
 // ---- the engine ---------------------------------------------------------------------------------------------------------------------
@@ -266,7 +266,7 @@ test('tool: a tuning run covers only baskets that exit before the first holdout 
   assert.ok(r.summary.windows > 60);
   const rows = ledger.list({ source: 'backtest', limit: 100000 });
   assert.equal(rows.length, r.summary.baskets * 20);
-  assert.ok(rows.every(x => x.exit_day <= r.lastExitDay && x.scoring_build === 'reversal-v1/L5/vol' && x.run_id === r.runId && x.status === 'closed'));
+  assert.ok(rows.every(x => x.exit_day <= r.lastExitDay && x.scoring_build === 'rev-v1.0/L5/vol' && x.run_id === r.runId && x.status === 'closed'));
   assert.ok(rows.every(x => Math.abs(x.net_return - (x.gross_return - 0.001)) < 1e-12 && x.cost_bps === 10 && x.sleeve >= 0 && x.sleeve <= 4));
   assert.ok(rows[0].expected_entry_price > 0 && rows[0].fill_entry_price > 0);
   assert.deepEqual(Object.keys(r.summary.levels).map(Number), [5, 10, 25]);

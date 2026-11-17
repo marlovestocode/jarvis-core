@@ -12,12 +12,19 @@
 // Open prices are put on the adjusted basis with the same day's close ratio (adjusted open = open * adj close / close).
 // Benchmark: SPY, the same open-to-close dates and the same adjusted basis (a proxy for the S&P 500 total return, vault D22).
 //
+// ONE SCORER (CL-0046): this file does not implement the rule. Features, eligibility, the score and the ranking are the functions of
+// ../learning/scoring.js (computeFeatures, scoreCandidate, selectBasket), the same code the live shadow feature runs, so a backtest and a
+// live day cannot drift apart. This file adds only what the backtest needs on top: the session grid, the entry and exit fills, the sleeves,
+// the benchmark and the statistics. A change to the rule is a change to scoring.js and bumps its SCORING_BUILD.
+//
 // Not here, on purpose: the holdout lock and the variant log (backtest.js), and any storage.
-const { stdev, mean, blockBootstrapMean } = require('./stats');
+const { mean, blockBootstrapMean } = require('./stats');
 const { REPORT_BPS, BASE_BPS, roundTrip } = require('./costs');
+const S = require('../learning/scoring');
 
-const SCORING_BUILD = 'reversal-v1';
-const TOP_N = 20, MIN_BARS = 60, MIN_PRICE = 5, GAP_WINDOW = 25, VOL_WINDOW = 20, HOLD = 5;
+const SCORING_BUILD = S.SCORING_BUILD;   // 'rev-v1.0': the rule's build id; the ledger label of a variant is buildId(v) below
+const TOP_N = S.PARAMS.basketSize, MIN_BARS = S.PARAMS.minBars, MIN_PRICE = S.PARAMS.minPrice, GAP_WINDOW = S.PARAMS.gapWindow, VOL_WINDOW = S.PARAMS.volWindow, HOLD = S.PARAMS.horizon;
+const SESSIONS_NEEDED = Math.max(GAP_WINDOW, VOL_WINDOW + 1, 11);
 const LOOKBACKS = Object.freeze([3, 5, 10]);
 
 // ---- variants: at most 6 (lookback 3, 5 or 10 sessions; with or without the volatility scaling) -------------------------------------
@@ -28,33 +35,40 @@ function parseVariant(key) {
   if (!v) throw new RangeError(`unknown variant "${key}"; the six allowed are ${ALL_VARIANTS.map(x => x.key).join(', ')}`);
   return v;
 }
-const buildId = v => `${SCORING_BUILD}/L${v.lookback}/${v.volScale ? 'vol' : 'raw'}`;
+const buildId = v => `${SCORING_BUILD}/L${v.lookback}/${v.volScale ? 'vol' : 'raw'}`;   // the rule's build id plus the variant, e.g. rev-v1.0/L5/vol
+if (ALL_VARIANTS.length !== S.VARIANTS.length) throw new Error('engine variants must match learning/scoring.js VARIANTS');
 
 // ---- series on the common session grid --------------------------------------------------------------------------------------------------
-// rows: [{ day, open, close, adj_close }] of one symbol, sorted by day. A bar is clean when open, close and adj_close are all finite and positive.
+// rows: [{ day, open, high, low, close, adj_close, volume }] of one symbol, sorted by day. The cleanliness rules are scoring.js's (isCleanBar):
+//   present[i]   a bar exists that session (a missing bar is a gap, whatever the bar looks like)
+//   adj[i]       the adjusted close when adj_close and close are positive, else NaN (the features read this)
+//   cum[i + 1]   clean bars in sessions 0..i (the 60-bar rule)
+//   adjOpen[i]   the entry price: the open put on the adjusted basis, NaN when the open is unusable
+//   close[i]     the raw close as stored (the price rule), NaN when absent
 function alignSeries(sessions, index, rows) {
-  const S = sessions.length;
-  const adj = new Float64Array(S).fill(NaN), adjOpen = new Float64Array(S).fill(NaN), close = new Float64Array(S).fill(NaN);
+  const n = sessions.length;
+  const present = new Uint8Array(n), clean = new Uint8Array(n);
+  const adj = new Float64Array(n).fill(NaN), adjOpen = new Float64Array(n).fill(NaN), close = new Float64Array(n).fill(NaN);
   for (const r of rows) {
     const i = index.get(r.day);
     if (i === undefined) continue;
-    if (!(r.open > 0 && r.close > 0 && r.adj_close > 0)) continue;
-    adj[i] = r.adj_close; close[i] = r.close; adjOpen[i] = r.open * (r.adj_close / r.close);
+    present[i] = 1;
+    if (typeof r.close === 'number') close[i] = r.close;
+    if (r.adj_close > 0 && r.close > 0) adj[i] = r.adj_close;
+    if (r.adj_close > 0 && r.close > 0 && r.open > 0) adjOpen[i] = r.open * (r.adj_close / r.close);
+    if (S.isCleanBar(r)) clean[i] = 1;
   }
-  const cum = new Int32Array(S + 1);   // cum[i + 1] = clean bars in sessions 0..i
-  for (let i = 0; i < S; i++) cum[i + 1] = cum[i] + (adj[i] > 0 ? 1 : 0);
-  return { adj, adjOpen, close, cum, bars: cum[S] };
+  const cum = new Int32Array(n + 1);   // cum[i + 1] = clean bars in sessions 0..i
+  for (let i = 0; i < n; i++) cum[i + 1] = cum[i] + clean[i];
+  return { present, adj, adjOpen, close, cum, bars: cum[n], anyBar: present.some(Boolean) };
 }
 
 // ---- the scoring function (also used alone by tests) ----------------------------------------------------------------------------------
+// The shared features and variant score at session index d (needs d >= 24). null when a close it needs is missing.
+const sessionWindow = d => Array.from({ length: SESSIONS_NEEDED }, (_, k) => d - SESSIONS_NEEDED + 1 + k);
+const adjAt = s => i => (s.adj[i] > 0 ? s.adj[i] : null);
 function scoreAt(s, d, { lookback, volScale }) {
-  const r = s.adj[d] / s.adj[d - lookback] - 1;
-  if (!volScale) return Number.isFinite(r) ? -r : null;
-  const rets = [];
-  for (let i = d - VOL_WINDOW + 1; i <= d; i++) rets.push(s.adj[i] / s.adj[i - 1] - 1);
-  const vol = stdev(rets);
-  if (!(vol > 0) || !Number.isFinite(r)) return null;
-  return -r / (vol * Math.sqrt(lookback));
+  return S.variantScores(S.computeFeatures({ sessions: sessionWindow(d), adjOn: adjAt(s) }))[S.variantId({ lookback, volScale })];
 }
 
 // ---- the run -----------------------------------------------------------------------------------------------------------------------------
@@ -68,6 +82,7 @@ function scoreAt(s, d, { lookback, volScale }) {
 //   signalRange   { first, last }  session indexes of the first and last signal day to run (inclusive); the caller fixed them from the period
 //   gridEnd       session index of the last exit day of the 5-session window grid (windows end at gridEnd, gridEnd-5, ...)
 function runBacktest({ sessions, series, benchmark, membersAsOf, flags, variant, signalRange, gridEnd, topN = TOP_N, onDay = null }) {
+  const variantId = S.variantId(variant);
   const bench = series.get(benchmark);
   if (!bench) throw new Error(`no bars for the benchmark ${benchmark}`);
   const baskets = [], days = [];
@@ -77,29 +92,47 @@ function runBacktest({ sessions, series, benchmark, membersAsOf, flags, variant,
     const day = sessions[d], e = d + 1, x = d + HOLD, entryDay = sessions[e], exitDay = sessions[x];
     const members = membersAsOf(day);
     const dayRow = { day, members: members.length, noBars: 0, noBarOnDay: 0, eligible: 0, selected: 0, skip: null };
-    const scored = [];
+    const window = sessionWindow(d), gapFrom = d - GAP_WINDOW + 1;
+    const cands = [];
     for (const sym of members) {
       const s = series.get(sym);
-      if (!s || s.bars === 0) { dayRow.noBars++; continue; }
-      if (!(s.adj[d] > 0)) { dayRow.noBarOnDay++; totals.excludedBy.no_bar_on_day++; continue; }
-      if (s.cum[d + 1] < MIN_BARS) { totals.excludedBy.short_history++; continue; }
-      if (s.cum[d + 1] - s.cum[d + 1 - GAP_WINDOW] < GAP_WINDOW) { totals.excludedBy.gap_25++; continue; }
-      if (!(s.close[d] > MIN_PRICE)) { totals.excludedBy.price_at_or_below_5++; continue; }
-      const score = scoreAt(s, d, variant);
-      if (score === null) { totals.excludedBy[variant.volScale ? 'bad_volatility' : 'bad_return']++; continue; }
-      scored.push({ symbol: sym, score, s });
+      if (!s || !s.anyBar) { dayRow.noBars++; continue; }
+      let gap25 = false;
+      for (let i = gapFrom; i <= d; i++) if (!s.present[i]) { gap25 = true; break; }
+      const input = {
+        hasBarOnDay: Boolean(s.present[d]), nBars: s.cum[d + 1], close: Number.isNaN(s.close[d]) ? null : s.close[d], gap25, variant: variantId,
+        features: s.present[d] ? S.computeFeatures({ sessions: window, adjOn: adjAt(s) }) : null,
+      };
+      const r = S.scoreCandidate(input);
+      if (!r.eligible || r.score === null) {
+        const why = r.reasons;
+        if (why.includes('no_bar_on_day')) { dayRow.noBarOnDay++; totals.excludedBy.no_bar_on_day++; }
+        else if (why.includes('insufficient_history')) totals.excludedBy.short_history++;
+        else if (why.includes('bar_gap_25')) totals.excludedBy.gap_25++;
+        else if (why.includes('price_not_above_5')) totals.excludedBy.price_at_or_below_5++;
+        else totals.excludedBy[variant.volScale ? 'bad_volatility' : 'bad_return']++;
+        continue;
+      }
+      cands.push({ symbol: sym, eligible: true, score: r.score, s, input });
     }
-    scored.sort((a, b) => b.score - a.score || (a.symbol < b.symbol ? -1 : 1));
+    // rank with the shared ranking, then walk down it applying the earnings rule (the shared scoreCandidate, given the flags); a flagged name is
+    // skipped and the next one is taken, which is the same basket as ranking only the earnings-clean names (a test pins it)
+    const rank = S.selectBasket(cands, Infinity);
+    cands.sort((a, b) => rank.get(a.symbol).rank - rank.get(b.symbol).rank);
     const picked = [];
-    for (const c of scored) {
+    for (const c of cands) {
       if (picked.length >= topN) break;
       const f = flags({ symbol: c.symbol, entryDay, exitDay });
-      if (f.earnings_in_window) { totals.excludedBy.earnings_in_window++; continue; }
-      if (f.earnings_possible) { totals.excludedBy.earnings_possible++; continue; }
+      const r = S.scoreCandidate({ ...c.input, flags: f });
+      if (!r.eligible) {
+        if (r.reasons.includes('earnings_in_window')) totals.excludedBy.earnings_in_window++;
+        else if (r.reasons.includes('earnings_possible')) totals.excludedBy.earnings_possible++;
+        continue;
+      }
       if (f.earnings_data === 'unknown') totals.earningsUnknown++;
       picked.push(c);
     }
-    dayRow.eligible = scored.length;   // passed the data rules (before the earnings rule)
+    dayRow.eligible = cands.length;   // passed the data rules (before the earnings rule)
     // names we cannot fill (no open on D+1 or no close on D+5) are dropped and counted, never replaced silently
     const names = [];
     for (const c of picked) {
@@ -162,4 +195,4 @@ function gapReport(days) {
   return { days: rows.length, avgNoBars: rows.length ? nSum / rows.length : 0, avgNoBarOnDay: rows.length ? oSum / rows.length : 0, shareNoBars: mSum ? nSum / mSum : 0, maxNoBars: rows.reduce((m, r) => Math.max(m, r.noBars), 0), years };
 }
 
-module.exports = { SCORING_BUILD, TOP_N, MIN_BARS, MIN_PRICE, GAP_WINDOW, VOL_WINDOW, HOLD, LOOKBACKS, ALL_VARIANTS, variantKey, parseVariant, buildId, alignSeries, scoreAt, runBacktest, summarize, gapReport };
+module.exports = { SCORING_BUILD, TOP_N, MIN_BARS, MIN_PRICE, GAP_WINDOW, VOL_WINDOW, HOLD, LOOKBACKS, ALL_VARIANTS, variantKey, parseVariant, buildId, alignSeries, scoreAt, sessionWindow, runBacktest, summarize, gapReport };

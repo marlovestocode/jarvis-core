@@ -34,6 +34,10 @@ const SESSIONS_NEEDED = Math.max(PARAMS.gapWindow, PARAMS.volWindow + 1, Math.ma
 const finitePos = x => typeof x === 'number' && Number.isFinite(x) && x > 0;
 // a bar counts as clean when every price is a finite positive number, high is not below low, and volume is not negative
 const CLEAN_SQL = 'adj_close > 0 AND close > 0 AND open > 0 AND low > 0 AND high >= low AND volume >= 0';
+// the same rule in JavaScript, for callers that already hold the rows (the backtest engine). A test checks that it agrees with CLEAN_SQL.
+const isCleanBar = b => finitePos(b.adj_close) && finitePos(b.close) && finitePos(b.open) && finitePos(b.low) && typeof b.high === 'number' && b.high >= b.low && typeof b.volume === 'number' && b.volume >= 0;
+// the id of the variant with this lookback and scaling ('rev5s', 'rev3')
+const variantId = ({ lookback, volScale }) => `rev${lookback}${volScale ? 's' : ''}`;
 
 // the entry session and the exit session of a trade signalled at the close of `day`
 function horizonDays(day) {
@@ -90,7 +94,8 @@ function variantScores(f) {
 
 // one symbol on one day. input: { notFound, hasBarOnDay, nBars, close, features, gap25, flags }
 //   flags: the earnings feature's flags() for this trade window, or null when there is no earnings data at all.
-function scoreCandidate({ notFound = false, hasBarOnDay, nBars = 0, close = null, features = null, gap25 = false, flags = null }) {
+//   variant: which variant's score decides eligibility (default: the primary rule). The reasons for the primary rule are exactly as before.
+function scoreCandidate({ notFound = false, hasBarOnDay, nBars = 0, close = null, features = null, gap25 = false, flags = null, variant = PRIMARY_VARIANT }) {
   const reasons = [];
   if (notFound) reasons.push('provider_has_no_bars');
   if (!hasBarOnDay) { reasons.push('no_bar_on_day'); return { eligible: false, reasons, score: null, variants: variantScores({}), features: null }; }
@@ -99,8 +104,11 @@ function scoreCandidate({ notFound = false, hasBarOnDay, nBars = 0, close = null
   if (gap25) reasons.push('bar_gap_25');
   const f = features || { r3: null, r5: null, r10: null, vol20: null };
   const variants = variantScores(f);
-  const score = variants[PRIMARY_VARIANT];
-  if (f.r5 === null || f.vol20 === null) reasons.push('no_features');   // a close the features need is missing
+  const v = VARIANTS.find(x => x.id === variant);
+  if (!v) throw new StockmanError(`scoring: unknown variant ${variant}`);
+  const score = variants[variant];
+  const missing = f[`r${v.lookback}`] == null || (v.scaled && f.vol20 == null);
+  if (missing) reasons.push('no_features');   // a close the features need is missing
   else if (score === null) reasons.push('zero_volatility');
   if (flags && flags.earnings_in_window) reasons.push('earnings_in_window');
   if (flags && flags.earnings_possible) reasons.push('earnings_possible');
@@ -164,4 +172,4 @@ function createScoring() {
   return { feature, api };
 }
 
-module.exports = { createScoring, SCORING_BUILD, PARAMS, VARIANTS, PRIMARY_VARIANT, MAX_VARIANTS, computeFeatures, variantScores, scoreCandidate, selectBasket, horizonDays, sessionsEnding, CLEAN_SQL };
+module.exports = { isCleanBar, variantId, createScoring, SCORING_BUILD, PARAMS, VARIANTS, PRIMARY_VARIANT, MAX_VARIANTS, computeFeatures, variantScores, scoreCandidate, selectBasket, horizonDays, sessionsEnding, CLEAN_SQL };

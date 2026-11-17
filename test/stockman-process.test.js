@@ -176,7 +176,7 @@ test('stockman-process: the real worker starts, answers, survives being killed, 
   await engine.start();
   let h = engine.health();
   assert.equal(h.started, true);
-  assert.equal(h.db.version, 11);   // the framework's 1, data layer 2 to 7, ledger 8, backtest 9, learning layer 10 and 11 (the worker registers them all)
+  assert.equal(h.db.version, 11);   // the framework's 1, data layer 2 to 7, ledger 8, backtest 9, learning layer 10 and 11 (the worker registers them all; the paper opener adds no table)
   assert.equal(h.stocks.provider, 'mock');
   assert.ok(fs.existsSync(path.join(dataDir, 'stockman.db')), 'the worker owns the database file');
 
@@ -185,7 +185,7 @@ test('stockman-process: the real worker starts, answers, survives being killed, 
   assert.equal((await engine.request('quote', { symbol: 'bad symbol' }).catch(e => e)).code, 'INVALID_REQUEST');
   assert.equal((await engine.request('nope').catch(e => e)).code, 'INVALID_REQUEST');
   assert.equal((await engine.request('health')).db.version, 11);
-  assert.deepEqual((await engine.request('health')).features, ['universe', 'bars', 'calendar', 'earnings', 'runs', 'scoring', 'shadow', 'calibration', 'ledger', 'backtest']);
+  assert.deepEqual((await engine.request('health')).features, ['universe', 'bars', 'calendar', 'earnings', 'runs', 'scoring', 'shadow', 'calibration', 'ledger', 'backtest', 'paper']);
   assert.ok(Array.isArray(await engine.request('events', { limit: 5 })));
   assert.ok(events.includes('ready'));                                                // the framework's own link event arrived on jarvis's bus
 

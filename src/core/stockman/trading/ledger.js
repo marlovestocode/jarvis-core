@@ -32,7 +32,7 @@ const migration = {
         run_id TEXT,                         -- the daily run (run-YYYY-MM-DD) or the backtest run id (bt-...)
         basket_id TEXT,                      -- the basket this name belongs to (one per signal day)
         sleeve INTEGER,                      -- 0 to 4 for the five overlapping sleeves, null when not sleeved
-        scoring_build TEXT NOT NULL,         -- the versioned scoring code and its settings, e.g. reversal-v1/L5/vol
+        scoring_build TEXT NOT NULL,         -- the versioned scoring code and its settings, e.g. rev-v1.0/L5/vol
         symbol TEXT NOT NULL,
         side TEXT NOT NULL DEFAULT 'long' CHECK(side = 'long'),
         weight REAL,                         -- share of the basket (equal weight: 1/N)
@@ -166,6 +166,12 @@ function createLedger({ now = Date.now } = {}) {
     need().stmt("UPDATE paper_position SET status = 'cancelled', note = ?, closed_at = ? WHERE id = ?").run(reason ?? null, now(), id);
   }
 
+  // change the note of a position that is still open (the paper opener records a gap here; a closed row is never edited)
+  function annotate(id, note) {
+    const r = need().stmt("UPDATE paper_position SET note = ? WHERE id = ? AND status = 'open'").run(note ?? null, id);
+    return Number(r.changes) === 1;
+  }
+
   function list({ source, runId, status, symbol, limit = 100 } = {}) {
     const where = [], args = [];
     if (source) { where.push('source = ?'); args.push(source); }
@@ -200,7 +206,7 @@ function createLedger({ now = Date.now } = {}) {
     return stop;
   }
 
-  const api = { open, insertClosed, insertClosedBatch, recordFill, close, cancel, getPosition, list, count, deleteBacktestRuns, attachFillSource, SOURCES };
+  const api = { open, insertClosed, insertClosedBatch, recordFill, close, cancel, annotate, getPosition, list, count, deleteBacktestRuns, attachFillSource, SOURCES };
   const feature = {
     id: 'ledger', migrations: [migration],
     async start(ctx) { db = ctx.db; },
