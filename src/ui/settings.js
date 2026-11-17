@@ -53,6 +53,7 @@
     const mt = mon.timersSoon || {}, ms = mon.sysmon || {};
     $('monTimers').checked = !!mt.enabled;
     $('monSys').checked = !!ms.enabled;
+    $('monWeather').checked = !!mon.weatherAlerts?.enabled;
     for (const [id, v] of [['monLead', mt.leadMin], ['monCpu', ms.cpu], ['monRam', ms.ram], ['monDisk', ms.disk], ['monTemp', ms.temp]]) if (document.activeElement !== $(id) && v != null) $(id).value = v;
     $('startAtLogin').checked = !!c.startAtLogin;
     if (c.memory) { $('memAuto').checked = !!c.memory.autoCapture; $('memChats').checked = !!c.memory.usePastChats; }
@@ -198,6 +199,7 @@
   $('monTimers').addEventListener('change', e => save({ proactive: { monitors: { timersSoon: { enabled: e.target.checked } } } }));
   $('monLead').addEventListener('change', async e => { if (e.target.value === '') { e.target.blur(); render(await S.get()); return; } save({ proactive: { monitors: { timersSoon: { leadMin: Number(e.target.value) } } } }); });
   $('monSys').addEventListener('change', e => save({ proactive: { monitors: { sysmon: { enabled: e.target.checked } } } }));
+  $('monWeather').addEventListener('change', e => save({ proactive: { monitors: { weatherAlerts: { enabled: e.target.checked } } } }));
   for (const [id, f] of [['monCpu', 'cpu'], ['monRam', 'ram'], ['monDisk', 'disk'], ['monTemp', 'temp']]) $(id).addEventListener('change', async e => { if (e.target.value === '') { e.target.blur(); render(await S.get()); return; } save({ proactive: { monitors: { sysmon: { [f]: Number(e.target.value) } } } }); });
   function showVoice(v, msg) {
     $('voiceState').textContent = v.available ? (v.enrolled ? 'Your voice: enrolled' : 'Your voice: not enrolled') : 'Your voice: model missing';

@@ -41,6 +41,9 @@ const { createProactiveEngine } = require('../core/proactive/engine');
 const { createMonitors } = require('../core/proactive/monitors');
 const timersSoon = require('../core/proactive/monitors/timers-soon');
 const { createSysmonMonitor, createSysmonStats } = require('../core/proactive/monitors/sysmon-threshold');
+const { createWeatherAlertsMonitor } = require('../core/proactive/monitors/weather-alerts');
+const { getAlerts } = require('../core/knowledge/weather');
+const { resolvePlace } = require('../core/knowledge/location');
 const { createPcHost, SCRIPT: PC_HOST_SCRIPT } = require('../core/pc/host');
 const { buildAllowlist } = require('../core/pc/apps');
 const { createConfirm } = require('../core/pc/confirm');
@@ -464,7 +467,9 @@ ctx.proactive = createProactiveEngine({
   },
 });
 // monitors only produce text for the engine above; they never act
-ctx.monitors = createMonitors({ engine: ctx.proactive, live: ctx.live, getConfig: ctx.getConfig, log: ctx.log, monitors: [timersSoon, createSysmonMonitor({ getStats: createSysmonStats({ fetch }), log: ctx.log })] });
+ctx.monitors = createMonitors({ engine: ctx.proactive, live: ctx.live, getConfig: ctx.getConfig, log: ctx.log, monitors: [timersSoon, createSysmonMonitor({ getStats: createSysmonStats({ fetch }), log: ctx.log }),
+  // weather alerts for the home place, through the allowlisted fetcher; no home set → nothing to check
+  createWeatherAlertsMonitor({ getAlerts: async () => { const l = ctx.getConfig().location; if (!Number.isFinite(l?.lat) || !Number.isFinite(l?.lon)) return { alerts: [] }; return getAlerts(ctx.fetcher, await resolvePlace(ctx.fetcher, '', ctx.getConfig())); } })] });
 // warnings keep their level in the log, and a failed tool or turn is written down too (self_log reads these)
 ctx.bus.on('log', ev => ctx.log(ev.level === 'warn' || ev.level === 'error' ? `${ev.level}: ${ev.text}` : ev.text));
 ctx.bus.on('tool', ev => {
