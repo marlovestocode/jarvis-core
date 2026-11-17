@@ -22,12 +22,6 @@
     return q.toString();
   }
 
-  // the thin line under the header drains over one refresh period, so you can see the page is live
-  function beat() {
-    const b = $('beat'); b.classList.remove('run'); void b.offsetWidth;
-    if ($('auto').checked && !HUD.reduced) b.classList.add('run');
-  }
-
   async function load() {
     $('status').textContent = 'SYNCING…';
     try {
@@ -43,7 +37,6 @@
       $('live').classList.add('crit'); $('live').classList.remove('hud-pulse');
       $('status').textContent = 'Could not load the numbers: ' + err.message + '. Is JARVIS running?';
     }
-    beat();
   }
 
   function fillSelect(id, list) {
@@ -54,7 +47,15 @@
   }
 
   // ---- hero tiles ----
-  function tile(key, label, num, fm, sub, cls = '', series = null) {
+  // two-part proportion bar for tiles with no time series: a of a+b, with the parts named
+  function mixBar(a, b, la, lb) {
+    const w = el('div', { class: 'mix' }), tot = a + b, bar = el('div', { class: 'mixbar' });
+    const x = el('i', { class: 'a' }), y = el('i', { class: 'b' });
+    x.style.flexGrow = String(tot ? a : 0); y.style.flexGrow = String(tot ? b : 0);
+    bar.append(x, y); w.append(bar, el('small', {}, tot ? `${la} ${Math.round(a / tot * 100)} % · ${lb} ${Math.round(b / tot * 100)} %` : 'nothing yet'));
+    return w;
+  }
+  function tile(key, label, num, fm, sub, cls = '', series = null, mix = null) {
     const t = el('div', { class: 'tile hud-panel hud-reveal ' + cls });
     const ro = el('div', { class: 'hud-readout' }), v = el('div', { class: 'v' }), l = el('div', { class: 'l' }, label);
     const isNum = typeof num === 'number';
@@ -62,7 +63,8 @@
     ro.append(v, l);
     if (sub) ro.append(el('div', { class: 's', title: sub }, sub));
     t.append(ro);
-    if (series && clean(series).some(x => x !== null)) t.append(HUD.spark(clean(series), { w: 70, h: 28 }));
+    if (series && clean(series).some(x => x !== null)) t.append(HUD.spark(clean(series), { w: 100, h: 40 }));
+    else if (mix) t.append(mixBar(mix[0], mix[1], mix[2], mix[3]));
     return t;
   }
 
@@ -77,8 +79,8 @@
       tile('calls', 'Skill calls', t.toolCalls, n0, `${fmt(t.fastPath)} answered without the model`, '', s.toolCalls),
       tile('rate', 'Skill success', rate === null ? '–' : rate, x => fmt(x, 1) + ' %', `${t.toolFail} failed · ${t.softFails} said nothing happened · ${t.badArgs} bad arguments`, rate === null ? '' : rate >= 95 ? 'ok' : rate >= 80 ? 'warn' : 'crit', s.toolFails ? s.toolFails.map(v => -v) : null),
       tile('errs', 'Errors', t.errors, n0, `${t.warnings} warnings`, t.errors ? 'crit' : 'ok', s.errors),
-      tile('ask', 'Asked, not guessed', t.clarify.ask, n0, `${t.clarify.decline} declined (no tool)`),
-      tile('yt', 'YouTube prompts', t.prompts.confirmed, n0, `${t.prompts.skipped} left alone`),
+      tile('ask', 'Asked, not guessed', t.clarify.ask, n0, `${t.clarify.decline} declined (no tool)`, '', null, [t.clarify.ask, t.clarify.decline, 'asked', 'declined']),
+      tile('yt', 'YouTube prompts', t.prompts.confirmed, n0, `${t.prompts.skipped} left alone`, '', null, [t.prompts.confirmed, t.prompts.skipped, 'confirmed', 'left alone']),
       tile('mem', 'Memory', m ? m.rssMB : '–', x => fmt(x) + ' MB', m ? `store: ${fmt(m.cortexNodes)} items, ${bytes(m.cortexBytes)}` : 'no samples yet', '', d.memory.rssMB),
     );
   }
@@ -260,7 +262,6 @@
   // ---- live link: the running core's public event stream (no text, only states and timings) drives the header ----
   const CORE = { idle: ['IDLE', ''], listening: ['LISTENING', ''], thinking: ['THINKING', 'warn'], speaking: ['SPEAKING', ''], error: ['ERROR', 'crit'] };
   function setCore(label, cls) { const c = $('core'); c.textContent = label; c.className = 'hud-chip' + (cls ? ' ' + cls : ''); }
-  function tick(text) { const t = $('ticker'); t.textContent = text; t.classList.remove('hud-flash'); void t.offsetWidth; t.classList.add('hud-flash'); }
   let soon = 0;
   function refreshSoon() { clearTimeout(soon); soon = setTimeout(() => { if ($('auto').checked && !document.hidden) load(); }, 1500); }   // the log has the turn by now
   function link() {
@@ -273,8 +274,7 @@
       const [label, cls] = CORE[d.state] || [String(d.state || '').toUpperCase(), ''];
       setCore(label, cls); $('live').classList.remove('off'); $('live').classList.toggle('busy', d.state === 'thinking' || d.state === 'speaking' || d.state === 'listening');
     });
-    on('tool', d => { if (d.phase === 'end') tick(`${d.name || 'skill'} ${d.ok === false ? 'failed' : 'ok'}`); });
-    on('turn', d => { tick(`reply ${secs(d.ms)}${d.tps ? ' · ' + Math.round(d.tps) + ' tok/s' : ''}`); refreshSoon(); });
+    on('turn', () => refreshSoon());
   }
 
   for (const b of document.querySelectorAll('#ranges button')) b.addEventListener('click', () => {
@@ -286,7 +286,7 @@
   for (const th of document.querySelectorAll('#skills th')) th.addEventListener('click', () => {
     const k = th.dataset.k; state.desc = state.sort === k ? !state.desc : true; state.sort = k; if (state.data) renderSkills(state.data);
   });
-  function schedule() { clearInterval(state.timer); if ($('auto').checked) state.timer = setInterval(() => { if (!document.hidden) load(); }, REFRESH_MS); beat(); }
+  function schedule() { clearInterval(state.timer); if ($('auto').checked) state.timer = setInterval(() => { if (!document.hidden) load(); }, REFRESH_MS); }
   $('auto').addEventListener('change', schedule);
   for (const x of document.querySelectorAll('#ranges button')) x.classList.toggle('on', x.dataset.range === state.range);
   schedule();
