@@ -56,6 +56,7 @@
     $('monWeather').checked = !!mon.weatherAlerts?.enabled;
     $('monTeams').checked = !!mon.followedTeams?.enabled;
     $('monBat').checked = !!mon.lowBattery?.enabled;
+    $('monTask').checked = !!mon.taskDone?.enabled;
     if (document.activeElement !== $('monBatPct') && mon.lowBattery?.percent != null) $('monBatPct').value = mon.lowBattery.percent;
     for (const [id, v] of [['monLead', mt.leadMin], ['monCpu', ms.cpu], ['monRam', ms.ram], ['monDisk', ms.disk], ['monTemp', ms.temp]]) if (document.activeElement !== $(id) && v != null) $(id).value = v;
     $('startAtLogin').checked = !!c.startAtLogin;
@@ -202,6 +203,7 @@
   $('monTimers').addEventListener('change', e => save({ proactive: { monitors: { timersSoon: { enabled: e.target.checked } } } }));
   $('monLead').addEventListener('change', async e => { if (e.target.value === '') { e.target.blur(); render(await S.get()); return; } save({ proactive: { monitors: { timersSoon: { leadMin: Number(e.target.value) } } } }); });
   $('monSys').addEventListener('change', e => save({ proactive: { monitors: { sysmon: { enabled: e.target.checked } } } }));
+  $('monTask').addEventListener('change', e => save({ proactive: { monitors: { taskDone: { enabled: e.target.checked } } } }));
   $('monBat').addEventListener('change', e => save({ proactive: { monitors: { lowBattery: { enabled: e.target.checked } } } }));
   $('monBatPct').addEventListener('change', async e => { if (e.target.value === '') { e.target.blur(); render(await S.get()); return; } save({ proactive: { monitors: { lowBattery: { percent: Number(e.target.value) } } } }); });
   $('monTeams').addEventListener('change', e => save({ proactive: { monitors: { followedTeams: { enabled: e.target.checked } } } }));

@@ -44,6 +44,7 @@ const { createSysmonMonitor, createSysmonStats } = require('../core/proactive/mo
 const { createWeatherAlertsMonitor } = require('../core/proactive/monitors/weather-alerts');
 const { createFollowedTeamsMonitor } = require('../core/proactive/monitors/followed-teams');
 const { createLowBatteryMonitor } = require('../core/proactive/monitors/low-battery');
+const { createTaskDoneMonitor } = require('../core/proactive/monitors/task-done');
 const { getAlerts } = require('../core/knowledge/weather');
 const { getScores } = require('../core/knowledge/sports');
 const { resolvePlace } = require('../core/knowledge/location');
@@ -476,7 +477,9 @@ ctx.monitors = createMonitors({ engine: ctx.proactive, live: ctx.live, getConfig
   // games of the teams followed in Settings → Knowledge, through the allowlisted fetcher
   createFollowedTeamsMonitor({ getGames: async () => (ctx.getConfig().sports?.follow?.length ? (await getScores(ctx.fetcher, {}, ctx.getConfig())).games : []) }),
   // the PC's own battery reading (same call connectivity_status uses); an unreadable one is treated as none
-  createLowBatteryMonitor({ getBattery: () => ctx.pcHost.battery().catch(() => null) })] });
+  createLowBatteryMonitor({ getBattery: () => ctx.pcHost.battery().catch(() => null) }),
+  // stored tasks from the task store (titles and status only); no task system → none
+  createTaskDoneMonitor({ listTasks: () => ctx.taskStore?.list() ?? [] })] });
 // warnings keep their level in the log, and a failed tool or turn is written down too (self_log reads these)
 ctx.bus.on('log', ev => ctx.log(ev.level === 'warn' || ev.level === 'error' ? `${ev.level}: ${ev.text}` : ev.text));
 ctx.bus.on('tool', ev => {
