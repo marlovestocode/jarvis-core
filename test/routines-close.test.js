@@ -59,9 +59,9 @@ test('routine_close: an app that is not open is a success', async () => {
   assert.match(await tool.run({ name: 'Spotify', token: tokens.issue() }), /was not open/);
 });
 
-test('routine_close: an app that stays open is left alone and reported', async () => {
+test('routine_close: an app that stays open is left alone and reported, without stopping the routine', async () => {
   const { tool, host, tokens } = setup({ windows: W, stubborn: [10] });
-  await assert.rejects(() => tool.run({ name: 'Spotify', token: tokens.issue() }), /still open.*I left it/i);
+  assert.match(await tool.run({ name: 'Spotify', token: tokens.issue() }), /still open.*I left it/i);
   assert.ok(!host.calls.some(c => c[0] === 'kill'));
 });
 

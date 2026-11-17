@@ -1,7 +1,7 @@
 'use strict';
 // routine_close: the polite close a routine uses after the user's one yes for the whole run.
 // It is not a model tool in practice: every call needs a single-run token that only the routine runner issues.
-// Never force-kills; an app that stays open (asking to save) is left and reported.
+// Never force-kills; an app that stays open (asking to save) is left and reported without failing the routine.
 const crypto = require('node:crypto');
 const { PROTECTED } = require('../tools/pc');
 const { norm } = require('../media/rank');
@@ -34,7 +34,7 @@ function createRoutineClose({ windowsFor, poll, host, tokens }) {
       const pids = [...new Set(ws.map(w => w.pid))];
       for (const pid of pids) await host.closeMain(pid);
       if (await poll(async () => (await host.alive(pids)).length === 0)) return `Closed ${label}.`;
-      throw new Error(`${label} is still open (it may be asking to save). I left it`);
+      return `${label} is still open (it may be asking to save). I left it.`;   // a result, not an error: the rest of the routine still runs
     },
   };
 }
