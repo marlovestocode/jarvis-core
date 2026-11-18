@@ -172,8 +172,8 @@ test('engine: a monitor item is titled JARVIS, a real timer event keeps Timer do
 const { createWeatherAlertsMonitor } = require('../src/core/proactive/monitors/weather-alerts');
 const { DEFAULT_MONITORS: DM } = require('../src/core/proactive/monitor-config');
 
-test('weatherAlerts: off by default, and a Severe alert is announced once', async () => {
-  assert.deepEqual(DM.weatherAlerts, { enabled: false });
+test('weatherAlerts: on by default, and a Severe alert is announced once', async () => {
+  assert.deepEqual(DM.weatherAlerts, { enabled: true });
   let alerts = [{ event: 'Tornado Warning', severity: 'Extreme', ends: 'T1' }, { event: 'Wind Advisory', severity: 'Minor', ends: 'T1' }];
   const mon = createWeatherAlertsMonitor({ getAlerts: async () => ({ alerts }) });
   assert.equal(mon.enabled({ weatherAlerts: { enabled: false } }), false);

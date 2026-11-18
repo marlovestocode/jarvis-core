@@ -8,9 +8,11 @@ const BASE_HOSTS = Object.freeze([
   'api.nasdaq.com',                 // finance (StockMan): Nasdaq-100 member list (/api/quote/list-type/nasdaq100), keyless
   // broker (StockMan, vault D23, CL-0062): Alpaca PAPER trading and market data only. There is no live-trading host here on purpose
   // (api.alpaca.markets is NOT allowed: live money is refused, D1). Source 'broker', its own switch online.broker, OFF by default.
+  'gmail.googleapis.com', 'oauth2.googleapis.com', // email (src/core/email): Gmail API, OAuth2 token endpoint
+  'mapservices.weather.noaa.gov', // weather (src/core/weather): NOAA radar map tiles, keyless
   'paper-api.alpaca.markets', 'data.alpaca.markets',
 ]);
-const SOURCES = ['weather', 'news', 'sports', 'wiki', 'web', 'lyrics', 'finance', 'broker'];
+const SOURCES = ['weather', 'news', 'sports', 'wiki', 'web', 'lyrics', 'finance', 'broker', 'email'];
 const { isIP } = require('node:net');
 
 function feedUrl(value) {

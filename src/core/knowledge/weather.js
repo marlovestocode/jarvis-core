@@ -88,11 +88,17 @@ function formatWeather(w) {
 
 const SEV = { Extreme: 0, Severe: 1, Moderate: 2, Minor: 3, Unknown: 4 };
 
+// GeoJSON polygon(s) → rings of [lat, lon] (GeoJSON is lon, lat). Alerts issued for zones have no geometry: no rings.
+function ringsOf(g) {
+  const polys = g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : [];
+  return polys.map(p => p?.[0]).filter(Array.isArray).map(r => r.filter(q => Array.isArray(q) && Number.isFinite(q[0]) && Number.isFinite(q[1])).map(q => [q[1], q[0]]));
+}
+
 async function getAlerts(fetcher, place) {
   if (place.country && place.country !== 'US') throw new Error('weather alerts are only available for the US');
   const r = await fetcher.getJson('weather', `${ALERTS}?point=${coord(place.lat)},${coord(place.lon)}`, { ttlMs: ALERT_TTL, headers: { Accept: 'application/geo+json' } });
-  const alerts = (r.data?.features || []).map(x => x.properties || {}).map(p => ({
-    event: p.event || 'Alert', severity: p.severity in SEV ? p.severity : 'Unknown', headline: p.headline || '', ends: p.ends || p.expires || '',
+  const alerts = (r.data?.features || []).map(x => ({ ...(x.properties || {}), rings: ringsOf(x.geometry) })).map(p => ({
+    event: p.event || 'Alert', severity: p.severity in SEV ? p.severity : 'Unknown', headline: p.headline || '', ends: p.ends || p.expires || '', rings: p.rings,
   })).sort((a, b) => SEV[a.severity] - SEV[b.severity]);
   return { place: place.name, source: 'National Weather Service', ageMs: r.ageMs, stale: !!r.stale, alerts };
 }

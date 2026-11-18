@@ -47,6 +47,9 @@ const { createMonitors } = require('../core/proactive/monitors');
 const timersSoon = require('../core/proactive/monitors/timers-soon');
 const { createSysmonMonitor, createSysmonStats } = require('../core/proactive/monitors/sysmon-threshold');
 const { createWeatherAlertsMonitor } = require('../core/proactive/monitors/weather-alerts');
+const { createHomeWatch } = require('../core/knowledge/weather-watch');
+const { createRadarProvider } = require('../core/knowledge/radar');
+const { createSkillTracker } = require('../core/knowledge/weather-skill');
 const { createFollowedTeamsMonitor } = require('../core/proactive/monitors/followed-teams');
 const { createLowBatteryMonitor } = require('../core/proactive/monitors/low-battery');
 const { createTaskDoneMonitor } = require('../core/proactive/monitors/task-done');
@@ -227,6 +230,10 @@ async function jarvisStatus() {
   };
 }
 ctx.fetcher = createFetcher({ policy: createPolicy(ctx.getConfig), bus: ctx.bus, cacheDir: path.join(DATA_DIR, 'cache') });
+// home weather threat: several models weighted by how well each did at home, plus NWS warnings; each refresh goes to the wallpaper as a 'weather' event
+const skillFile = path.join(DATA_DIR, 'weather-skill.json');
+ctx.homeWatch = createHomeWatch({ fetcher: ctx.fetcher, getConfig: ctx.getConfig, bus: ctx.bus, tracker: createSkillTracker({ load: () => { try { return JSON.parse(fs.readFileSync(skillFile, 'utf8')); } catch { return null; } }, save: st => { try { fs.writeFileSync(skillFile, JSON.stringify(st)); } catch { /* optional */ } } }) });
+{ const tick = () => { if (ctx.getConfig().online?.enabled !== false && ctx.getConfig().online?.weather !== false) ctx.homeWatch.refresh().catch(() => {}); }; setTimeout(tick, 20000).unref?.(); setInterval(tick, 10 * 60000).unref?.(); }
 // general web search: every search and page goes into web-activity.jsonl (tray → Web activity log) and shows as a source chip in the chat
 ctx.webAudit = createWebAudit({ file: path.join(DATA_DIR, 'web-activity.jsonl'), bus: ctx.bus, log: ctx.log });
 ctx.web = createWeb({ publicFetch: createPublicFetch(), audit: ctx.webAudit, getConfig: ctx.getConfig });
@@ -370,7 +377,7 @@ const visionResize = async png => {
   return k >= 1 ? png : img.resize({ width: Math.round(width * k), height: Math.round(height * k), quality: 'best' }).toPNG();
 };
 ctx.routineTokens = createTokens();
-ctx.catalog = brain.defaultCatalog({ routines: { tokens: ctx.routineTokens }, vision: { client: ctx.vision, resize: visionResize }, self, analytics: { metrics: ctx.metrics, openDashboard: ctx.openDashboard }, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, wallpaperClients: () => (ctx.bridge ? ctx.bridge.clients() : null), getConfig: ctx.getConfig, applySettings: patch => { const { config, errors } = applyPatch(ctx.config, patch, { providers: ctx.providers, engines: ctx.engines }); ctx.saveConfig(config); return errors; }, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, lyrics: ctx.lyrics, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, lists: ctx.lists, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog }, ...(ctx.taskTools ? { tasks: ctx.taskTools } : {}), ...(ctx.stockman ? { stockman: ctx.stockman } : {}) });
+ctx.catalog = brain.defaultCatalog({ routines: { tokens: ctx.routineTokens }, vision: { client: ctx.vision, resize: visionResize }, self, analytics: { metrics: ctx.metrics, openDashboard: ctx.openDashboard }, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, homeWatch: ctx.homeWatch, web: ctx.web, kiwix: ctx.kiwix, wallpaperClients: () => (ctx.bridge ? ctx.bridge.clients() : null), getConfig: ctx.getConfig, applySettings: patch => { const { config, errors } = applyPatch(ctx.config, patch, { providers: ctx.providers, engines: ctx.engines }); ctx.saveConfig(config); return errors; }, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, lyrics: ctx.lyrics, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, lists: ctx.lists, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog }, ...(ctx.taskTools ? { tasks: ctx.taskTools } : {}), ...(ctx.stockman ? { stockman: ctx.stockman } : {}) });
 ctx.toolList = ctx.catalog.tools;
 for (const m of ctx.catalog.missing) if (m.error) ctx.log(`skill group ${m.id} failed to load: ${m.error}`);
 // tool discovery: embeddings come from the memory system's embedder (none installed: lexical only, within 250 ms)
@@ -553,7 +560,7 @@ ctx.firstWake = createFirstWake({ bus: ctx.bus, getConfig: ctx.getConfig, log: c
 // monitors only produce text for the engine above; they never act
 ctx.monitors = createMonitors({ engine: ctx.proactive, live: ctx.live, getConfig: ctx.getConfig, log: ctx.log, monitors: [timersSoon, createSysmonMonitor({ getStats: createSysmonStats({ fetch }), log: ctx.log }),
   // weather alerts for the home place, through the allowlisted fetcher; no home set → nothing to check
-  createWeatherAlertsMonitor({ getAlerts: async () => { const l = ctx.getConfig().location; if (!Number.isFinite(l?.lat) || !Number.isFinite(l?.lon)) return { alerts: [] }; return getAlerts(ctx.fetcher, await resolvePlace(ctx.fetcher, '', ctx.getConfig())); } }),
+  createWeatherAlertsMonitor({ getThreat: () => ctx.homeWatch.refresh(), getAlerts: async () => { const l = ctx.getConfig().location; if (!Number.isFinite(l?.lat) || !Number.isFinite(l?.lon)) return { alerts: [] }; return getAlerts(ctx.fetcher, await resolvePlace(ctx.fetcher, '', ctx.getConfig())); } }),
   // games of the teams followed in Settings → Knowledge, through the allowlisted fetcher
   createFollowedTeamsMonitor({ getGames: async () => (ctx.getConfig().sports?.follow?.length ? (await getScores(ctx.fetcher, {}, ctx.getConfig())).games : []) }),
   // the PC's own battery reading (same call connectivity_status uses); an unreadable one is treated as none
@@ -617,6 +624,7 @@ app.whenReady().then(async () => {
     bus: ctx.bus, version, ports,
     // the wallpaper's neural lattice IS the cortex: its shape and firing go out as ids only; labels (a few words per node)
     // only on the bridge's strict route and only while cortex.wallpaperLabels is on
+    radar: createRadarProvider({ fetcher: ctx.fetcher, getConfig: ctx.getConfig }),
     brain: { view: o => ctx.cortex.view(o), labels: ids => ctx.cortex.labels(ids), labelsOn: () => ctx.getConfig().cortex?.wallpaperLabels !== false,
       // the skill groups (and their tool names) are neurons too: a tool call fires its group
       skills: () => ctx.catalog.groups.map(g => ({ id: g.id, label: g.label, tools: g.tools.map(t => t.name) })) },

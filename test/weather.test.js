@@ -149,7 +149,7 @@ test('alerts: parsed with severity and end time; none → empty', async () => {
   const some = await getAlerts(n.fetcher, { name: 'Midland, TX', lat: 32, lon: -102, country: 'US' });
   assert.equal(some.alerts.length, 8);
   const a = some.alerts.find(x => x.event === 'Dense Fog Advisory');
-  assert.deepEqual(Object.keys(a).sort(), ['ends', 'event', 'headline', 'severity'].sort());
+  assert.deepEqual(Object.keys(a).sort(), ['ends', 'event', 'headline', 'rings', 'severity'].sort());
   assert.equal(a.severity, 'Moderate');
   assert.match(formatAlerts(none), /no active.*alerts/i);
   assert.match(formatAlerts(some), /National Weather Service/);

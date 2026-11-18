@@ -63,10 +63,10 @@ function createFetcher({ policy, fetch: doFetch = (...a) => globalThis.fetch(...
   }
   const emit = p => { try { bus?.emit('net', p); } catch { /* listeners */ } };
 
-  async function readCapped(res) {
+  async function readCapped(res, binary = false) {
     const len = Number(res.headers?.get?.('content-length'));
     if (len > maxBytes) throw new Error('response too large');
-    if (!res.body?.getReader) { const t = await res.text(); if (Buffer.byteLength(t) > maxBytes) throw new Error('response too large'); return t; }
+    if (!res.body?.getReader) { const b = Buffer.from(await res.arrayBuffer()); if (b.length > maxBytes) throw new Error('response too large'); return binary ? b : b.toString('utf8'); }
     const reader = res.body.getReader();
     const parts = []; let n = 0;
     for (;;) {
@@ -76,10 +76,11 @@ function createFetcher({ policy, fetch: doFetch = (...a) => globalThis.fetch(...
       if (n > maxBytes) { try { await reader.cancel(); } catch { /* gone */ } throw new Error('response too large'); }
       parts.push(Buffer.from(value));
     }
-    return Buffer.concat(parts).toString('utf8');
+    const all = Buffer.concat(parts);
+    return binary ? all : all.toString('utf8');
   }
 
-  async function fetchOnce(source, url, headers) {
+  async function fetchOnce(source, url, headers, binary = false) {
     let target = url;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
       const a = policy.allowed(target, source);
@@ -105,7 +106,7 @@ function createFetcher({ policy, fetch: doFetch = (...a) => globalThis.fetch(...
         continue;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status} from ${a.host}`);
-      try { return await readCapped(res); } catch (err) { if (signal.aborted) throw new Error(`timed out after ${timeoutMs / 1000} s`); throw err; } finally { clearTimeout(timer); }
+      try { return await readCapped(res, binary); } catch (err) { if (signal.aborted) throw new Error(`timed out after ${timeoutMs / 1000} s`); throw err; } finally { clearTimeout(timer); }
     }
     throw new Error('too many redirects');
   }
@@ -140,13 +141,35 @@ function createFetcher({ policy, fetch: doFetch = (...a) => globalThis.fetch(...
     }
   }
 
+  // Binary responses (map images): same policy, cap, timeout and no-redirect-off-host rules as getText; memory cache only (a few small images).
+  const bytes = new Map();   // url -> { at, buf }, oldest first
+  async function getBytes(source, url, { ttlMs = 0, headers = {} } = {}) {
+    let host = '';
+    try { host = new URL(url).hostname; } catch { /* reported by policy */ }
+    const a = policy.allowed(url, source);
+    if (!a.ok) { emit({ source, host, ok: false, ms: 0, cached: false, refused: true }); throw Object.assign(new Error(a.reason), { code: 'REFUSED' }); }
+    const t = now(), hit = bytes.get(url);
+    if (hit && ttlMs > 0 && t - hit.at < ttlMs) { emit({ source, host, ok: true, ms: 0, cached: true, ageMs: t - hit.at }); return { data: hit.buf, cached: true, ageMs: t - hit.at }; }
+    const t0 = Date.now();
+    try {
+      const buf = await fetchOnce(source, url, { Accept: 'image/png, */*;q=0.5', ...headers }, true);
+      bytes.delete(url); bytes.set(url, { at: now(), buf });
+      while (bytes.size > 24) bytes.delete(bytes.keys().next().value);
+      emit({ source, host, ok: true, ms: Date.now() - t0, cached: false, ageMs: 0 });
+      return { data: buf, cached: false, ageMs: 0 };
+    } catch (err) {
+      emit({ source, host, ok: false, ms: Date.now() - t0, cached: false, error: err.message });
+      throw err;
+    }
+  }
+
   async function getJson(source, url, opts) {
     const r = await getText(source, url, opts);
     try { return { ...r, data: JSON.parse(r.data) }; } catch { throw new Error(`bad JSON from ${new URL(url).hostname}`); }
   }
 
   return {
-    getText, getJson,
+    getText, getJson, getBytes,
     stats: () => ({ entries: mem.size, chars: memChars, capChars: memMaxChars, evicted }),
     trim() { mem.clear(); memChars = 0; },   // under memory pressure: the disk copies still answer
   };

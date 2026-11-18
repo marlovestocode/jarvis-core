@@ -44,7 +44,7 @@ function setup({ kiwix = fakeKiwix(), config = DEFAULTS, routes = ROUTES } = {})
 
 test('tools: the knowledge tools with JSON schemas', () => {
   const { tools } = setup();
-  assert.deepEqual(tools.map(t => t.name), ['get_weather', 'weather_alerts', 'news_headlines', 'sports_scores', 'lookup_knowledge', 'globe_focus', 'read_article']);
+  assert.deepEqual(tools.map(t => t.name), ['get_weather', 'weather_alerts', 'weather_threat', 'news_headlines', 'sports_scores', 'lookup_knowledge', 'globe_focus', 'read_article']);
   for (const t of tools) { assert.equal(t.params.type, 'object'); assert.ok(t.description.length > 20); }
   assert.deepEqual(tools.find(t => t.name === 'lookup_knowledge').params.required, ['query']);
   assert.deepEqual(tools.find(t => t.name === 'read_article').params.required, ['title']);

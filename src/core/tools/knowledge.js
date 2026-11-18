@@ -4,6 +4,7 @@
 const { resolvePlace } = require('../knowledge/location');
 const { findOnGlobe, parseSimTime, timeNote } = require('../knowledge/globe');
 const { getWeather,getAlerts, formatWeather, formatAlerts } = require('../knowledge/weather');
+const { assessHome, formatThreat } = require('../knowledge/weather-watch');
 const { getHeadlines, formatHeadlines } = require('../knowledge/news');
 const { getScores, formatScores } = require('../knowledge/sports');
 const { searchWikiOnline, summaryOnline, articleHtmlOnline } = require('../knowledge/wiki-online');
@@ -31,7 +32,7 @@ function wrapSource(label, body, max = 2500) {
 const offText = err => `${err.message[0].toUpperCase()}${err.message.slice(1)}, so I could not check. Answer from what you know and say it is not live data.`;
 const obj = (properties, required) => ({ type: 'object', properties, ...(required ? { required } : {}), additionalProperties: false });
 
-function createKnowledgeTools({ fetcher, kiwix, getConfig, bus, wallpaperClients = () => null }) {
+function createKnowledgeTools({ fetcher, kiwix, getConfig, bus, wallpaperClients = () => null, homeWatch = null }) {
   let libName = null;
   async function libraryName() {
     if (libName) return libName;
@@ -159,6 +160,21 @@ function createKnowledgeTools({ fetcher, kiwix, getConfig, bus, wallpaperClients
           const a = await getAlerts(fetcher, p.place);
           return wrapSource(`${a.source}, ${describeAge(a.ageMs, a.stale)}`, formatAlerts(a));
         } catch (err) { if (/only available for the US/.test(err.message)) return 'Weather alerts are only available for the US.'; throw err; }
+      }),
+    },
+    {
+      name: 'weather_threat', untrusted: true,
+      examples: ['is a storm coming','is severe weather coming','should I worry about the weather tonight','any storms heading my way'],
+      hint: 'weather_threat: severe-weather threat level for home from several forecast models plus NWS warnings; use for is a storm coming.',
+      description: 'Weather threat check: blends several forecast models (GFS, ECMWF, ICON, GEM, HRRR) and NWS warnings into a threat level (none, watch, warning, severe, extreme) with the kind (wind, flood, thunderstorms) and how soon. Default place is home.',
+      params: obj({ place: { description: 'City; omit for home', type: 'string' } }),
+      timeoutMs: 30000,
+      run: guard(async args => {
+        const p = await place(args);
+        if (!p.place) return p.text;
+        const r = !args.place && homeWatch ? await homeWatch.refresh() : await assessHome(fetcher, p.place);
+        if (!r) return 'No home location is set, so I could not check. Ask the user for a city.';
+        return wrapSource(`Open-Meteo models + National Weather Service, ${describeAge(r.ageMs, r.stale)}`, formatThreat(r));
       }),
     },
     {

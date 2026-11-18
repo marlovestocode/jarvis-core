@@ -1,12 +1,12 @@
 'use strict';
-// Opt-in proactive monitors: defaults, clamping and a patch helper. Pure, no I/O.
+// Proactive monitors (opt-in, except weatherAlerts which is on by default): defaults, clamping and a patch helper. Pure, no I/O.
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const clampNumber = (n, min, max) => Math.round(Math.max(min, Math.min(max, n)));
 
 const DEFAULT_MONITORS = Object.freeze({
   timersSoon: Object.freeze({ enabled: false, leadMin: 10 }),
   sysmon: Object.freeze({ enabled: false, cpu: 90, ram: 90, disk: 95, temp: 85 }),
-  weatherAlerts: Object.freeze({ enabled: false }),
+  weatherAlerts: Object.freeze({ enabled: true }),   // on by default (user's call): a severe-weather heads-up is the one monitor worth hearing unprompted
   followedTeams: Object.freeze({ enabled: false }),
   lowBattery: Object.freeze({ enabled: false, percent: 20 }),
   taskDone: Object.freeze({ enabled: false }),

@@ -269,9 +269,9 @@ const { validatePlan } = require('../src/core/tasks/plan');
 const GUEST = { source: 'voice', tainted: true, speaker: 'guest' };
 const UNSURE = { source: 'voice', tainted: true, speaker: 'unsure' };
 // the exact guest allowlist: a new tool is denied for guests until it is added on purpose
-const ALLOWED = ['get_time', 'more_skills', 'get_weather', 'weather_alerts', 'news_headlines', 'sports_scores', 'lookup_knowledge', 'read_article',
+const ALLOWED = ['get_time', 'more_skills', 'get_weather', 'weather_alerts', 'weather_threat', 'news_headlines', 'sports_scores', 'lookup_knowledge', 'read_article',
   'calculate', 'solve_equation', 'integrate', 'differentiate', 'statistics', 'convert_units', 'physics_constant', 'date_calc', 'web_search', 'web_open', 'find_song_by_lyric'];
-const NEEDS = { get_weather: { place: 'Paris' }, weather_alerts: { place: 'Dallas' }, sports_scores: { team: 'Cowboys' } };
+const NEEDS = { get_weather: { place: 'Paris' }, weather_alerts: { place: 'Dallas' }, weather_threat: { place: 'Dallas' }, sports_scores: { team: 'Cowboys' } };
 
 // the real catalog, every tool's run replaced by a recorder
 function realCatalog() {
@@ -323,7 +323,7 @@ test('guest allowlist: the scoped auto-load path refuses without loading the gro
 
 test('guest: weather and scores need a named place or team (the owner\'s home and teams are private)', async () => {
   const { called, runner } = realCatalog();
-  for (const n of ['get_weather', 'weather_alerts', 'sports_scores']) {
+  for (const n of ['get_weather', 'weather_alerts', 'weather_threat', 'sports_scores']) {
     const r = await runner.run(n, {}, { turn: { ...GUEST } });
     assert.match(r.text, /^Error: /, n);
     assert.deepEqual(called, [], n);

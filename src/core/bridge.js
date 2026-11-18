@@ -3,6 +3,7 @@
 //   GET  /ai/stream           SSE: "event: <type>\ndata: <json>"; current state + provider on connect. Structural fields only (allowlist in publicEvent): no free text
 //   POST /ai/open[?mode=voice] 204; foreign Origins refused (the wallpaper sends none)
 //   GET  /ai/brain[?max=&focus=1,2]   the shape of the cortex (ids, kinds, weights, links), no text
+//   GET  /ai/radar, /ai/radar/<n>.png   radar frame times and images (same origin rule as labels: only a page with no Origin or file://)
 //   GET  /ai/brain/labels?ids=1,2     a few words per node: only when the user allows it, and only to a page with no Origin
 //                                     or file:// (never a localhost web page or a sandboxed frame, which sends Origin: null)
 // Host/Origin rules copied from sysmon-widget/src/main/bridge.js (okHost, okOrigin).
@@ -31,13 +32,15 @@ const idList = v => String(v || '').split(',').map(Number).filter(Number.isInteg
 // dashboard = { query(opts) → summary, files: { html, js, css } } | null: the analytics page (src/ui/dashboard) and its numbers, same-origin only
 // stockman = { state() → Promise<object>, files: { html, js, css } } | null: the StockMan page (src/ui/stockman) at /ai/stockman and its numbers at
 //   /ai/stockman/state; same-origin only, like the analytics page. The numbers are the engine's own read-only measurements (no conversation text).
+// radar = { frames() → { halfKm, times } | null, frame(i) → Buffer | null } | null: NOAA radar frames around home for the globe. Only times and the box size go out, never where home is.
 // brain = { view(opts), labels(ids), labelsOn(), skills() } | null: the cortex picture for the wallpaper (skills() = the skill groups, so tools can fire their neuron)
-async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PORTS, pingMs = 15000, clientMaxBuffer = CLIENT_MAX_BUFFER, brain = null, dashboard = null, stockman = null }) {
+async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PORTS, pingMs = 15000, clientMaxBuffer = CLIENT_MAX_BUFFER, brain = null, dashboard = null, stockman = null, radar = null }) {
   const clients = new Set();
   let dropped = 0;
   let port = null;
   let lastState = { type: 'state', t: Date.now(), state: 'idle' };
   let lastProvider = null;
+  let lastWeather = null;      // replayed to a wallpaper that connects later, so the threat level and warning outlines are there at once
   const lastLevel = new Map(); // source -> time sent
   const BOOT_REPLAY_MS = 20000;
   let bootEvents = [];         // replayed to clients that connect during boot (the wallpaper often starts later)
@@ -61,6 +64,8 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
   const oneOf = (...set) => v => (set.includes(v) ? v : undefined);
   const ids = v => (Array.isArray(v) ? v.filter(Number.isInteger).slice(0, 200) : undefined);
   const trail = v => (Array.isArray(v) ? v.slice(0, 200).map(p => (Array.isArray(p) ? p.slice(0, 3).map(n => (Number.isFinite(n) ? n : 0)) : [])) : undefined);
+  // NWS warning outlines for the globe: up to 8 rings of up to 200 [lat, lon] pairs, each with a severity. Numbers only, no event names.
+  const rings = v => (Array.isArray(v) ? v.slice(0, 8).filter(p => ['severe', 'extreme'].includes(p?.sev) && Array.isArray(p.ring)).map(p => ({ sev: p.sev, ring: p.ring.slice(0, 200).filter(q => Array.isArray(q) && Number.isFinite(q[0]) && Number.isFinite(q[1])).map(q => [q[0], q[1]]) })) : undefined);
   const PUBLIC_FIELDS = {
     state: { state: oneOf('idle', 'listening', 'thinking', 'speaking', 'error') },
     token: { prob: num },                                                          // text blanked, alts reduced to their weights below
@@ -87,6 +92,7 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
     modelfail: { model: word },
     speaker: { ok: bool, score: num, verdict: oneOf('owner', 'unsure', 'guest') },
     retract: {},
+    weather: { level: oneOf('none', 'watch', 'warning', 'severe', 'extreme'), kind: oneOf('wind', 'flood', 'storm', 'alert'), etaHours: num, polys: rings },   // the threat level for home and the outlines of active warnings: structural only
     globe: { op: oneOf('focus', 'zoom', 'home', 'time'), target: word, lat: num, lon: num, span: num, dir: num, mode: oneOf('jump', 'run', 'pause', 'now'), ts: num, rate: num },   // where to look: numbers and a continent name, no free text
   };
   function publicEvent(ev) {
@@ -109,6 +115,7 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
   const offBus = bus.on('*', ev => {
     if (ev.type === 'state') lastState = ev;
     if (ev.type === 'provider') lastProvider = ev;
+    if (ev.type === 'weather') lastWeather = ev;
     if (ev.type === 'boot') bootEvents.push(ev);
     if (ev.type === 'level') {
       const now = Date.now();
@@ -147,6 +154,17 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
       let skills = [];
       try { skills = brain.skills?.() || []; } catch { /* the picture works without them */ }
       return res.end(JSON.stringify({ ...body, labels: !!brain.labelsOn?.(), skills }));
+    }
+    if (radar && (url === '/ai/radar' || /^\/ai\/radar\/\d{1,2}\.png$/.test(url))) {
+      if (!okLabelOrigin(origin)) { res.writeHead(403, cors); return res.end(); }
+      const m = /^\/ai\/radar\/(\d+)\.png$/.exec(url);
+      Promise.resolve(m ? radar.frame(Number(m[1])) : radar.frames()).then(out => {
+        if (!out) { res.writeHead(404, cors); return res.end(); }
+        if (m) { res.writeHead(200, { ...cors, 'Content-Type': 'image/png', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); return res.end(out); }
+        res.writeHead(200, { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ halfKm: Number(out.halfKm) || 0, times: (out.times || []).slice(0, 12).filter(Number.isFinite) }));
+      }).catch(() => { res.writeHead(503, cors); res.end(); });
+      return;
     }
     if (url === '/ai/brain/labels' && brain) {
       if (!brain.labelsOn?.() || !okLabelOrigin(origin)) { res.writeHead(403, cors); return res.end(); }
@@ -197,6 +215,7 @@ async function startBridge({ bus, version, onOpen = () => {}, ports = DEFAULT_PO
       res.write('retry: 3000\n\n');
       write(res, lastState);
       if (lastProvider) write(res, lastProvider);
+      if (lastWeather) write(res, lastWeather);
       bootEvents = bootEvents.filter(e => Date.now() - e.t < BOOT_REPLAY_MS);
       for (const e of bootEvents) write(res, e);
       clients.add(res);

@@ -22,7 +22,7 @@ const { ledgerGate, ledgerRecord, ledgerTimeout } = require('./ledger');
 const GUEST_TOOLS = new Map([
   ['get_time', null], ['more_skills', null],
   ['lookup_knowledge', null], ['read_article', null], ['web_search', null], ['web_open', null], ['news_headlines', null],
-  ['get_weather', 'place'], ['weather_alerts', 'place'], ['sports_scores', 'team'],
+  ['get_weather', 'place'], ['weather_alerts', 'place'], ['weather_threat', 'place'], ['sports_scores', 'team'],
   ['calculate', null], ['solve_equation', null], ['integrate', null], ['differentiate', null], ['statistics', null],
   ['convert_units', null], ['physics_constant', null], ['date_calc', null],
   ['find_song_by_lyric', null],
