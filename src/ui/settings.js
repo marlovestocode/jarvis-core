@@ -48,6 +48,7 @@
     $('logPlays').checked = !!c.music.logPlays;
     $('browserOn').checked = !!c.browser.enabled;
     $('proactiveOn').checked = !!c.proactive.enabled;
+    $('briefAuto').checked = !!c.brief?.auto;
     $('dnd').checked = !!c.proactive.dnd;
     $('quietStart').value = c.proactive.quietStart;
     $('quietEnd').value = c.proactive.quietEnd;
@@ -201,6 +202,7 @@
   $('sttGpu').addEventListener('change', e => save({ sttGpu: e.target.checked }));
   $('memAuto').addEventListener('change', e => save({ memory: { autoCapture: e.target.checked } }));
   $('memChats').addEventListener('change', e => save({ memory: { usePastChats: e.target.checked } }));
+  $('briefAuto').addEventListener('change', e => save({ brief: { auto: e.target.checked } }));
   $('proactiveOn').addEventListener('change', e => save({ proactive: { enabled: e.target.checked } }));
   $('dnd').addEventListener('change', e => save({ proactive: { dnd: e.target.checked } }));
   $('quietStart').addEventListener('change', e => save({ proactive: { quietStart: e.target.value } }));
@@ -410,4 +412,88 @@
   });
   refresh().catch(err => say(err.message));
   embedder().catch(() => {});
+})();
+
+// Settings → Routines: a named list of steps. Each step is one tool with one value; the main process validates the whole routine.
+(() => {
+  const $ = id => document.getElementById(id);
+  const R = window.jarvis.settings.routines;
+  if (!R) { $('routines').hidden = true; return; }
+  const say = t => { $('routineDetail').textContent = t || ''; };
+  // tool → what the step is called and the one value it takes
+  const KINDS = {
+    routine_close: { label: 'Close app', key: 'name', kind: 'text', hint: 'Discord' },
+    open_app: { label: 'Open app', key: 'name', kind: 'text', hint: 'Spotify' },
+    focus_assist: { label: 'Focus assist', key: 'on', kind: 'bool' },
+    set_system_volume: { label: 'Volume', key: 'percent', kind: 'number', hint: '0-100' },
+    audio_output_set: { label: 'Sound output', key: 'name', kind: 'text', hint: 'headphones' },
+    brightness_set: { label: 'Brightness', key: 'percent', kind: 'number', hint: '0-100' },
+    power_plan_set: { label: 'Power plan (asks first)', key: 'name', kind: 'text', hint: 'high performance' },
+    night_light: { label: 'Night light', key: 'on', kind: 'bool' },
+    bluetooth_set: { label: 'Bluetooth', key: 'on', kind: 'bool' },
+    youtube_music: { label: 'Play music', key: 'query', kind: 'text', hint: 'lo-fi beats', fixed: { action: 'play' } },
+  };
+  const mk = (tag, props, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids); return n; };
+
+  function stepRow(step = { tool: 'focus_assist', args: { on: true } }) {
+    const row = mk('div', { className: 'editor routine-step' });
+    const pick = mk('select', { ariaLabel: 'Step' }, ...Object.entries(KINDS).map(([tool, k]) => mk('option', { value: tool, textContent: k.label })));
+    pick.value = step.tool in KINDS ? step.tool : 'focus_assist';
+    const slot = mk('span', { className: 'routine-value' });
+    const build = (tool, value) => {
+      const k = KINDS[tool];
+      const input = k.kind === 'bool'
+        ? mk('select', { ariaLabel: 'Value' }, mk('option', { value: 'true', textContent: 'on' }), mk('option', { value: 'false', textContent: 'off' }))
+        : mk('input', { ariaLabel: 'Value', placeholder: k.hint || '', maxLength: 80, type: k.kind === 'number' ? 'number' : 'text' });
+      if (value !== undefined) input.value = String(value);
+      slot.replaceChildren(input);
+    };
+    build(pick.value, step.args?.[KINDS[pick.value].key]);
+    pick.addEventListener('change', () => build(pick.value));
+    const del = mk('button', { type: 'button', textContent: 'REMOVE' });
+    del.addEventListener('click', () => row.remove());
+    row.append(pick, slot, del);
+    row.read = () => {
+      const k = KINDS[pick.value];
+      const raw = slot.firstChild.value;
+      const value = k.kind === 'bool' ? raw === 'true' : k.kind === 'number' ? Number(raw) : raw.trim();
+      return { tool: pick.value, args: { ...(k.fixed || {}), [k.key]: value } };
+    };
+    return row;
+  }
+
+  const sentence = r => r.steps.map(s => {
+    const k = KINDS[s.tool];
+    if (!k) return s.tool;
+    const v = s.args?.[k.key];
+    return `${k.label.replace(' (asks first)', '').toLowerCase()} ${k.kind === 'bool' ? (v ? 'on' : 'off') : v}`;
+  }).join(', ');
+
+  function load(r) {
+    $('routineName').value = r?.name || '';
+    $('routineSteps').replaceChildren(...(r?.steps || []).map(stepRow));
+  }
+
+  async function refresh() {
+    const list = await R.list();
+    $('routineList').replaceChildren(...list.map(r => {
+      const li = mk('li', {}, mk('span', { textContent: `${r.name}: ${sentence(r)}` }));
+      const edit = mk('button', { type: 'button', textContent: 'EDIT' });
+      edit.addEventListener('click', () => { load(r); say(`Editing ${r.name}.`); });
+      const del = mk('button', { type: 'button', textContent: 'DELETE' });
+      del.addEventListener('click', async () => { await R.remove(r.name); say(`Deleted ${r.name}.`); refresh(); });
+      li.append(edit, del);
+      return li;
+    }));
+  }
+
+  $('routineAddStep').addEventListener('click', () => $('routineSteps').append(stepRow()));
+  $('routineClear').addEventListener('click', () => { load(null); say(''); });
+  $('routineForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const name = $('routineName').value.trim();
+    const res = await R.save({ name, steps: [...$('routineSteps').children].map(r => r.read()) });
+    if (res?.ok) { say(`Saved ${name}.`); load(null); refresh(); } else say(res?.error || 'Not saved.');
+  });
+  refresh().catch(() => {});
 })();

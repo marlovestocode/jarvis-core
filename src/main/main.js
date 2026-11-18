@@ -62,6 +62,15 @@ const { createTaskRunner } = require('../core/tasks/runner');
 const { createAssembler } = require('../core/context/assemble');
 const { liveProvider, taskProvider } = require('../core/context/providers');
 const { createTasksSkill } = require('../core/tasks/skill');
+const { createBrief } = require('../core/brief');
+const { createBriefSkill } = require('../core/skills/brief');
+const { createFirstWake } = require('../core/brief/firstwake');
+const { createRoutineStore } = require('../core/routines/store');
+const { createTokens } = require('../core/routines/close-tool');
+const { createRoutineRunner } = require('../core/routines/run');
+const { createRoutinesSkill } = require('../core/routines/skill');
+const { takeSnapshot, undoSnapshot } = require('../core/routines/snapshot');
+const { matchText } = require('../core/media/rank');
 const { createTaskTools } = require('../core/tools/tasks');
 const { createOrchestrator } = require('../core/orchestrator');
 const { createLiveState, liveLine } = require('../core/livestate');
@@ -360,7 +369,8 @@ const visionResize = async png => {
   const k = (Number(ctx.config.vision?.maxEdge) || 1280) / Math.max(width, height);
   return k >= 1 ? png : img.resize({ width: Math.round(width * k), height: Math.round(height * k), quality: 'best' }).toPNG();
 };
-ctx.catalog = brain.defaultCatalog({ vision: { client: ctx.vision, resize: visionResize }, self, analytics: { metrics: ctx.metrics, openDashboard: ctx.openDashboard }, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, wallpaperClients: () => (ctx.bridge ? ctx.bridge.clients() : null), getConfig: ctx.getConfig, applySettings: patch => { const { config, errors } = applyPatch(ctx.config, patch, { providers: ctx.providers, engines: ctx.engines }); ctx.saveConfig(config); return errors; }, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, lyrics: ctx.lyrics, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, lists: ctx.lists, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog }, ...(ctx.taskTools ? { tasks: ctx.taskTools } : {}), ...(ctx.stockman ? { stockman: ctx.stockman } : {}) });
+ctx.routineTokens = createTokens();
+ctx.catalog = brain.defaultCatalog({ routines: { tokens: ctx.routineTokens }, vision: { client: ctx.vision, resize: visionResize }, self, analytics: { metrics: ctx.metrics, openDashboard: ctx.openDashboard }, browserLink: ctx.ytmLink, capture: { dir: path.join(app.getPath('pictures'), 'JARVIS') }, memory: ctx.memory, chats: ctx.chats, cortex: ctx.cortex, playLog: ctx.playLog, getStatus: jarvisStatus, fetcher: ctx.fetcher, web: ctx.web, kiwix: ctx.kiwix, wallpaperClients: () => (ctx.bridge ? ctx.bridge.clients() : null), getConfig: ctx.getConfig, applySettings: patch => { const { config, errors } = applyPatch(ctx.config, patch, { providers: ctx.providers, engines: ctx.engines }); ctx.saveConfig(config); return errors; }, bus: ctx.bus, media: ctx.media, ytm: ctx.ytm, lyrics: ctx.lyrics, ytPlaylists: ctx.ytPlaylists, scheduler: ctx.scheduler, lists: ctx.lists, pc: { host: ctx.pcHost, getAllowlist: pcAllowlist, roots: ctx.pcRoots, confirm: ctx.confirm, actionLog: ctx.actionLog }, ...(ctx.taskTools ? { tasks: ctx.taskTools } : {}), ...(ctx.stockman ? { stockman: ctx.stockman } : {}) });
 ctx.toolList = ctx.catalog.tools;
 for (const m of ctx.catalog.missing) if (m.error) ctx.log(`skill group ${m.id} failed to load: ${m.error}`);
 // tool discovery: embeddings come from the memory system's embedder (none installed: lexical only, within 250 ms)
@@ -369,6 +379,17 @@ ctx.ledger = createLedger({});
 ctx.workmem = createWorkMem({});   // owner-only, in memory, 15 min: what "that file" and "continue" refer to
 ctx.toolIndex = createToolIndex({ catalog: ctx.catalog, embed: embedTexts, eligible: eligibility });
 ctx.tools = createToolRunner(ctx.toolList, { groups: ctx.catalog.groups, toolIndex: ctx.toolIndex });
+// saved routines: stored steps run by the task runner; the fast path below matches their names
+ctx.routineStore = createRoutineStore({ file: path.join(DATA_DIR, 'routines.json'), log: ctx.log });
+ctx.routines = ctx.tasks ? createRoutineRunner({
+  store: ctx.routineStore, runner: ctx.tasks, confirm: ctx.confirm, tokens: ctx.routineTokens, log: ctx.log,
+  snapshot: ({ steps }) => takeSnapshot({ host: ctx.pcHost, media: ctx.media, steps, isOpen: async name => (await ctx.pcHost.windows()).some(w => matchText(name, w.app) >= 0.6) }),
+  undo: ({ snapshot }) => undoSnapshot({ host: ctx.pcHost, media: ctx.media, snapshot, openApp: async name => { const r = await ctx.tools.run('open_app', { name }, { turn: { source: 'routine', tainted: false } }); if (!r.ok) throw new Error(r.text); } }),
+}) : null;
+ctx.routinesSkill = ctx.routines ? createRoutinesSkill({ store: ctx.routineStore, routines: ctx.routines }) : null;
+// morning brief: a text built from read-only tools; spoken on the phrase, or on the first wake of the day (wired below)
+ctx.brief = createBrief({ tools: ctx.tools, getConfig: ctx.getConfig });
+ctx.briefSkill = createBriefSkill({ brief: ctx.brief });
 // which tool a request is about, ranked from the tools' own text and from the requests that worked before (this run): the model sees the likeliest tools first
 const toolRanker = createRanker(ctx.toolList);
 // a request that names nothing to act on, or something JARVIS has no tool for, is answered here instead of guessed at by the model
@@ -383,7 +404,9 @@ const liveInstant = async (text, o = {}) => {
   return reply ? { reply, tool: i.tool, ok: true } : null;
 };
 // "task status", "pause the task"...: a failing task skill falls through to the rest of the chain
+const routinesFast = async (text, o) => { if (!ctx.routinesSkill) return null; try { return await ctx.routinesSkill.handle(text, o); } catch (err) { ctx.log('routines skill failed:', err?.message || err); return null; } };
 const tasksFast = async (text, o) => { if (!ctx.tasksSkill) return null; try { return await ctx.tasksSkill.handle(text, o); } catch (err) { ctx.log('task skill failed:', err?.message || err); return null; } };
+const briefFast = async (text, o) => { try { return await ctx.briefSkill.handle(text, o); } catch (err) { ctx.log('brief skill failed:', err?.message || err); return null; } };
 // LiveState: what is happening right now, for the prompt and for follow-ups ("again", "undo that"). A missing service just omits its source.
 let lastMedia = null;   // { st, at } from the media state promptInfo already fetches
 ctx.live = createLiveState({ bus: ctx.bus, log: ctx.log, restore: livePersist.load(DATA_DIR), save: snap => livePersist.save(DATA_DIR, snap) });
@@ -413,7 +436,7 @@ ctx.orchestrator = createOrchestrator({
     return { dialect: resolveDialect(ctx.config.speech), hardware: ctx.hardware.cached() || undefined, media, library: ctx.ytPlaylists.digest() || undefined, memory: profile.text || undefined, memoryIds: profile.ids, user: userInfo(), caps: capsLine(), hotkeys: ctx.config.hotkeys, live: (() => { try { return liveLine(ctx.live.snapshot()); } catch { return ''; } })() };
   },
   // a pending PC action reads the user's own reply first (yes / no); nothing else can confirm it
-  fastPath: async (text, o) => (await ctx.confirm.handle(text, o)) || (await ctx.memorySkill.handle(text, o)) || (await ctx.lyricsSkill.handle(text, o)) || (await tasksFast(text, o)) || ctx.mediaSkill.handle(text, o) || askOrDecline(text, o) || instant(text, { now: new Date() }) || (await liveInstant(text, o)),
+  fastPath: async (text, o) => (await ctx.confirm.handle(text, o)) || (await ctx.memorySkill.handle(text, o)) || (await ctx.lyricsSkill.handle(text, o)) || (await tasksFast(text, o)) || (await briefFast(text, o)) || (await routinesFast(text, o)) || ctx.mediaSkill.handle(text, o) || askOrDecline(text, o) || instant(text, { now: new Date() }) || (await liveInstant(text, o)),
   rankTools: (text, specs) => toolRanker.order(text, specs),
   learnTool: (text, name) => toolRanker.learn(text, name),
   onQuestionLost: () => ctx.confirm.clear(),
@@ -525,6 +548,8 @@ ctx.proactive = createProactiveEngine({
     ctx.sessions.save(s);
   },
 });
+ctx.proactive.briefing.set(() => ctx.brief.build());
+ctx.firstWake = createFirstWake({ bus: ctx.bus, getConfig: ctx.getConfig, log: ctx.log, saveBriefDate: d => ctx.saveConfig({ ...ctx.config, brief: { ...ctx.config.brief, lastDate: d } }), run: () => ctx.proactive.briefing.run() });
 // monitors only produce text for the engine above; they never act
 ctx.monitors = createMonitors({ engine: ctx.proactive, live: ctx.live, getConfig: ctx.getConfig, log: ctx.log, monitors: [timersSoon, createSysmonMonitor({ getStats: createSysmonStats({ fetch }), log: ctx.log }),
   // weather alerts for the home place, through the allowlisted fetcher; no home set → nothing to check

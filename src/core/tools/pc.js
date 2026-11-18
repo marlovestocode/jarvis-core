@@ -388,7 +388,9 @@ function createPcTools({ host, getAllowlist, roots, confirm, actionLog, media = 
     },
   };
 
-  return [openApp, closeApp, focusWindow, listWindows, findFiles, openPath, moveFiles, recycle, undoLast, setVolume, lockScreen, power];
+  const list = [openApp, closeApp, focusWindow, listWindows, findFiles, openPath, moveFiles, recycle, undoLast, setVolume, lockScreen, power];
+  list.helpers = { windowsFor, poll };   // the routines group builds its polite close on these
+  return list;
 }
 
 module.exports = { createPcTools, PROGRAM_EXT, PROTECTED };

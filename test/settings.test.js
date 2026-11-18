@@ -150,3 +150,18 @@ test('applyPatch: speaker thresholds are config.json only', () => {
   assert.equal(r.config.speakerGuestBelow, DEFAULTS.speakerGuestBelow);
   assert.equal(r.config.speakerLearnAbove, DEFAULTS.speakerLearnAbove);
 });
+
+test('applyPatch: brief switches and news count, lastDate is not settable, the old config is not mutated', () => {
+  const { providers, engines } = regs();
+  const cfg = { ...DEFAULTS, brief: { ...DEFAULTS.brief } };
+  const { config, errors } = applyPatch(cfg, { brief: { auto: false, onFirstWake: false, newsCount: 9, lastDate: '2020-01-01' } }, { providers, engines });
+  assert.deepEqual(errors, []);
+  assert.equal(config.brief.auto, false);
+  assert.equal(config.brief.onFirstWake, false);
+  assert.equal(config.brief.newsCount, 5);
+  assert.equal(config.brief.lastDate, '');
+  assert.equal(cfg.brief.auto, true);
+  const bad = applyPatch(cfg, { brief: { auto: 'yes' } }, { providers, engines });
+  assert.equal(bad.errors.length, 1);
+  assert.equal(bad.config.brief.auto, true);
+});

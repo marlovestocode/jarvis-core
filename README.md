@@ -47,7 +47,11 @@ JARVIS's tools are grouped into **skill groups**. Each turn, a small router pick
 | `memory` | "Remember that…", "forget…", "what do you remember about me" |
 | `self` | Self-diagnostics (23 live checks), list of skills, version and settings, recent errors |
 
-Some requests never reach the model at all: confirmations ("yes, do it"), memory commands and common media commands go through a **fast path** that answers in milliseconds.
+Some requests never reach the model at all: confirmations ("yes, do it"), memory commands, the morning brief, routines and common media commands go through a **fast path** that answers in milliseconds.
+
+**Morning brief.** Say "morning brief" (or "brief me") for the date, weather, timers and reminders, the top news, the battery and which apps are open (names only). On the first wake of each day JARVIS offers it once, never in quiet hours or Do not disturb (Settings → Morning brief). Nothing leaves the PC beyond the usual weather and news lookups.
+
+**Routines.** A routine is a named list of steps you build in Settings → Routines: close apps, open apps, focus assist, volume, sound output, brightness, night light, Bluetooth, power plan, play music. Say its name ("game mode") to run it. One that closes apps asks once for the whole run; apps close politely, never by force, and one that asks to save is left open. Before each run JARVIS reads what it is about to change, so "undo game mode" puts volume, output, focus assist and the rest back and reopens the apps it closed (music is not undone). The newest run of each routine can be undone for 7 days. Routines are stored in `routines.json` in the data folder.
 
 Voice features: wake word ("Jarvis"), push-to-talk hotkey, voice activity detection, GPU speech-to-text, a JARVIS-style text-to-speech voice, interrupting him while he speaks, and an optional **speaker gate** so that only your enrolled voice can wake him.
 
@@ -57,7 +61,7 @@ Voice features: wake word ("Jarvis"), push-to-talk hotkey, voice activity detect
  you (voice or chat)
    │  voice: wake word → VAD → Whisper (GPU) → text
    ▼
- orchestrator ──► fast path (confirm / memory / media skills, no model)
+ orchestrator ──► fast path (confirm / memory / brief / routines / media skills, no model)
    │
    ▼
  router: quick chat (no tools) or tools?  ──► skill-group selection (top 2 groups)
@@ -219,6 +223,8 @@ src/
     pc/               PC control host (PowerShell), confirm-and-undo, action log
     timers/           parser, store, scheduler
     proactive/        spoken notices and quiet hours
+    brief/            morning brief text and the first-wake trigger
+    routines/         saved routines: store, run, undo snapshot, polite close
     memory/           remember/forget store and fast path
     self/             diagnostics
     bridge.js         event stream for the wallpaper (127.0.0.1:47801)

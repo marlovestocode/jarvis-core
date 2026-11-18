@@ -74,10 +74,12 @@ const DEFAULTS = Object.freeze({
   livestate: Object.freeze({ windowTitle: false }),
   // screen vision: the small local vision model that reads the screen on request (scripts/Modelfile.jarvis-vision); it leaves VRAM after keepAlive so the main model keeps the GPU
   vision: Object.freeze({ model: 'jarvis-vision', keepAlive: '1m', maxEdge: 1280, maxTokens: 400 }),
+  // morning brief (core/brief): auto = offer it on the first wake of the day; lastDate = local day it last ran ('YYYY-MM-DD' or '')
+  brief: Object.freeze({ auto: true, onFirstWake: true, newsCount: 3, lastDate: '' }),
 });
 
 const VADS = ['silero', 'energy'];
-const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive', 'pc', 'browser', 'memory', 'cortex', 'speech', 'library', 'livestate', 'vision'];
+const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive', 'pc', 'browser', 'memory', 'cortex', 'speech', 'library', 'livestate', 'vision', 'brief'];
 const MODEL_NAME = /^[\w.:-]{1,64}$/;   // an Ollama model tag, e.g. nomic-embed-text:latest
 const HHMM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;   // "22:00"
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -132,7 +134,11 @@ function merge(raw) {
         out[key].cooldownMin = clampNumber(out[key].cooldownMin, 1, 240);
         out[key].maxPerHour = clampNumber(out[key].maxPerHour, 1, 60);
       }
-      if (key === 'library' && !path.isAbsolute(out[key].dir)) out[key].dir = def.dir;   // inspectConfig reports library.dir as ignored
+      if (key === 'brief') {
+        out[key].newsCount = Math.round(clampNumber(out[key].newsCount, 1, 5));
+        if (!/^(?:|\d{4}-\d{2}-\d{2})$/.test(out[key].lastDate)) out[key].lastDate = def.lastDate;
+      }
+      if (key === 'library' &&!path.isAbsolute(out[key].dir)) out[key].dir = def.dir;   // inspectConfig reports library.dir as ignored
       if (key === 'cortex' && !MODEL_NAME.test(out[key].embedModel)) out[key].embedModel = def.embedModel;
     } else {
       out[key] = v !== undefined && okValue(key, def, v) ? v : def;
