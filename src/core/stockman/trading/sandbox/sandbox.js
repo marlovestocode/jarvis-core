@@ -107,6 +107,11 @@ function createSandbox({ ledger, alpaca, data, store, stateFile, now = Date.now,
         const hi = Number(need().stmt('SELECT MAX(close) AS h FROM bar WHERE symbol = ? AND day >= ? AND day <= ?').get(p.symbol, p.entry_day, day).h) || 0;
         if (hi > 0 && price <= hi * (1 - X.trailingPct / 100)) reason = `trailing stop ${X.trailingPct}% from the high`;
       }
+      if (!reason && X.rescoreExitRank !== null && X.rescoreExitRank !== undefined) {   // R6, D31: re-score the held name every plan
+        const r = built.ranks?.get(p.symbol);
+        if (r === undefined) reason = 're-score: no longer eligible';
+        else if (r > X.rescoreExitRank) reason = `re-score: rank ${r} is below ${X.rescoreExitRank}`;
+      }
       if (!reason && rebalance && !targetSet.has(p.symbol)) reason = 'no longer in the target portfolio';
       if (reason && !noteKey(p, 'xit')) {
         const qty = fillQty(p);
@@ -170,6 +175,51 @@ function createSandbox({ ledger, alpaca, data, store, stateFile, now = Date.now,
       }
     }
     return out;
+  }
+
+  // ---- intraday exits (R6, D31) -------------------------------------------------------------------------------------------------------
+  // Mid-trade: every exits.intradayEveryMin minutes in the session, each held sandbox name's live mid (Alpaca IEX) is checked against the
+  // strategy's stop, take-profit and trailing levels. A hit sends ONE exit order now (same client id scheme, so a repeat is refused by Alpaca and
+  // by the `xit` note), within the kill switch, dryRun and maxOrdersPerDay. Every hit is written to the engine log, sent or not.
+  let lastIntraday = 0;
+  function exitReason(X, p, price, high) {
+    const entry = p.fill_entry_price;
+    if (!(price > 0) || !(entry > 0)) return null;
+    if (X.stopLossPct !== null && price <= entry * (1 - X.stopLossPct / 100)) return `intraday stop loss ${X.stopLossPct}%`;
+    if (X.takeProfitPct !== null && price >= entry * (1 + X.takeProfitPct / 100)) return `intraday take profit ${X.takeProfitPct}%`;
+    if (X.trailingPct !== null && high > 0 && price <= high * (1 - X.trailingPct / 100)) return `intraday trailing stop ${X.trailingPct}% from the high`;
+    return null;
+  }
+  async function intradayCheck(t, cur, c) {
+    const X = cur.strategy.exits;
+    if (t - lastIntraday < X.intradayEveryMin * 60000) return { status: 'waiting' };
+    lastIntraday = t;
+    if (X.stopLossPct === null && X.takeProfitPct === null && X.trailingPct === null) return { status: 'no-levels' };
+    const st = readState(), orders = [];
+    let checked = 0;
+    for (const p of holdings()) {
+      if (noteKey(p, 'xit') || !(p.fill_entry_price > 0) || p.entry_day > c.day) continue;
+      let price = null;
+      try { const q = await alpaca.latestQuote(p.symbol); price = q.bid && q.ask ? (q.bid + q.ask) / 2 : null; } catch (err) { if (err instanceof PolicyError) throw err; continue; }
+      checked++;
+      const high = Math.max(p.fill_entry_price, Number(need().stmt('SELECT MAX(close) AS h FROM bar WHERE symbol = ? AND day >= ?').get(p.symbol, p.entry_day)?.h) || 0, price || 0);
+      const reason = exitReason(X, p, price, high);
+      if (reason) { const qty = fillQty(p); if (qty > 0) orders.push({ leg: 'exit', symbol: p.symbol, positionId: p.id, qty, price, reason, cid: `sm-sbx-${c.day}-${p.symbol}-exit` }); }
+    }
+    const res = { status: 'checked', checked, hits: orders.length };
+    if (orders.length) {
+      const room = Math.max(0, cur.strategy.risk.maxOrdersPerDay - (st.ordersByDay[c.day] || 0));
+      const keep = orders.slice(0, room), refused = orders.slice(room).map(x => ({ symbol: x.symbol, leg: 'exit', reason: 'would exceed maxOrdersPerDay' }));
+      if (st.killed) res.exec = { status: 'killed' };
+      else if (cur.strategy.execution.dryRun) res.exec = { status: 'dry-run', wouldSend: keep.length };
+      else {
+        const x = await send({ orders: keep, refused, day: c.day, entryDay: c.day, buildId: cur.buildId }, cur.strategy);
+        patchState(s => { s.ordersByDay[c.day] = (s.ordersByDay[c.day] || 0) + x.sent; });
+        res.exec = { status: 'sent', ...x };
+      }
+      emit('info', `sandbox: intraday exit check: ${orders.length} hit(s)`, { day: c.day, hits: orders.map(x => ({ symbol: x.symbol, reason: x.reason, price: x.price })), exec: res.exec });
+    }
+    return res;
   }
 
   // ---- fills --------------------------------------------------------------------------------------------------------------------------
@@ -267,6 +317,10 @@ function createSandbox({ ledger, alpaca, data, store, stateFile, now = Date.now,
             emit('info', `sandbox: sent ${x.sent} order(s), ${x.failed} failed`, { day: c.day });
           }
         }
+        // R6, D31: during the session, check stop, take-profit and trailing on live quotes (off unless exits.intraday)
+        if (cur.strategy.exits.intraday && c.minSinceOpen > EXEC_WINDOW_MIN && c.minSinceClose < -5) {
+          try { res.intraday = await intradayCheck(t, cur, c); } catch (err) { if (err instanceof PolicyError) throw err; res.intraday = { error: String(err.message).slice(0, 160) }; }
+        }
       }
     } catch (err) {
       res.status = err instanceof PolicyError ? 'refused' : 'error'; res.note = String(err.message).slice(0, 200); lastError = res.note;
@@ -301,7 +355,7 @@ function createSandbox({ ledger, alpaca, data, store, stateFile, now = Date.now,
     function clearKill() { const s = readState(); s.killed = null; writeState(s); }
   function patchState(fn) { const s = readState(); fn(s); writeState(s); return s; }
 
-  const api = { step, plan, runPlan, status, health, reconcile, readState, patchState, clearKill, loadSeries, membersFor, clockNow, options: o, LABEL };
+  const api = { step, plan, runPlan, intradayCheck, status, health, reconcile, readState, patchState, clearKill, loadSeries, membersFor, clockNow, options: o, LABEL };
   const feature = {
     id: 'sandbox',
     async start(ctx) {

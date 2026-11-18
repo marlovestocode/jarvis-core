@@ -27,7 +27,7 @@ test('stockman-migrations: the full build registers versions 2 to 12 once each',
   const { data, trading } = layers();
   const versions = migrationsOf([...data.features, ...trading.features]).map(m => m.version).sort((a, b) => a - b);
   assert.deepEqual(versions, [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
-  assert.equal(data.features.length + trading.features.length, 12, 'six data (the cost sampler is the sixth), three learning, three trading features (ledger, backtest, the paper opener, which has no table)');
+  assert.equal(data.features.length + trading.features.length, 13, 'six data (the cost sampler is the sixth), three learning, four trading features (ledger, backtest, the paper opener and the what-if report, which have no table)');
 });
 
 test('stockman-migrations: a fresh database reaches 12 with every table', () => {

@@ -3,7 +3,7 @@
 //
 // Messages from jarvis:   { type: 'init', dataDir, online }   first message; builds and starts the framework
 //                         { type: 'online', online }           jarvis's config.online (the finance switch), pushed when it changes
-//                         { type: 'request', id, op, args }    op: health | quote | quotes | history | events | dashboard
+//                         { type: 'request', id, op, args }    op: health | quote | quotes | history | events | dashboard | closedTrades
 //                         { type: 'stop' }                     orderly shutdown (also on IPC disconnect: jarvis quit or crashed)
 // Messages to jarvis:     { type: 'ready', health } | { type: 'fatal', error }  (fatal exits with code 2: do not restart)
 //                         { type: 'reply', id, ok, result | error: { code, message, retryable } }
@@ -25,12 +25,14 @@ const path = require('node:path');
 const { createStrategyStore } = require('./trading/sandbox/strategy');
 const { createSandbox } = require('./trading/sandbox/sandbox');
 const { createTuner } = require('./trading/sandbox/tuner');
+const { createTradeOutbox } = require('./trading/outbox');
+const { createRecover } = require('./features/recover');
 
 const HEALTH_EVERY_MS = 5000;
 const FATAL_EXIT = 2;
 
 function run() {
-  let app = null, online = { enabled: true, finance: true }, stopping = false, dash = null;
+  let app = null, online = { enabled: true, finance: true }, stopping = false, dash = null, outbox = null;
   const send = m => { try { if (process.connected) process.send(m); } catch { /* the parent is gone */ } };
   const fail = err => ({ code: err?.code || 'UNKNOWN', message: String(err?.message || err).slice(0, 500), retryable: err?.retryable === true });
 
@@ -41,6 +43,8 @@ function run() {
     history: req => app.stocks.getHistory(req),
     events: o => (app.events ? app.events.recent(o || {}) : []),
     // everything the StockMan dashboard page shows, in one read-only call (jarvis/dashboard.js)
+    // closed live paper trades after a ledger id, for jarvis's cortex writer (vault D30); read-only
+    closedTrades: args => { if (!outbox) throw Object.assign(new Error('the engine is still starting'), { code: 'TRANSIENT', retryable: true }); return outbox.api.closedTrades(args); },
     dashboard: () => { if (!dash) throw Object.assign(new Error('the engine is still starting'), { code: 'TRANSIENT', retryable: true }); return buildState({ app, api: dash.api, config: dash.config }); },
   };
 
@@ -75,6 +79,9 @@ function run() {
       const alpaca = createAlpaca({ http: createAlpacaHttp({ policy: createPolicy(getConfig) }), opts: { enabled: config.broker.enabled, maxNotionalUsd: config.broker.maxNotionalUsd } });
       const options = createOptions({ alpaca, opts: { autoRun: config.provider.name === 'yahoo' && !/^(off|false|0|no)$/i.test(process.env.STOCKMAN_AUTORUN || '') } });
       app.use(options.feature);
+      // survivorship-gap recovery (G24, D32): rename map through Yahoo, then Alpaca SIP history for delisted names; read-only, no new host
+      const recover = createRecover({ alpaca, opts: { autoRun: config.provider.name === 'yahoo' && !/^(off|false|0|no)$/i.test(process.env.STOCKMAN_AUTORUN || '') } });
+      app.use(recover.feature);
       // paper orders to Alpaca: only with paperTrading.enabled AND broker.enabled (both default off); needs the shadow candidates the learning layer logs
       const router = createBrokerRouter({ ledger: trading.api.ledger, shadow: layer.api.shadow, scoring: layer.api.scoring, alpaca,
         opts: { enabled: config.paperTrading.enabled && config.broker.enabled, capitalUsd: config.broker.capitalUsd, autoRun: config.provider.name === 'yahoo' } });
@@ -89,7 +96,10 @@ function run() {
         opts: { enabled: sandboxOn, autoRun: config.provider.name === 'yahoo' && !/^(off|false|0|no)$/i.test(process.env.STOCKMAN_AUTORUN || '') } });
       sandbox.api.options.tuner = createTuner({ store: strategyStore, data: layer.api, getDb: () => app.db, sandbox: sandbox.api, dataDir: config.dataDir, events: sbEvents });
       app.use(sandbox.feature);
-      dash = { api: { ...layer.api, ...trading.api, options: options.api, router: router.api, sandbox: sandbox.api, alpaca }, config };
+      // trade outbox (vault D30): announces closed paper trades to jarvis's cortex writer and recalculates calibration at once
+      outbox = createTradeOutbox({ publish: (topic, payload) => send({ type: 'event', topic, payload }), calibration: layer.api.calibration });
+      app.use(outbox.feature);
+      dash = { api: { ...layer.api, ...trading.api, options: options.api, recover: recover.api, router: router.api, sandbox: sandbox.api, alpaca }, config };
       await app.start();
     } catch (err) {
       send({ type: 'fatal', error: String(err?.message || err) });

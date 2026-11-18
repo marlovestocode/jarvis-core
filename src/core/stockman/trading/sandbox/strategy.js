@@ -20,7 +20,7 @@ const PRESET = Object.freeze({
   },
   regime: { enabled: true, days: 200, below: 'halfSize' },
   portfolio: { topN: 15, weighting: 'invVol', volFloorPct: 0.5, rebalance: 'monthly:first' },
-  exits: { timeExitSessions: 21, stopLossPct: null, takeProfitPct: null, trailingPct: null },
+  exits: { timeExitSessions: 21, stopLossPct: null, takeProfitPct: null, trailingPct: null, rescoreExitRank: null, intraday: false, intradayEveryMin: 15 },
   risk: { capitalUsd: 10000, maxPositionPct: 8, maxGrossPct: 100, maxPositions: 20, maxOrderNotionalUsd: 1000, maxOrdersPerDay: 40, dailyLossKillPct: 3 },
   execution: { order: 'day', limitBps: 5, dryRun: true },
   tuning: { enabled: false, minImprovement: 0.0005, params: {
@@ -41,7 +41,7 @@ const RULES = {
   universe: { index: [v => ['both', 'sp500', 'ndx100'].includes(v), 'both, sp500 or ndx100'], minPrice: [v => num(v, 1, 100000), 'dollars, 1 to 100000'], minAvgDollarVolume: [v => num(v, 0, 1e12), 'dollars of average daily volume, 0 to 1e12'], minVolPct: [v => num(v, 0, 20), 'a percent of daily volatility over 60 sessions, 0 to 20 (leaves out names that barely move, such as a pending deal)'], excludeEarningsDays: [v => int(v, 0, 30), 'whole days, 0 to 30'] },
   regime: { enabled: [v => typeof v === 'boolean', 'true or false'], days: [v => int(v, 20, 400), 'sessions, 20 to 400'], below: [v => ['cash', 'halfSize'].includes(v), 'cash or halfSize'] },
   portfolio: { topN: [v => int(v, 1, 100), 'a whole number, 1 to 100'], weighting: [v => ['equal', 'invVol'].includes(v), 'equal or invVol'], volFloorPct: [v => num(v, 0.01, 20), 'a percent a day: invVol never weights with a volatility below this'], rebalance: [v => v === 'daily' || (typeof v === 'string' && (/^weekly:(mon|tue|wed|thu|fri)$/.test(v) || /^monthly:(first|last)$/.test(v))), 'daily, weekly:<mon..fri> or monthly:<first|last>'] },
-  exits: { timeExitSessions: [v => int(v, 1, 252), 'sessions, 1 to 252'], stopLossPct: [v => nullableNum(v, 0.5, 90), 'null or a percent, 0.5 to 90'], takeProfitPct: [v => nullableNum(v, 0.5, 1000), 'null or a percent, 0.5 to 1000'], trailingPct: [v => nullableNum(v, 0.5, 90), 'null or a percent, 0.5 to 90'] },
+  exits: { timeExitSessions: [v => int(v, 1, 252), 'sessions, 1 to 252'], stopLossPct: [v => nullableNum(v, 0.5, 90), 'null or a percent, 0.5 to 90'], takeProfitPct: [v => nullableNum(v, 0.5, 1000), 'null or a percent, 0.5 to 1000'], trailingPct: [v => nullableNum(v, 0.5, 90), 'null or a percent, 0.5 to 90'], rescoreExitRank: [v => v === null || int(v, 1, 1000), 'null or a rank, 1 to 1000: exit a held name whose re-score ranks below this'], intraday: [v => typeof v === 'boolean', 'true or false: also check stop, take-profit and trailing during market hours on live quotes'], intradayEveryMin: [v => int(v, 5, 120), 'minutes, 5 to 120'] },
   risk: { capitalUsd: [v => num(v, 100, 1e7), 'dollars, 100 to 1e7'], maxPositionPct: [v => num(v, 0.5, 100), 'percent of capital, 0.5 to 100'], maxGrossPct: [v => num(v, 1, 200), 'percent, 1 to 200'], maxPositions: [v => int(v, 1, 200), 'a whole number, 1 to 200'], maxOrderNotionalUsd: [v => num(v, 1, 100000), 'dollars, 1 to 100000'], maxOrdersPerDay: [v => int(v, 1, 500), 'a whole number, 1 to 500'], dailyLossKillPct: [v => num(v, 0.1, 50), 'percent, 0.1 to 50'] },
   execution: { order: [v => ['day', 'opg', 'limit'].includes(v), 'day, opg or limit'], limitBps: [v => num(v, 0, 200), 'basis points, 0 to 200'], dryRun: [v => typeof v === 'boolean', 'true or false'] },
 };
@@ -54,7 +54,15 @@ const SIGNAL_RULES = {
 
 const clone = o => JSON.parse(JSON.stringify(o));
 const canonical = v => (Array.isArray(v) ? v.map(canonical) : isObj(v) ? Object.fromEntries(Object.keys(v).sort().map(k => [k, canonical(v[k])])) : v);
-const hashOf = strategy => crypto.createHash('sha256').update(JSON.stringify(canonical(strategy))).digest('hex').slice(0, 8);
+// the R6 exit options (D31) are left out of the hash while they are at their off values, so a strategy written before they existed keeps its hash and build id
+const R6_OFF = { rescoreExitRank: null, intraday: false, intradayEveryMin: 15 };
+const forHash = strategy => {
+  if (!isObj(strategy) || !isObj(strategy.exits)) return strategy;
+  const exits = { ...strategy.exits };
+  for (const [k, v] of Object.entries(R6_OFF)) if (exits[k] === v) delete exits[k];
+  return { ...strategy, exits };
+};
+const hashOf = strategy => crypto.createHash('sha256').update(JSON.stringify(canonical(forHash(strategy)))).digest('hex').slice(0, 8);
 const buildIdOf = strategy => `sbx-${hashOf(strategy)}`;
 
 const getPath = (o, p) => p.split('.').reduce((a, k) => (a == null ? undefined : a[k]), o);

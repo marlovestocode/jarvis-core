@@ -100,7 +100,9 @@ function buildTargets(strategy, ctx) {
     for (const i of over) { alloc[i] = cap; capped[i] = true; remaining -= cap; }
   }
   const targets = top.map((c, i) => ({ symbol: c.symbol, score: c.score, weight: gross > 0 ? alloc[i] / gross : 0, notionalUsd: Math.round(alloc[i] * 100) / 100, clipped: capped[i], price: c.price, vol: c.vol })).filter(t => t.notionalUsd >= 1);
-  return { regime, targets, counts };
+  // every eligible name's rank (1 = best), for the re-score exit (D31): a held name that no longer ranks well enough can be exited between rebalances
+  const ranks = new Map(cand.map((c, i) => [c.symbol, i + 1]));
+  return { regime, targets, counts, ranks };
 }
 
 // does session index d fall on the strategy's rebalance calendar? `days` are the 'YYYY-MM-DD' strings of the sessions; d must have a next session in range

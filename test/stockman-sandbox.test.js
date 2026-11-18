@@ -378,3 +378,63 @@ test('engine: a pinned name (almost no price movement, like a pending deal) is l
   assert.ok(SE.buildTargets(open, { d, members: [...SYMS, 'PIN'], series, bench: series.get('SPY') }).targets.some(t => t.symbol === 'PIN'), 'with the filter off it would have been bought');
   assert.equal(SB.normalize({ universe: { minVolPct: -1 } }).ok, false);
 });
+
+// ---- R6 (vault D31): mid-trade exits for the sandbox: re-score at each plan, stop / take-profit / trailing on live quotes in the session ------
+test('R6: intraday stop loss on a live quote sends one exit per held name, inside the session only, once, within the interval', async () => {
+  const st = small(); st.exits.stopLossPct = 3; st.exits.intraday = true; st.exits.intradayEveryMin = 15;
+  const X = await make({ strategy: st });
+  await X.sandbox.step();
+  X.at('2026-11-16T14:35:00Z'); await X.sandbox.step();               // 8 entries sent
+  fillAll(X, 'entry', 100, 2, '2026-11-16T14:36:00Z');
+  X.at('2026-11-16T14:40:00Z'); await X.sandbox.step();               // reconciled: entries filled at 100
+  assert.ok(X.list().every(p => p.fill_entry_price === 100));
+  let mid = 98;
+  X.alpaca.latestQuote = async s => ({ symbol: s, bid: mid - 0.01, ask: mid + 0.01 });
+  X.at('2026-11-16T17:00:00Z');
+  let r = await X.sandbox.step();
+  assert.equal(r.intraday.hits, 0, 'a 2% drop is above a 3% stop');
+  mid = 96;
+  X.at('2026-11-16T17:05:00Z'); r = await X.sandbox.step();
+  assert.equal(r.intraday.status, 'waiting', 'checks run once per intradayEveryMin');
+  X.at('2026-11-16T17:16:00Z'); r = await X.sandbox.step();
+  assert.equal(r.intraday.hits, 8); assert.equal(r.intraday.exec.status, 'sent');
+  const exits = X.sent.filter(s => s.leg === 'exit');
+  assert.equal(exits.length, 8); assert.ok(exits.every(s => s.qty === 2 && /-exit$/.test(s.clientId)));
+  assert.ok(X.events.some(e => /intraday exit check: 8 hit/.test(e.message)));
+  X.at('2026-11-16T17:40:00Z'); r = await X.sandbox.step();
+  assert.equal(X.sent.filter(s => s.leg === 'exit').length, 8, 'an exit already sent is not sent again');
+  X.at('2026-11-16T22:30:00Z'); r = await X.sandbox.step();
+  assert.equal(r.intraday, undefined, 'no intraday check after the close');
+  await X.app.stop();
+});
+
+test('R6: intraday checks are off by default and respect dryRun; the new options leave an old strategy hash unchanged', async () => {
+  const off = small();
+  const h0 = SB.hashOf(SB.normalize(off).value);
+  const withDefaults = JSON.parse(JSON.stringify(off)); withDefaults.exits = { ...withDefaults.exits, rescoreExitRank: null, intraday: false, intradayEveryMin: 15 };
+  assert.equal(SB.hashOf(SB.normalize(withDefaults).value), h0);
+  const on = JSON.parse(JSON.stringify(off)); on.exits = { ...on.exits, intraday: true };
+  assert.notEqual(SB.hashOf(SB.normalize(on).value), h0);
+  const X = await make({ strategy: off });
+  await X.sandbox.step(); X.at('2026-11-16T14:35:00Z'); await X.sandbox.step();
+  fillAll(X, 'entry', 100, 2, '2026-11-16T14:36:00Z'); X.at('2026-11-16T14:40:00Z'); await X.sandbox.step();
+  let called = 0; X.alpaca.latestQuote = async s => { called++; return { symbol: s, bid: 50, ask: 50 }; };
+  X.at('2026-11-16T17:00:00Z'); const r = await X.sandbox.step();
+  assert.equal(r.intraday, undefined); assert.equal(called, 0);
+  await X.app.stop();
+});
+
+test('R6: the re-score exit leaves a held name whose rank falls below exits.rescoreExitRank at the next plan, between rebalances', async () => {
+  const st = small(); st.exits.rescoreExitRank = 2; st.portfolio.rebalance = 'monthly:last';
+  const X = await make({ strategy: st });
+  await X.sandbox.step(); X.at('2026-11-16T14:35:00Z'); await X.sandbox.step();
+  fillAll(X, 'entry', 100, 2, '2026-11-16T14:36:00Z'); X.at('2026-11-16T14:40:00Z'); await X.sandbox.step();
+  X.data.bars.lastBarDay = () => '2026-11-16';
+  X.at('2026-11-16T22:30:00Z');
+  const r = await X.sandbox.step();
+  assert.equal(r.plan.rebalance, false);
+  const exits = r.plan.orders.filter(o => o.leg === 'exit');
+  assert.ok(exits.length >= 6, `most of the 8 held names rank below 2 (${exits.length})`);
+  assert.ok(exits.every(o => /^re-score: (rank \d+ is below 2|no longer eligible)$/.test(o.reason)));
+  await X.app.stop();
+});

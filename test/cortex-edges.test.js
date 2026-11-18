@@ -16,7 +16,7 @@ function setup(n = 3) {
 test('cortex-edges: type table from the plan', () => {
   assert.deepEqual(TYPES.mentions, { halfLife: 60, fanOut: 20 });
   assert.deepEqual(TYPES.next, { halfLife: 90, fanOut: 10 });
-  assert.deepEqual(Object.keys(TYPES).sort(), ['about', 'by', 'contains', 'contradicts', 'from', 'mentions', 'next', 'part_of', 'same_as', 'similar', 'supersedes', 'touched']);
+  assert.deepEqual(Object.keys(TYPES).sort(), ['about', 'by', 'contains', 'contradicts', 'from', 'mentions', 'next', 'part_of', 'same_as', 'similar', 'supersedes', 'touched', 'traded']);
 });
 
 test('cortex-edges: decay by half-life', () => {

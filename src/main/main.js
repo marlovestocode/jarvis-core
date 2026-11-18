@@ -322,6 +322,10 @@ ctx.lists = require('../core/lists/store').createListStore({ file: path.join(DAT
 try {
   ctx.stockman = require('../core/stockman/process').createStockmanProcess({ bus: ctx.bus, log: ctx.log, getConfig: ctx.getConfig, dataDir: DATA_DIR });
 } catch (err) { ctx.log(`stockman unavailable: ${err.message}`); }
+// closed StockMan paper trades → cortex (vault D30): a writer outside any turn, source tool/stockman-engine, numbers from the ledger only
+try {
+  if (ctx.stockman && ctx.cortex) { ctx.stockmanCortex = require('../core/stockman/jarvis/cortex-writer').createCortexWriter({ cortex: ctx.cortex, request: (op, args) => ctx.stockman.request(op, args), bus: ctx.bus, log: ctx.log }); ctx.stockmanCortex.start(); }
+} catch (err) { ctx.log(`stockman cortex writer unavailable: ${err.message}`); }
 // Saved multi-step tasks (src/core/tasks): steps run through ctx.tools, which is built after the catalog, so it is read lazily.
 // Any failure here leaves JARVIS without task tools, as before.
 try {
@@ -554,7 +558,7 @@ ctx.memwatch = createMemWatch({
 });
 ctx.memwatch.start();
 ctx.metrics.start();
-ctx.onQuit = [() => ctx.memwatch.stop(), () => ctx.metrics.close(), () => ctx.monitors.stop(), () => ctx.proactive.stop(), () => ctx.scheduler.stop(), () => ctx.pcHostProc.close(), () => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close(), () => ctx.memorySystem.close(), () => ctx.live.close(), () => livePersist.flush(), () => { ctx.stockman?.stop().catch(() => {}); }];
+ctx.onQuit = [() => ctx.memwatch.stop(), () => ctx.metrics.close(), () => ctx.monitors.stop(), () => ctx.proactive.stop(), () => ctx.scheduler.stop(), () => ctx.pcHostProc.close(), () => ctx.speechHost.close(), () => ctx.mediaHost.close(), () => ctx.ytmLink.close(), () => ctx.mic?.destroy(), () => ctx.whisper.close(), () => ctx.piper.close(), () => ctx.kiwix.close(), () => ctx.memorySystem.close(), () => ctx.live.close(), () => livePersist.flush(), () => { ctx.stockmanCortex?.stop(); }, () => { ctx.stockman?.stop().catch(() => {}); }];
 
 app.on('web-contents-created', (_e, wc) => guardWebContents(wc));
 app.on('second-instance', () => ctx.windows?.showChat());

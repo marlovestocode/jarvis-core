@@ -5,6 +5,7 @@
 const { createLedger, createMemoryFillPort } = require('./ledger');
 const { createBacktest } = require('./backtest');
 const { createPaper } = require('./paper');
+const { createWhatIf } = require('./whatif');
 const costs = require('./costs');
 const alpaca = require('./alpaca');
 
@@ -16,6 +17,9 @@ function createTradingLayer({ data = {}, now = Date.now, options = {} } = {}) {
   if (data.shadow && data.scoring && data.bars) {
     const paper = createPaper({ ledger: ledger.api, shadow: data.shadow, scoring: data.scoring, bars: data.bars, now, opts: options.paper });
     out.features.push(paper.feature); out.api.paper = paper.api;
+    // what-if exits on the opener's closed positions (R6, D31): a report, never an action
+    const whatif = createWhatIf();
+    out.features.push(whatif.feature); out.api.whatif = whatif.api;
   }
   return out;
 }

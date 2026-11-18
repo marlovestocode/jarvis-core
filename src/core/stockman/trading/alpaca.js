@@ -103,6 +103,28 @@ function createAlpaca({ http, opts = {} } = {}) {
     const bid = pos(q.bp), ask = pos(q.ap);
     return { symbol: s, bid, ask, bidSize: num(q.bs), askSize: num(q.as), at: q.t ?? null, spreadBps: bid && ask && ask >= bid ? (ask - bid) / ((ask + bid) / 2) * 1e4 : null };
   }
+  // daily bars for one symbol (G24, D32): read-only, for history Yahoo no longer serves (delisted or renamed tickers). The SIP feed holds
+  // history of symbols that no longer trade; `adjustment` is 'raw' or 'all' (splits and dividends). Paged; at most 20 pages (about 200,000 bars).
+  async function dailyBars(symbol, { start, end, adjustment = 'raw', feed = 'sip' } = {}) {
+    const s = normalizeSymbol(symbol);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(start)) || !/^\d{4}-\d{2}-\d{2}$/.test(String(end))) throw new TypeError('dailyBars needs start and end as YYYY-MM-DD');
+    if (!['raw', 'all', 'split'].includes(adjustment)) throw new TypeError('adjustment is raw, split or all');
+    const out = [];
+    let pageToken = null;
+    for (let page = 0; page < 20; page++) {
+      const r = await http.request('GET', DATA_BASE, `/v2/stocks/${encodeURIComponent(s)}/bars`, { query: { timeframe: '1Day', start, end, adjustment, feed, limit: 10000, page_token: pageToken } });
+      const rows = Array.isArray(r?.bars) ? r.bars : r?.bars === null || r?.bars === undefined ? [] : null;
+      if (rows === null) throw new ProviderDataError('alpaca: the bars answer is not in the expected shape');
+      for (const b of rows) {
+        const o2 = pos(b.o), h = pos(b.h), l = pos(b.l), c = pos(b.c);
+        if (typeof b.t !== 'string' || !o2 || !h || !l || !c || h < l) continue;   // an unusable bar is skipped, never repaired
+        out.push({ t: b.t, open: o2, high: h, low: l, close: c, volume: num(b.v) });
+      }
+      pageToken = r.next_page_token || null;
+      if (!pageToken) break;
+    }
+    return out;
+  }
   // the stock's quote midpoint (IEX feed), for the options sampler: throws when there is no two-sided quote
   async function stockMid(symbol) {
     const q = await latestQuote(symbol);
@@ -175,7 +197,7 @@ function createAlpaca({ http, opts = {} } = {}) {
     };
   }
 
-  return { account, clock, positions, latestQuote, stockMid, optionSnapshots, getOrder, getOrderByClientId, listOrders, placeOrder, cancelOrder, clientOrderId, options: o, configured: http.configured };
+  return { account, clock, positions, latestQuote, dailyBars, stockMid, optionSnapshots, getOrder, getOrderByClientId, listOrders, placeOrder, cancelOrder, clientOrderId, options: o, configured: http.configured };
 }
 
 // ---- fills into the ledger (subscribe-only port: it has no order method, as ledger.attachFillSource requires) ------------------------

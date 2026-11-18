@@ -84,6 +84,7 @@ function open({ file = ':memory:', log = () => {}, bus = null, embedder = null, 
       return pairs.length;
     }),
     weaken: safe(ids => edges.weaken(ids)),
+    weakenEdge: safe((src, dst, type, factor) => edges.weakenEdge(src, dst, type, factor)),
     // the shape of memory for the wallpaper (no text), and a few words per node when the user allows labels
     view: safe(opts => brainview.view(opts)),
     labels: safe(ids => brainview.labels(ids)),
