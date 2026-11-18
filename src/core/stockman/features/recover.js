@@ -12,30 +12,31 @@
 // Every series comes from ONE source, so its adjusted closes are on one basis; `bar.source` says which (yahoo:rename:NEW or alpaca-sip).
 
 const { PolicyError } = require('../errors');
-const { nyDate } = require('./ny-time');
+const { nyDate, addDays } = require('./ny-time');
 
 // old ticker → { to, on: the first day under the new ticker }. Only renames of the same listed company, from public filings known
-// before 2026; each is still checked against the data (the new series must reach back before `on`).
+// before 2026; each is still checked against the data: the new ticker's company name must match `name` (a ticker can be reused by another
+// company: seen live 2026-11-18, Yahoo's PARA is now "Parabolic Technologies", not Paramount) and its series must reach back before `on`.
 const RENAMES = Object.freeze({
-  ABC: { to: 'COR', on: '2023-08-30' },    // AmerisourceBergen → Cencora
-  ANTM: { to: 'ELV', on: '2022-06-28' },   // Anthem → Elevance Health
-  BLL: { to: 'BALL', on: '2022-05-04' },   // Ball Corporation ticker change
-  CDAY: { to: 'DAY', on: '2024-02-01' },   // Ceridian → Dayforce
-  FBHS: { to: 'FBIN', on: '2022-12-15' },  // Fortune Brands Home & Security → Fortune Brands Innovations
-  FLT: { to: 'CPAY', on: '2024-03-25' },   // FleetCor → Corpay
-  HFC: { to: 'DINO', on: '2022-03-14' },   // HollyFrontier → HF Sinclair (holding company of the same business)
-  NLOK: { to: 'GEN', on: '2022-11-08' },   // NortonLifeLock → Gen Digital
-  PEAK: { to: 'DOC', on: '2024-03-01' },   // Healthpeak (the surviving company) took the ticker DOC
-  PKI: { to: 'RVTY', on: '2023-05-17' },   // PerkinElmer → Revvity
-  RE: { to: 'EG', on: '2023-07-10' },      // Everest Re → Everest Group
-  WLTW: { to: 'WTW', on: '2022-01-13' },   // Willis Towers Watson ticker change
-  VIAC: { to: 'PARA', on: '2022-02-16' },  // ViacomCBS → Paramount Global
-  CTL: { to: 'LUMN', on: '2020-09-18' },   // CenturyLink → Lumen
-  ADS: { to: 'BFH', on: '2022-03-23' },    // Alliance Data → Bread Financial
-  ARNC: { to: 'HWM', on: '2020-04-01' },   // Arconic Inc. → Howmet Aerospace (the old Arconic Inc. renamed)
-  COG: { to: 'CTRA', on: '2021-10-01' },   // Cabot Oil & Gas → Coterra
-  UTX: { to: 'RTX', on: '2020-04-03' },    // United Technologies (the surviving company) → Raytheon Technologies
-  GPS: { to: 'GAP', on: '2024-08-22' },    // Gap Inc. ticker change
+  ABC: { to: 'COR', on: '2023-08-30', name: /\b(cencora|amerisource)/i },    // AmerisourceBergen → Cencora
+  ANTM: { to: 'ELV', on: '2022-06-28', name: /\b(elevance|anthem)/i },   // Anthem → Elevance Health
+  BLL: { to: 'BALL', on: '2022-05-04', name: /\b(ball corp)/i },   // Ball Corporation ticker change
+  CDAY: { to: 'DAY', on: '2024-02-01', name: /\b(dayforce|ceridian)/i },   // Ceridian → Dayforce
+  FBHS: { to: 'FBIN', on: '2022-12-15', name: /\b(fortune brands)/i },  // Fortune Brands Home & Security → Fortune Brands Innovations
+  FLT: { to: 'CPAY', on: '2024-03-25', name: /\b(corpay|fleetcor)/i },   // FleetCor → Corpay
+  HFC: { to: 'DINO', on: '2022-03-14', name: /\b(hf sinclair|hollyfrontier)/i },   // HollyFrontier → HF Sinclair (holding company of the same business)
+  NLOK: { to: 'GEN', on: '2022-11-08', name: /\b(gen digital|nortonlifelock)/i },   // NortonLifeLock → Gen Digital
+  PEAK: { to: 'DOC', on: '2024-03-01', name: /\b(healthpeak)/i },   // Healthpeak (the surviving company) took the ticker DOC
+  PKI: { to: 'RVTY', on: '2023-05-17', name: /\b(revvity|perkinelmer)/i },   // PerkinElmer → Revvity
+  RE: { to: 'EG', on: '2023-07-10', name: /\b(everest)/i },      // Everest Re → Everest Group
+  WLTW: { to: 'WTW', on: '2022-01-13', name: /\b(willis)/i },   // Willis Towers Watson ticker change
+  VIAC: { to: 'PARA', on: '2022-02-16', name: /\b(paramount|viacom)/i },  // ViacomCBS → Paramount Global
+  CTL: { to: 'LUMN', on: '2020-09-18', name: /\b(lumen|centurylink)/i },   // CenturyLink → Lumen
+  ADS: { to: 'BFH', on: '2022-03-23', name: /\b(bread financial|alliance data)/i },    // Alliance Data → Bread Financial
+  ARNC: { to: 'HWM', on: '2020-04-01', name: /\b(howmet|arconic)/i },   // Arconic Inc. → Howmet Aerospace (the old Arconic Inc. renamed)
+  COG: { to: 'CTRA', on: '2021-10-01', name: /\b(coterra|cabot)/i },   // Cabot Oil & Gas → Coterra
+  UTX: { to: 'RTX', on: '2020-04-03', name: /\b(rtx|raytheon)/i },    // United Technologies (the surviving company) → Raytheon Technologies
+  GPS: { to: 'GAP', on: '2024-08-22', name: /\b(gap)/i },    // Gap Inc. ticker change
 });
 const MARK = 'recover:';
 // Alpaca stamps a daily bar at midnight New York time (04:00Z in summer, 05:00Z in winter); read the date at midday so it never slips a day
@@ -71,6 +72,8 @@ function createRecover({ alpaca = null, now = Date.now, sleep = ms => new Promis
     try { h = await stocks.getHistory({ symbol: r.to, range: '10y', interval: '1d' }); } catch (err) { if (err.code === 'POLICY') throw err; return { tried: `rename to ${r.to}: ${err.code || 'error'}` }; }
     const bars = (h?.bars || []).map(b => ({ day: nyDate(b.t), open: b.open, high: b.high, low: b.low, close: b.close, adj: b.adjClose, volume: b.volume }))
       .filter(b => b.day >= o.from && b.day < r.on && b.close > 0 && b.adj > 0);
+    // same-company check: the provider's company name for the new ticker must match the map's (a reused ticker belongs to someone else)
+    if (!h?.name || !(r.name instanceof RegExp) || !r.name.test(String(h.name))) return { tried: `rename to ${r.to}: the company is now ${h?.name ? `"${String(h.name).slice(0, 60)}"` : 'unnamed'}, not the renamed one` };
     // continuity check: the new ticker's history must start before the rename (otherwise it is a different, later listing)
     if (!bars.length || bars[0].day >= r.on) return { tried: `rename to ${r.to}: its history does not reach back before ${r.on}` };
     const n = write(symbol, bars, `yahoo:rename:${r.to}`);
@@ -80,17 +83,37 @@ function createRecover({ alpaca = null, now = Date.now, sleep = ms => new Promis
 
   async function viaAlpaca(symbol) {
     if (!alpaca || typeof alpaca.dailyBars !== 'function') return { tried: 'alpaca not available' };
-    const end = today();
+    // the free plan refuses SIP data from the last 15 minutes (seen live: HTTP 403 "subscription does not permit querying recent SIP data"):
+    // ask only through the previous calendar day, which also keeps today's session out
+    const end = addDays(today(), -1);
     const raw = await alpaca.dailyBars(symbol, { start: o.from, end, adjustment: 'raw' });
     if (!raw.length) return { tried: 'alpaca: no bars' };
     await sleep(o.paceMs);
     const adj = new Map((await alpaca.dailyBars(symbol, { start: o.from, end, adjustment: 'all' })).map(b => [barDay(b.t), b.close]));
     const bars = raw.map(b => ({ day: barDay(b.t), open: b.open, high: b.high, low: b.low, close: b.close, adj: adj.get(barDay(b.t)) ?? null, volume: b.volume }))
-      .filter(b => b.day < end && b.adj > 0);   // a bar with no adjusted close is left out, never guessed; today's session is never stored
+      .filter(b => b.day <= end && b.adj > 0);   // a bar with no adjusted close is left out, never guessed; today's session is never stored
     if (!bars.length) return { tried: 'alpaca: no bars with an adjusted close' };
     const n = write(symbol, bars, 'alpaca-sip');
     markOk(symbol, bars, 'alpaca', `bars from Alpaca SIP history (raw and adjusted), ${n} stored`);
     return { ok: true, n, via: 'alpaca' };
+  }
+
+  // undo a rename stored by an earlier build whose company name does not match the map: its bars are removed and the symbol is a gap again
+  // (no recover: mark, so the next pass tries the rename check and Alpaca afresh). Returns the symbols undone.
+  function audit() {
+    const undone = [];
+    for (const row of db.stmt("SELECT symbol, note FROM bar_history WHERE status = 'ok' AND note LIKE 'recover: renamed %'").all()) {
+      const r = o.renames[row.symbol], m = /bars of [A-Z.\-]+ \(([^)]*)\)/.exec(row.note || '');
+      if (r && r.name instanceof RegExp && m && r.name.test(m[1])) continue;
+      db.tx(() => {
+        db.stmt('DELETE FROM bar WHERE symbol = ? AND source LIKE ?').run(row.symbol, 'yahoo:rename:%');
+        db.stmt("UPDATE bar_history SET status = 'not_found', first_day = NULL, last_day = NULL, n = 0, fetched_at = ?, note = ? WHERE symbol = ?")
+          .run(now(), `rename undone: ${r ? r.to : '?'} belongs to "${m ? m[1].slice(0, 60) : 'unknown'}", a different company; its bars were removed`, row.symbol);
+      });
+      undone.push(row.symbol);
+    }
+    if (undone.length) log?.warn?.('survivorship recovery: renames undone (another company holds the ticker now)', { symbols: undone });
+    return undone;
   }
 
   // one pass over the not_found symbols. A symbol already tried (note starts with recover:) is skipped unless `retry`.
@@ -100,6 +123,7 @@ function createRecover({ alpaca = null, now = Date.now, sleep = ms => new Promis
     busy = true;
     const res = { status: 'ok', at: now(), tried: 0, renamed: 0, alpaca: 0, stillMissing: 0, stopped: null, details: [] };
     try {
+      res.undone = audit();
       let alpacaOk = Boolean(alpaca);
       for (const row of pending().slice(0, limit)) {
         if (stopping) { res.stopped = 'stopping'; break; }
@@ -142,7 +166,7 @@ function createRecover({ alpaca = null, now = Date.now, sleep = ms => new Promis
     return { summary: `survivorship (G24): ${c.renamed} recovered by rename, ${c.alpaca} from Alpaca history, ${c.missing} still without bars (a recorded gap)${last?.alpacaOff ? `; Alpaca off: ${last.alpacaOff}` : ''}` };
   }
 
-  const api = { step, counts, RENAMES: o.renames };
+  const api = { step, audit, counts, RENAMES: o.renames };
   const feature = {
     id: 'recover',
     async start(ctx) {

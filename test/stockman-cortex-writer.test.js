@@ -82,11 +82,14 @@ test('the writer survives an engine that is not ready and catches up later', asy
   closed(s.ledger, 'AAPL', 0.03, 0.01);
   let ready = false;
   const logs = [];
-  const writer = createCortexWriter({ cortex: s.cortex, log: l => logs.push(l), request: async (op, args) => { if (!ready) throw new Error('engine is not ready'); return s.outbox.api.closedTrades(args); } });
+  const writer = createCortexWriter({ cortex: s.cortex, retryMs: 5, log: l => logs.push(l), request: async (op, args) => { if (!ready) throw new Error('engine is not ready'); return s.outbox.api.closedTrades(args); } });
   assert.equal(await writer.sync(), 0);
   assert.ok(logs.some(l => /sync failed/.test(l)));
   ready = true;
-  assert.equal(await writer.sync(), 1);
+  await new Promise(r => setTimeout(r, 30));   // the writer retries by itself after a failed sync
+  assert.equal(s.cortex.event.query({ kind: 'trade' }).length, 1, 'the retry wrote the trade without another event');
+  assert.equal(await writer.sync(), 0);
+  writer.stop();
   await s.app.stop(); s.cortex.close();
 });
 

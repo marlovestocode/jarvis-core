@@ -12,14 +12,15 @@ const { PolicyError, NotFoundError } = require('../src/core/stockman/errors');
 const ms = d => Date.parse(`${d}T20:00:00Z`);
 function yahooBars(days, start = 50) { return days.map((d, i) => ({ t: ms(d), open: start + i, high: start + i + 1, low: start + i - 1, close: start + i, adjClose: (start + i) * 0.9, volume: 1000 })); }
 
-async function make({ history = {}, alpaca = null, renames } = {}) {
+const REAL = { COR: 'Cencora, Inc.', ELV: 'Elevance Health, Inc.' };
+async function make({ history = {}, alpaca = null, renames, names = REAL } = {}) {
   const prov = createMockProvider({ bars: {}, ranges: ['1mo', '10y'], intervals: ['1d'] });
   const app = createStockman({ env: {}, dataDir: os.tmpdir(), dbFile: ':memory:', log: () => {}, provider: prov, sleep: async () => {} });
   const bars = createBars({ sleep: async () => {} });
   const rec = createRecover({ alpaca, now: () => Date.parse('2026-11-17T22:00:00Z'), sleep: async () => {}, opts: { autoRun: false, ...(renames ? { renames } : {}) } });
   app.use(bars.feature); app.use(rec.feature);
   await app.start();
-  app.stocks.getHistory = async ({ symbol }) => { if (!history[symbol]) throw new NotFoundError(`no ${symbol}`); return { symbol, bars: history[symbol], name: `${symbol} Inc`, source: 'yahoo', fetchedAt: 1 }; };
+  app.stocks.getHistory = async ({ symbol }) => { if (!history[symbol]) throw new NotFoundError(`no ${symbol}`); return { symbol, bars: history[symbol], name: names[symbol] || `${symbol} Inc`, source: 'yahoo', fetchedAt: 1 }; };
   const nf = sym => app.db.stmt("INSERT INTO bar_history(symbol, status, from_day, attempts, note) VALUES (?, 'not_found', '2019-01-01', 1, 'HTTP 404')").run(sym);
   const row = sym => app.db.stmt('SELECT * FROM bar_history WHERE symbol = ?').get(sym);
   const barsOf = sym => app.db.stmt('SELECT * FROM bar WHERE symbol = ? ORDER BY day').all(sym);
@@ -76,5 +77,31 @@ test('alpaca off (policy or no keys): nothing is marked, so the next start tries
   assert.equal(r.alpaca, 0); assert.match(r.alpacaOff, /broker lookups are off/);
   assert.equal(X.row('SIVB').note, 'HTTP 404', 'not marked as tried');
   assert.match(X.rec.counts ? 'x' : '', /x/);
+  await X.app.stop();
+});
+
+test('a reused ticker is refused by the company-name check, and a rename stored by an earlier build for the wrong company is undone', async () => {
+  const days = ['2021-03-01', '2021-03-02', '2022-02-15', '2022-02-16'];
+  const alpaca = { dailyBars: async () => [] };
+  const X = await make({ history: { PARA: yahooBars(days) }, names: { PARA: 'Parabolic Technologies, Inc.' }, alpaca });
+  X.nf('VIAC');
+  // what the first live pass stored (before the name check existed)
+  X.app.db.stmt("INSERT INTO bar(symbol, day, open, high, low, close, adj_close, volume, source, fetched_at) VALUES ('VIAC','2021-03-01',1,1,1,1,1,1,'yahoo:rename:PARA',1)").run();
+  X.app.db.stmt("UPDATE bar_history SET status = 'ok', note = 'recover: renamed VIAC → PARA on 2022-02-16; bars of PARA (Parabolic Technologies, Inc.) before that day, 1 stored' WHERE symbol = 'VIAC'").run();
+  const r = await X.rec.step();
+  assert.deepEqual(r.undone, ['VIAC']);
+  assert.equal(X.barsOf('VIAC').length, 0, 'the wrong bars are gone');
+  assert.equal(X.row('VIAC').status, 'not_found');
+  assert.equal(r.renamed, 0, 'the same pass refuses the rename by name');
+  assert.match(X.row('VIAC').note, /the company is now "Parabolic Technologies, Inc\.", not the renamed one/);
+  await X.app.stop();
+});
+
+test('alpaca is asked only through the previous day (the free plan refuses recent SIP data)', async () => {
+  const seen = [];
+  const X = await make({ alpaca: { dailyBars: async (s, o) => { seen.push(o.end); return []; } } });
+  X.nf('TWTR');
+  await X.rec.step();
+  assert.deepEqual(seen, ['2026-11-16']);
   await X.app.stop();
 });

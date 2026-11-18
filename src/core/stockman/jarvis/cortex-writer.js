@@ -19,9 +19,9 @@ const r6 = x => (x === null || x === undefined || !Number.isFinite(x) ? null : M
 const SYMBOL_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/;
 const BUILD_RE = /^[A-Za-z0-9._\-/]{1,60}$/;
 
-function createCortexWriter({ cortex, request, bus = null, log = () => {} } = {}) {
+function createCortexWriter({ cortex, request, bus = null, log = () => {}, retryMs = 30_000 } = {}) {
   if (!cortex || typeof request !== 'function') throw new Error('cortex writer needs cortex and request');
-  let busy = false, again = false, sourceId = null, off = null;
+  let busy = false, again = false, sourceId = null, off = null, retryTimer = null, stopped = false;
 
   function source() {
     if (sourceId) return sourceId;
@@ -73,6 +73,8 @@ function createCortexWriter({ cortex, request, bus = null, log = () => {} } = {}
       } while (again);
     } catch (err) {
       log(`stockman cortex: sync failed: ${err.message}`);
+      // the engine's start events reach jarvis before the supervisor marks it running (seen live, CL-0083): try once more a little later
+      if (!retryTimer && !stopped) { retryTimer = setTimeout(() => { retryTimer = null; sync(); }, retryMs); retryTimer.unref?.(); }
     } finally { busy = false; }
     if (written) log(`stockman cortex: wrote ${written} closed paper trade(s)`);
     return written;
@@ -84,7 +86,7 @@ function createCortexWriter({ cortex, request, bus = null, log = () => {} } = {}
     }
     return sync();
   }
-  function stop() { try { if (typeof off === 'function') off(); } catch { /* bus gone */ } off = null; }
+  function stop() { stopped = true; clearTimeout(retryTimer); retryTimer = null; try { if (typeof off === 'function') off(); } catch { /* bus gone */ } off = null; }
 
   return { start, stop, sync, META_KEY, SOURCE_REF };
 }
