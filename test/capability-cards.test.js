@@ -10,7 +10,7 @@ let cards;
 test.before(async () => { cards = await catalog.cardsNow(); });
 
 test('cards: one complete card per group, in catalog order', () => {
-  assert.equal(cards.length, 22);
+  assert.equal(cards.length, 23);
   assert.deepEqual(cards.map(c => c.id), catalog.ids);
   for (const c of cards) {
     assert.deepEqual(validateCard(c), [], `${c.id}: ${validateCard(c)}`);
