@@ -26,6 +26,7 @@ const WAKE_ANY = /\b(?:(?:hey|ok|okay|hi|yo)[\s,]+)?(?:jarvis|jarvas|jervis|javi
 const STT_CAPTURE_TIMEOUT_MS = 60000;
 const STT_WAKE_TIMEOUT_MS = 30000;   // idle (≤ 8 s) and speaking (≤ 3 s) windows are one inference each
 
+const MODEL_DOWN = /not running|not ready|no model|ECONNREFUSED|unreachable|couldn't reach/i;   // the model server is down: say so
 const norm = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 // Continuation guard: a turn that ends on one of these words was probably cut by a pause, not finished.
@@ -39,7 +40,7 @@ function dangling(text) {
   return DANGLING.has(norm(t).split(' ').pop());
 }
 
-function createVoiceController({ bus, orchestrator, engines, getConfig, getSessionId, setSessionId = () => {}, vadOptions, vadFactory = createVad, writeTrace = () => {}, continuationMs = 1500, speaker = null, confirmPending = () => false }) {
+function createVoiceController({ bus, orchestrator, engines, getConfig, getSessionId, setSessionId = () => {}, vadOptions, vadFactory = createVad, writeTrace = () => {}, continuationMs = 1500, speaker = null, confirmPending = () => false, fillerMs = 1500 }) {
   const vad = vadFactory(vadOptions);
   const trace = createTrace();   // per-turn timing; summary goes to the log + writeTrace at turn end
   const pick = k => (typeof engines[k] === 'function' ? engines[k]() : engines[k]);
@@ -90,6 +91,14 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     bus.emit('log', { level: 'warn', text: `${kind}: speech-to-text ${err.message}; listening again.` });
   }
   function abortOp() { if (op) { op.abort(); op = null; } }
+  // the short lines JARVIS says himself (failure, busy, slow tool): wording is the dialect's
+  const line = key => resolveDialect(getConfig().speech).lines?.[key] || '';
+  // say a failure line after the turn ended in silence; the same guards as any speech (stale turn, no TTS)
+  async function sayLine(key, my) {
+    const text = line(key);
+    if (!text || my !== turn || !pick('tts')) return;
+    await speak(text, my);
+  }
   // transcribe(), but gives up after `ms`: aborts the call (engines that take a signal stop) and rejects.
   function transcribeWithin(audio, sampleRate, ms, ac) {
     let timer;
@@ -226,6 +235,7 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       if (my !== turn) return;
       logOnce('Speech-to-text', err);
       mode = 'idle'; setState('idle');
+      await sayLine('noHear', my);
       return;
     }
     if (my !== turn) return;
@@ -415,6 +425,14 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
     const streaming = typeof tts?.createStream === 'function';
     let stream = null, offTok = null, splitter = null;
     const offTrace = bus.on('token', () => { if (my === turn) trace.mark('first_token'); });  // timing only; works for non-streaming TTS too
+    // a tool that starts with no reply text yet: after fillerMs say one short line so the silence is not mistaken for a hang
+    let gotText = false, filler = null, filled = false;
+    const offText = bus.on('token', () => { gotText = true; clearTimeout(filler); });
+    const offTool = bus.on('tool', ev => {
+      if (!streaming || ev.phase !== 'start' || gotText || filled || filler) return;
+      filler = setTimeout(() => { if (my === turn && !gotText && !filled) { filled = true; feedText(line('working')); } }, fillerMs);
+    });
+    const endFiller = () => { clearTimeout(filler); offText(); offTool(); };
     const feedText = s => {
       const t = speakable(s, { dialect: resolveDialect(getConfig().speech) });
       if (!t || my !== turn) return;
@@ -437,25 +455,28 @@ function createVoiceController({ bus, orchestrator, engines, getConfig, getSessi
       lastSend = sending.then(() => {}, () => {});
       res = await sending;
     } catch (err) {
-      offTok?.(); offTrace();
+      offTok?.(); offTrace(); endFiller();
       if (my !== turn) return;
       mode = 'idle';
       if (err?.message === 'BUSY') {
         bus.emit('log', { level: 'warn', text: `Heard "${text}" while a reply was still running; say it again when it finishes.` });
         setState('idle', 'Busy: say it again when the reply finishes');
+        await sayLine('busy', my);
       } else {
         bus.emit('log', { level: 'warn', text: `Voice turn failed: ${err?.message || err}` });
         setState('idle');
+        await sayLine(MODEL_DOWN.test(err?.message || '') ? 'noModel' : 'failed', my);
       }
       return;
     }
-    offTok?.(); offTrace();
+    offTok?.(); offTrace(); endFiller();
     if (res?.sessionId) setSessionId(res.sessionId);
     if (my !== turn) return;
     if (res.error || res.stopped || !res.reply || !res.reply.trim()) {
       if (stream) abortOp();
       mode = 'idle';
       if (!res.error && !res.stopped) setState('idle'); // the orchestrator already ended error/stop turns
+      if (res.error && !res.stopped) await sayLine(MODEL_DOWN.test(String(res.error)) ? 'noModel' : 'failed', my);
       return;
     }
     if (!streaming) { await speak(res.reply, my); return; }

@@ -4,15 +4,18 @@
 //   unbackedClaim(reply, okTools) → true when the reply claims an action and no tool confirmed anything.
 const DONE_VERB = '(?:opened|opening|launched|dimmed|paused|played|started|stopped|set|turned|switched|added|saved|muted|unmuted|skipped|closed|adjusted|restarted|activated|deactivated|toggled|changed|sent|deleted|removed|raised|lowered|increased|decreased|resumed|queued|liked|enabled|disabled|focused|brought)';
 
+// Passive forms ("was opened", "is set") are claims only when the subject is something JARVIS controls; elsewhere they are plain facts.
+const SUBJ_PREFIX = '\\b(?:volume|music|playback|media|brightness|timer|window|app|it|that)\\b(?:\\s+\\w+){0,2}?\\s+';
+
 const CLAIMS = [
   new RegExp(`\\bI(?:'ve| have|'m| am)?\\s+(?:just\\s+|now\\s+|already\\s+)?${DONE_VERB}\\b`, 'i'),
-  new RegExp(`\\b(?:is|are|has been|have been|was|were|has|have) (?:now |successfully )?${DONE_VERB}\\b`, 'i'),
+  new RegExp(`${SUBJ_PREFIX}(?:is|are|has been|have been|was|were|has|have) (?:now |successfully )?${DONE_VERB}\\b`, 'i'),
   /\b(?:volume|brightness|playback|music|media) (?:is|are) now\b/i,
   /^\s*(?:done|opening|playing|now playing|pausing|stopping|muting|skipping|queued|queueing|queuing|added|adding|resumed|resuming|liked|unmuted|turned|switched)\b/i,
   // "Sure. Queued five." / "Got it. Playing X.": a claim that opens a later sentence
   /(?:^|[.!?]\s+)(?:playing(?!\s+(?:it|them|that|this)\s+again)|queued|added|skipped|queueing|queuing)\b/i,
   // a state read from nowhere: "The media is already paused", "it is still playing" with no tool checking it this turn
-  /\b(?:is|are|was|were)\s+(?:already|currently|still|now)\s+(?:paused|playing|muted|stopped|queued|added|open|closed|running)\b/i,
+  new RegExp(`${SUBJ_PREFIX}(?:is|are|was|were)\\s+(?:already|currently|still|now)\\s+(?:paused|playing|muted|stopped|queued|added|open|closed|running)\\b`, 'i'),
   /^\s*already\s+(?:paused|playing|muted|stopped|queued|added)\b/i,
   // "I'll queue five songs now" said with no tool call is a promise nothing backs
   /\bI(?:'ll| will)\s+(?:go ahead and\s+)?(?:queue|play|add|skip|pause|resume)\b/i,
@@ -74,7 +77,15 @@ const NEEDS_OK = 'Needs your OK: ';
 const plain = t => String(t || '').toLowerCase().replace(/^\s*(?:(?:hey |ok(?:ay)? )?jarvis[,.!]?\s*)/, '').replace(/[.!,]+/g, ' ').replace(/\s+/g, ' ').trim();
 const YES = new Set(['yes', 'yeah', 'yep', 'yup', 'sure', 'confirm', 'confirmed', 'do it', 'go ahead', 'yes please', 'yes do it', 'ok do it', 'okay do it', 'yes go ahead', 'please do', 'do it now']);
 const NO = new Set(['no', 'nope', 'cancel', 'stop', "don't", 'do not', 'never mind', 'nevermind', 'no thanks', 'forget it']);
-const isYes = t => YES.has(plain(t));
+// A natural yes: starts with a yes word, at most six words, no negation or change of plan ("yes, shut it down" yes; "yes but not that" no).
+const YES_WORD = /^(?:yes|yeah|yep|yup|sure|confirm|confirmed|ok|okay|please)\b/;
+const NEGATION = /\b(?:no|not|nope|never|cancel|stop|wait|but|however|except|instead|unless|don'?t|do not|dont|won'?t|can'?t)\b|n't\b/;
+const isYes = t => {
+  const p = plain(t);
+  if (YES.has(p)) return true;
+  const words = p.split(' ').filter(Boolean);
+  return words.length <= 6 && YES_WORD.test(p) && !NEGATION.test(p);
+};
 const isNo = t => NO.has(plain(t));
 
 module.exports = { NOT_CLAIM, ungroundedFigures, softFail, unbackedClaim, stripClaims, UNBACKED_FIX, isYes, isNo, isUntrustedTool, NEEDS_OK };

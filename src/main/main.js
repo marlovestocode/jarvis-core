@@ -46,6 +46,13 @@ const { createProactiveEngine } = require('../core/proactive/engine');
 const { createMonitors } = require('../core/proactive/monitors');
 const timersSoon = require('../core/proactive/monitors/timers-soon');
 const { createSysmonMonitor, createSysmonStats } = require('../core/proactive/monitors/sysmon-threshold');
+const { createWeatherAlertsMonitor } = require('../core/proactive/monitors/weather-alerts');
+const { createFollowedTeamsMonitor } = require('../core/proactive/monitors/followed-teams');
+const { createLowBatteryMonitor } = require('../core/proactive/monitors/low-battery');
+const { createTaskDoneMonitor } = require('../core/proactive/monitors/task-done');
+const { getAlerts } = require('../core/knowledge/weather');
+const { getScores } = require('../core/knowledge/sports');
+const { resolvePlace } = require('../core/knowledge/location');
 const { createPcHost, SCRIPT: PC_HOST_SCRIPT } = require('../core/pc/host');
 const { buildAllowlist } = require('../core/pc/apps');
 const { createConfirm } = require('../core/pc/confirm');
@@ -511,6 +518,7 @@ ctx.proactive = createProactiveEngine({
     else ctx.tray?.displayBalloon?.({ title, content: body });
   },
   appendHistory: msg => {
+    if (ctx.sessionId && ctx.orchestrator?.append(ctx.sessionId, msg)) return;   // a turn is running on it and saves the message itself
     let s = ctx.sessionId ? ctx.sessions.load(ctx.sessionId) : null;
     if (!s) { s = ctx.sessions.create(); ctx.sessionId = s.id; }
     s.messages.push(msg);
@@ -518,7 +526,15 @@ ctx.proactive = createProactiveEngine({
   },
 });
 // monitors only produce text for the engine above; they never act
-ctx.monitors = createMonitors({ engine: ctx.proactive, live: ctx.live, getConfig: ctx.getConfig, log: ctx.log, monitors: [timersSoon, createSysmonMonitor({ getStats: createSysmonStats({ fetch }), log: ctx.log })] });
+ctx.monitors = createMonitors({ engine: ctx.proactive, live: ctx.live, getConfig: ctx.getConfig, log: ctx.log, monitors: [timersSoon, createSysmonMonitor({ getStats: createSysmonStats({ fetch }), log: ctx.log }),
+  // weather alerts for the home place, through the allowlisted fetcher; no home set → nothing to check
+  createWeatherAlertsMonitor({ getAlerts: async () => { const l = ctx.getConfig().location; if (!Number.isFinite(l?.lat) || !Number.isFinite(l?.lon)) return { alerts: [] }; return getAlerts(ctx.fetcher, await resolvePlace(ctx.fetcher, '', ctx.getConfig())); } }),
+  // games of the teams followed in Settings → Knowledge, through the allowlisted fetcher
+  createFollowedTeamsMonitor({ getGames: async () => (ctx.getConfig().sports?.follow?.length ? (await getScores(ctx.fetcher, {}, ctx.getConfig())).games : []) }),
+  // the PC's own battery reading (same call connectivity_status uses); an unreadable one is treated as none
+  createLowBatteryMonitor({ getBattery: () => ctx.pcHost.battery().catch(() => null) }),
+  // stored tasks from the task store (titles and status only); no task system → none
+  createTaskDoneMonitor({ listTasks: () => ctx.taskStore?.list() ?? [] })] });
 // warnings keep their level in the log, and a failed tool or turn is written down too (self_log reads these)
 ctx.bus.on('log', ev => ctx.log(ev.level === 'warn' || ev.level === 'error' ? `${ev.level}: ${ev.text}` : ev.text));
 ctx.bus.on('tool', ev => {

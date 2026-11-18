@@ -90,3 +90,14 @@ test('prompt: the rules from the saved chats are present in full and quick promp
   assert.match(brief, /Capabilities right now: wake word on/);
   assert.match(systemPrompt({ tools: [] }), /cannot verify it instead of inventing/);
 });
+
+test('guard: plain facts with passive verbs are not claims; things JARVIS controls still are', () => {
+  for (const r of [
+    'The Eiffel Tower was opened on 31 March 1889.',
+    'The shop is closed on Sundays.',
+    'The war has stopped.',
+    'The value is set by the constructor.',
+  ]) assert.equal(unbackedClaim(r, 0), false, r);
+  for (const r of ['The timer is set.', 'The window was closed.', 'It has stopped.', 'That was opened.', 'The volume is set.', 'The app was opened.', 'Music has stopped.'])
+    assert.equal(unbackedClaim(r, 0), true, r);
+});

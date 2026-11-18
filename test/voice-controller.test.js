@@ -115,13 +115,15 @@ test('tts throws → reply still in chat, state idle, one log event', async () =
 
 test('stt throws → state idle, log once, no send', async () => {
   const stt = { id: 'bad', label: 'Bad', async status() { return { ready: true }; }, async transcribe() { throw new Error('no recognizer'); } };
-  const { events, orchestrator, vc } = setup({ stt });
+  const { events, orchestrator, vc, tts } = setup({ stt });
   vc.listen();
   feedAll(vc, [...noise(300), ...tone(600), ...noise(900)]);
   await tick(20);
+  tts.finish();   // the spoken "didn't catch that"
+  await tick(5);
   assert.equal(orchestrator.sends.length, 0);
   assert.equal(states(events).at(-1), 'idle');
-  assert.equal(events.filter(e => e.type === 'log').length, 1);
+  assert.equal(events.filter(e => e.type === 'log' && e.level === 'warn').length, 1);
 });
 
 test('cancel() while speaking stops tts and goes idle; while listening goes idle', async () => {
@@ -166,9 +168,8 @@ test('spoken command while a text turn is busy is not dropped silently', async (
   vc.listen();
   feedAll(vc, [...noise(300), ...tone(600), ...noise(900)]);
   await tick(20);
-  const last = events.filter(e => e.type === 'state').at(-1);
-  assert.equal(last.state, 'idle');
-  assert.match(last.detail || '', /busy/i);
+  const idle = events.filter(e => e.type === 'state' && e.state === 'idle').at(-1);
+  assert.match(idle.detail || '', /busy/i);
   assert.ok(events.some(e => e.type === 'log' && /what time is it/.test(e.text)));
 });
 
@@ -691,6 +692,80 @@ test('controller: announce without a TTS engine resolves false', async () => {
   const { vc } = setup({ tts: null });
   assert.equal(await vc.announce('Your pasta timer is done.'), false);
   assert.equal(vc.mode, 'idle');
+});
+
+// ---- spoken failures and slow tools ----
+const { PRESETS, DEFAULT_ID } = require('../src/core/voice/dialect');
+const LINES = PRESETS[DEFAULT_ID].lines;
+const capture = vc => { vc.listen(); feedAll(vc, [...noise(300), ...tone(600), ...noise(900)]); };
+
+test('voice: a failed transcription says so', async () => {
+  const stt = { id: 'bad', label: 'Bad', async status() { return { ready: true }; }, async transcribe() { throw new Error('no recognizer'); } };
+  const { tts, vc } = setup({ stt });
+  capture(vc); await tick(20);
+  assert.deepEqual(tts.spoken.map(s => s.text), [LINES.noHear]);
+});
+
+test('voice: BUSY says so', async () => {
+  const { orchestrator, tts, vc } = setup();
+  orchestrator.send = async () => { throw new Error('BUSY'); };
+  capture(vc); await tick(20);
+  assert.deepEqual(tts.spoken.map(s => s.text), [LINES.busy]);
+});
+
+test('voice: a turn that throws or returns an error says so; a stopped turn stays quiet', async () => {
+  let { orchestrator, tts, vc } = setup();
+  orchestrator.send = async () => { throw new Error('boom'); };
+  capture(vc); await tick(20);
+  assert.deepEqual(tts.spoken.map(s => s.text), [LINES.failed]);
+  ({ orchestrator, tts, vc } = setup());
+  orchestrator.send = async () => ({ reply: '', stopped: false, error: 'provider down', sessionId: 's' });
+  capture(vc); await tick(20);
+  assert.deepEqual(tts.spoken.map(s => s.text), [LINES.failed]);
+  ({ orchestrator, tts, vc } = setup());
+  orchestrator.send = async () => ({ reply: '', stopped: true, sessionId: 's' });
+  capture(vc); await tick(20);
+  assert.deepEqual(tts.spoken, []);
+});
+
+function toolOrchestrator(bus, { toolMs, tokenAt = null }) {
+  const o = { busy: false, stop() {} };
+  o.send = async () => {
+    bus.emit('tool', { id: 'c1', name: 'x', phase: 'start' });
+    if (tokenAt !== null) { await tick(tokenAt); bus.emit('token', { text: 'Working on it. ' }); }
+    await tick(toolMs);
+    bus.emit('tool', { id: 'c1', name: 'x', phase: 'end', ok: true });
+    bus.emit('token', { text: 'Done.' });
+    return { reply: 'Done.', stopped: false, sessionId: 's' };
+  };
+  return o;
+}
+const fillerSetup = orcOpts => {
+  const bus = createBus(); const tts = streamingTts();
+  const vc = createVoiceController({ bus, orchestrator: toolOrchestrator(bus, orcOpts), engines: { stt: fakeStt(), tts, wake: null }, getConfig: () => DEFAULTS, getSessionId: () => 's', fillerMs: 40 });
+  return { tts, vc };
+};
+
+test('voice: a slow tool with no reply text yet gets one short filler', async () => {
+  const { tts, vc } = fillerSetup({ toolMs: 150 });
+  capture(vc); await tick(300);
+  assert.deepEqual(tts.pushes.map(p => p.s), [LINES.working, 'Done.']);
+});
+
+test('voice: no filler for a fast tool, or when reply text already arrived', async () => {
+  let r = fillerSetup({ toolMs: 5 });
+  capture(r.vc); await tick(150);
+  assert.deepEqual(r.tts.pushes.map(p => p.s), ['Done.']);
+  r = fillerSetup({ toolMs: 150, tokenAt: 5 });
+  capture(r.vc); await tick(300);
+  assert.ok(!r.tts.pushes.some(p => p.s === LINES.working));
+});
+
+test('voice: a model that is not running is named in the spoken failure', async () => {
+  const { orchestrator, tts, vc } = setup();
+  orchestrator.send = async () => ({ reply: '', stopped: false, error: 'Ollama is not running', sessionId: 's' });
+  capture(vc); await tick(20);
+  assert.deepEqual(tts.spoken.map(s => s.text), [LINES.noModel]);
 });
 
 // ---- per-conversation speaker verdict ----
