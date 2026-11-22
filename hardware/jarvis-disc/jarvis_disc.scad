@@ -29,7 +29,7 @@ dif_top    = 33.5;   // diffuser sheet 1 mm
 acr_top    = 35.5;   // smoked acrylic 2 mm
 top_z      = 36.8;   // top of the bezel
 
-// ---- speaker (Adafruit 3351), mounted face down, long side along X ------------
+// ---- speaker: Dayton Audio CE52N-4, mounted face down --------------------------
 spk_l = 52; spk_w = 52; spk_d = 30.8;     // CE52N-4 frame diameter and depth
 cut_l = 46;  cut_w = 46;                  // sound opening in the plinth floor (round)
 plpost_r = 38;                            // M3 post circle
