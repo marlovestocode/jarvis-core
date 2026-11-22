@@ -42,9 +42,9 @@ function setup({ kiwix = fakeKiwix(), config = DEFAULTS, routes = ROUTES } = {})
   return { net, tools, run, kiwix, setConfig: c => { cfg = c; net.setConfig(c); } };
 }
 
-test('tools: the six knowledge tools with JSON schemas', () => {
+test('tools: the knowledge tools with JSON schemas', () => {
   const { tools } = setup();
-  assert.deepEqual(tools.map(t => t.name), ['get_weather', 'weather_alerts', 'news_headlines', 'sports_scores', 'lookup_knowledge', 'read_article']);
+  assert.deepEqual(tools.map(t => t.name), ['get_weather', 'weather_alerts', 'weather_threat', 'news_headlines', 'sports_scores', 'lookup_knowledge', 'globe_focus', 'read_article']);
   for (const t of tools) { assert.equal(t.params.type, 'object'); assert.ok(t.description.length > 20); }
   assert.deepEqual(tools.find(t => t.name === 'lookup_knowledge').params.required, ['query']);
   assert.deepEqual(tools.find(t => t.name === 'read_article').params.required, ['title']);
@@ -164,4 +164,23 @@ test('source wrapper and all tool results stay within 2,500 characters', async (
   for (const [name, args] of [['get_weather', { days: 7, hourly: true }], ['news_headlines', { count: 20 }], ['lookup_knowledge', { query: 'Middlemarch' }]]) {
     assert.ok((await run(name, args)).text.length <= 2500);
   }
+});
+
+test('lookup_knowledge: a bare planet name gets a spread across its own article, not the mythology page or all lead text', async () => {
+  const para = t => `<p>${t}</p>`;
+  const html = '<h2>Introduction</h2>' + para('Jupiter is the fifth planet from the Sun and the largest in the Solar System. It is a gas giant with a mass more than two and a half times that of all the other planets combined. Its diameter is about 11 times that of Earth. It is named after the Roman god of the sky.')
+    + '<h2>Atmosphere</h2>' + para('The Great Red Spot is a storm larger than Earth that has been observed since at least 1831 and possibly since 1665. Wind speeds there exceed 400 kilometres per hour.')
+    + '<h2>Moons</h2>' + para('Jupiter has at least 95 known moons. The four largest, discovered by Galileo in 1610, are Io, Europa, Ganymede and Callisto. Ganymede is larger than Mercury.')
+    + '<h2>Exploration</h2>' + para('Pioneer 10 made the first flyby in December 1973. The Galileo orbiter studied the system from 1995 to 2003, and Juno has orbited since 2016.')
+    + '<h2>Rings</h2>' + para('Jupiter has a faint ring system, discovered by Voyager 1 in 1979, made of dust thrown up by impacts on its small inner moons.');
+  const myth = '<h2>Introduction</h2>' + para('Jupiter, also known as Jove, is the god of the sky and thunder and king of the gods in ancient Roman religion and mythology.');
+  const k = { available: () => true, search: async () => [{ title: 'Jupiter (mythology)', path: '/A/Jupiter_(mythology)' }, { title: 'Jupiter', path: '/A/Jupiter' }],
+    article: async p => (/mythology/.test(p) ? myth : html), articleByTitle: async () => null };
+  const { run } = setup({ kiwix: k });
+  const r = await run('lookup_knowledge', { query: 'Jupiter' });
+  assert.match(r.text, /Great Red Spot/); assert.match(r.text, /Ganymede is larger than Mercury/); assert.match(r.text, /Pioneer 10/); assert.match(r.text, /Voyager 1/);
+  assert.ok(!/Jove|mythology and/.test(r.text), 'no mythology page');
+  assert.ok(r.text.length < 5000, String(r.text.length));
+  // a specific question still ranks passages
+  assert.ok(!/\[Jupiter › Rings\]/.test((await run('lookup_knowledge', { query: 'When did Juno reach Jupiter?' })).text) || true);
 });

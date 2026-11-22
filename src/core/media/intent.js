@@ -104,6 +104,23 @@ function parseStrict(text) {
   if (/^(?:what|which) (?:app|player|program) is (?:playing|that|this)(?: in| on| from)?$/.test(t) || /^where is (?:this|that|the music) (?:playing|coming) from$/.test(t)) return { kind: 'query', what: 'app' };
   if (/^(?:what'?s|what is|whats) (?:up next|next up|playing next|coming up next|next in the queue|in the queue|next song|the next song)$/.test(t) || /^what (?:song|track) is next$/.test(t)
     || /^(?:show|read|tell) (?:me )?(?:the|my) queue$/.test(t) || /^what'?s (?:in|on) (?:the|my) queue$/.test(t)) return { kind: 'query', what: 'next' };
+  // Any question that asks about the queue or what plays next, however it is worded ("what are the next 12 songs in queue", "show me what is coming up",
+  // "how long are the next 5 songs"): a question word + a queue/next word + a music word, no queue-changing verb. The count is any number in it.
+  if (/^(?:what|which|show|read|tell|list|how long|how many)\b/.test(t) && /\b(?:queue|queued|up next|next up|coming up|playing next|are next|is next|next \d+|next (?:one|two|three|four|five|six|seven|eight|nine|ten|twelve))\b/.test(t)
+    && /\b(?:queue|songs?|tracks?|music)\b/.test(t) && !/\b(?:add|put|clear|empty|remove|delete|skip|shuffle|play|queue (?:up|a|an|some|the song))\b/.test(t)) {
+    const W = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, twelve: 12 };
+    const nm = t.match(/\b(\d{1,2})\b/) || t.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten|twelve)\b/);
+    const n = nm ? (W[nm[1]] ?? Number(nm[1])) : 0;
+    return { kind: 'query', what: 'next', ...(n >= 1 ? { count: Math.min(25, n) } : {}) };
+  }
+  // "what 12 songs are next", "what are the next 5 songs in the queue", "how long are the next 5 songs": a count of the queue
+  if ((m = t.match(/^(?:what|which)(?: are| is)?(?: the)? (?:next )?(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|twelve) (?:songs|tracks)(?: are| is)?(?: (?:coming )?(?:next|up next|in (?:the|my) queue|in (?:the|my) current queue|playing next|coming up))?$/))
+    || (m = t.match(/^(?:what|which) (?:are|is) (?:the )?next (\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|twelve) (?:songs|tracks)(?: (?:in|on) (?:the|my) (?:current )?queue| up next| coming up)?$/))
+    || (m = t.match(/^how long (?:are|is) (?:the )?next (\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|twelve) (?:songs|tracks)(?: (?:in|on) (?:the|my) queue)?(?: (?:together|combined|in total|total))?$/))) {
+    const WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, twelve: 12 };
+    const n = WORDS[m[1]] ?? Number(m[1]);
+    if (n >= 1) return { kind: 'query', what: 'next', count: Math.min(25, n) };
+  }
 
   // ---- queue (YouTube Music through the extension; other players cannot) ----
   if (/^(?:clear|empty|wipe)(?: out)? (?:the |my )?queue$/.test(t) || /^clear queue$/.test(t)) return { kind: 'control', action: 'queue', op: 'clear' };

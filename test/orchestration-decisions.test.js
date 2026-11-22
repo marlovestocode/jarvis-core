@@ -240,6 +240,16 @@ test('runtime: JARVIS asked a question → the next short answer is read togethe
   t.done();
 });
 
+test('runtime: a command after JARVIS\'s question is a new request, not an answer joined to the question', async () => {
+  const seen = [];
+  const t = run([say('ok'), say('ok')], [], { orc: { catalog, selectGroups: (text, o) => { seen.push(text); return selectGroups(text, o, catalog); }, fastPath: text => (/^what is discord\?$/i.test(text) ? { reply: 'The app or a feature?', ok: true, ask: true } : null) } });
+  const first = await t.orc.send(null, 'What is Discord?');
+  assert.equal(first.reply, 'The app or a feature?');
+  await t.orc.send(first.sessionId, 'Focus Discord.');
+  assert.equal(seen.at(-1), 'Focus Discord.', 'the command routes alone, not glued to the old question');
+  t.done();
+});
+
 test('runtime: an instant answer costs no model call', async () => {
   const t = run([say('should not be asked')], [], { orc: { fastPath: text => instant(text, { now: NOW, locale: 'en-US' }) } });
   const res = await t.orc.send(null, 'what time is it');
@@ -324,6 +334,49 @@ test('runtime: quick chat that claims an action is redone as a tool turn once (a
   assert.ok(t.fp.calls[1].tools?.some(x => x.name === 'set_timer'));
   assert.ok(t.events.some(e => e.type === 'route' && e.reason === 'escalated'));
   t.done();
+});
+
+test('runtime: quick chat that refuses a typed request is redone as a tool turn once, with groups re-selected', async () => {
+  const tool = { name: 'focus_window', description: 'x', params: { type: 'object', properties: {} }, async run() { return 'Switched to Discord.'; } };
+  const picks = [];
+  const t = run([say('I did not catch that request. Please say it again.'), [call('focus_window', {}), { type: 'done' }], say('Switched to Discord.')], [tool], { orc: { route: () => ({ tier: 'fast', tools: false, think: false }), selectGroups: text => { picks.push(text); return ['core']; } } });
+  const res = await t.orc.send(null, 'focus discord');
+  assert.equal(res.reply, 'Switched to Discord.');
+  assert.equal(t.fp.calls[0].tools, undefined);
+  assert.ok(t.fp.calls[1].tools?.some(x => x.name === 'focus_window'));
+  assert.deepEqual(picks, ['focus discord', 'focus discord'], 'the redo re-reads the request for skill groups');
+  assert.ok(t.events.some(e => e.type === 'route' && e.reason === 'escalated'));
+  t.done();
+  // voice already spoke the refusal: no redo there
+  const v = run([say('I did not catch that request.')], [tool], { orc: { route: () => ({ tier: 'fast', tools: false, think: false }), selectGroups: () => ['core'] } });
+  const rv = await v.orc.send(null, 'focus discord', { source: 'voice' });
+  assert.equal(rv.reply, 'I did not catch that request.');
+  assert.equal(v.fp.calls.length, 1);
+  v.done();
+});
+
+test('runtime: loading a skill group is not an action — a claim after it is taken back, and the load stays out of working memory', async () => {
+  const { createWorkMem } = require('../src/core/context/workmem');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jc-gl-'));
+  const ran = [];
+  const P = { type: 'object', properties: {} };
+  const groups = [
+    { id: 'core', label: 'Core', triggers: [], tools: [{ name: 'get_time', description: 'time', params: P, async run() { return 'NOON'; } }] },
+    { id: 'pc', label: 'PC control', triggers: [], tools: [{ name: 'focus_window', description: 'focus a window', params: P, async run() { ran.push('focus_window'); return 'Switched to Discord.'; } }] },
+  ];
+  const fp = createFakeProvider([[call('pc', { action: 'focus' }), { type: 'done' }], say("I've focused your Discord window.")]);
+  const bus = createBus();
+  const providers = createRegistry(); providers.add(NullProvider); providers.add(fp);
+  const sessions = createSessionStore(dir);
+  const workmem = createWorkMem({});
+  const orc = createOrchestrator({ bus, sessions, providers, tools: createToolRunner(groups.flatMap(g => g.tools), { groups }), catalog: buildCatalog(groups), workmem,
+    getConfig: () => ({ ...DEFAULTS, provider: fp.id }), route: () => ({ tier: 'deep', think: false, tools: true }), selectGroups: () => ['core'] });
+  const s = sessions.create(); sessions.save(s);
+  const res = await orc.send(s.id, 'focus discord');
+  assert.deepEqual(ran, [], 'the group load did not do the action');
+  assert.equal(res.reply, 'I haven\'t actually done that: no tool confirmed it.', 'the false claim is taken back');
+  assert.ok(workmem.recent(s.id).every(e => e.tool !== 'pc'), 'a group load is not a result worth remembering');
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('ollama: the thinking swap only picks a model that is already loaded; a thinking turn on a model that cannot think asks for reasoning in the prompt', async () => {

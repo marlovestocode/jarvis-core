@@ -246,13 +246,13 @@ test('skill: queue next / end, up next, clear, remove, repeat, like', async () =
   const skill = createMediaSkill({ service: noService, ytm: createYtMusic({ link: f.link }) });
   assert.equal((await skill.handle('play bohemian rhapsody next', { source: 'voice' })).reply, 'Next up: Bohemian Rhapsody by Queen.');
   assert.equal(f.calls.find(x => x.cmd === 'enqueue').args.position, 'next');
-  assert.equal((await skill.handle("what's up next", { source: 'voice' })).reply, 'Next: Bohemian Rhapsody by Queen, then ugly sunday, then 2nd Hand.');
+  assert.equal((await skill.handle("what's up next", { source: 'voice' })).reply, 'Next up: Bohemian Rhapsody by Queen, ugly sunday by Scrim and 2nd Hand by $uicideboy$.');
   assert.equal((await skill.handle('add bohemian rhapsody to the queue', { source: 'text' })).reply, 'Added to the queue: “Bohemian Rhapsody” by Queen.');
   assert.equal((await skill.handle('remove the next song', { source: 'voice' })).reply, 'Removed Bohemian Rhapsody.');
-  assert.equal((await skill.handle('clear the queue', { source: 'voice' })).reply, 'Queue cleared.');
+  assert.match((await skill.handle('clear the queue', { source: 'voice' })).reply, /^(Queue cleared|Cleared|Gone).$/);
   assert.equal((await skill.handle('repeat this song', { source: 'voice' })).reply, 'Repeat this track.');
   assert.equal(f.calls.find(x => x.cmd === 'repeat').args.mode, 'ONE');
-  assert.equal((await skill.handle('like this song', { source: 'voice' })).reply, 'Liked.');
+  assert.match((await skill.handle('like this song', { source: 'voice' })).reply, /^(Liked|Done, liked|Got it, liked).$/);
 });
 
 test('skill: honest when the extension is missing or another app is named', async () => {

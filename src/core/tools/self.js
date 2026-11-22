@@ -129,13 +129,15 @@ function createSelfTools({ getChecks = () => [], about = () => ({}), logFile, da
   const config = {
     name: 'self_config',
     hint: 'self_config: see self_diagnostics.',
-    description: 'The JARVIS version, how long it has been running, where its data is, and its settings: every setting changed from the default, and entries in config.json that are ignored. Use it for "what version are you", "what are your settings".',
+    description: 'The JARVIS version, which language model and memory embedder it runs on, how long it has been running, where its data is, and its settings: every setting changed from the default, and entries in config.json that are ignored. Use it for "what version are you", "what are your settings".',
     params: obj({}),
     risk: 'safe',
     async run() {
       const a = about();
       const L = [[`JARVIS core v${a.version || '?'}`, a.electron && `Electron ${a.electron}`, a.node && `Node ${a.node}`].filter(Boolean).join(', ') + (a.startedAt ? `; running for ${duration(Date.now() - a.startedAt)}` : '') + '.'];
-      if (!dataDir) return L[0];
+      // the model and the memory embedder are read from the live app, never guessed; reply speed is analytics_summary
+      L.push(`Language model: ${a.model || 'unknown'}. Memory embedder: ${a.embedder ? (typeof a.embedder === 'string' ? a.embedder : a.embedder.id || a.embedder.model || 'on') : 'none (keyword recall only)'}. For reply speed call analytics_summary.`);
+      if (!dataDir) return L.join('\n');
       const c = inspectConfig(dataDir);
       L.push(`Data folder: ${dataDir}.`);
       L.push(c.error ? `Settings file: UNREADABLE (${c.error}); defaults are in use.` : c.exists ? 'Settings file: config.json, read fine.' : 'Settings file: none yet; defaults are in use.');

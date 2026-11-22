@@ -1,0 +1,57 @@
+{
+ "data": {
+  "asOf": "Thu, Nov 19, 2026",
+  "headers": {
+   "time": "Time",
+   "symbol": "Symbol",
+   "name": "Company Name",
+   "marketCap": "Market Cap",
+   "fiscalQuarterEnding": "Fiscal Quarter Ending",
+   "epsForecast": "Consensus EPS* Forecast",
+   "noOfEsts": "# of Ests",
+   "lastYearRptDt": "Last Year's Report Date",
+   "lastYearEPS": "Last year's EPS*"
+  },
+  "rows": [
+   {
+    "lastYearRptDt": "11/20/2025",
+    "lastYearEPS": "$0.62",
+    "time": "time-pre-market",
+    "symbol": "WMT",
+    "name": "Walmart Inc.",
+    "marketCap": "$1,018,772,320,000",
+    "fiscalQuarterEnding": "Oct/2026",
+    "epsForecast": "$0.64",
+    "noOfEsts": "12"
+   },
+   {
+    "lastYearRptDt": "11/20/2025",
+    "lastYearEPS": "$1.88",
+    "time": "time-after-hours",
+    "symbol": "INTU",
+    "name": "Intuit Inc.",
+    "marketCap": "$92,346,073,000",
+    "fiscalQuarterEnding": "Oct/2026",
+    "epsForecast": "$2.47",
+    "noOfEsts": "9"
+   },
+   {
+    "lastYearRptDt": "11/20/2025",
+    "lastYearEPS": "$1.58",
+    "time": "time-after-hours",
+    "symbol": "ROST",
+    "name": "Ross Stores, Inc.",
+    "marketCap": "$71,234,847,000",
+    "fiscalQuarterEnding": "Oct/2026",
+    "epsForecast": "$1.85",
+    "noOfEsts": "7"
+   }
+  ]
+ },
+ "message": null,
+ "status": {
+  "rCode": 200,
+  "bCodeMessage": null,
+  "developerMessage": null
+ }
+}

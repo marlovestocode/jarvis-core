@@ -95,14 +95,15 @@ test('orchestrator: tool output is capped for the model, and older turns keep on
   assert.ok(oldTool.length < 500, `old turn: ${oldTool.length}`);
 });
 
-function fakeYtm() {
+function fakeYtm(durations = ['3:45', '1:02:03', '']) {
   const q = [];
   return {
     connected: true,
     played: [],
-    async enqueue(query) { const item = { title: query.split(' by ')[0], artists: [query.split(' by ')[1] || 'A'], videoId: 'v' + q.length }; q.push(item); return { ok: true, item, position: 'end' }; },
+    upNextCalls: [],
+    async enqueue(query) { const item = { title: query.split(' by ')[0], artists: [query.split(' by ')[1] || 'A'], videoId: 'v' + q.length, duration: durations[q.length % durations.length] }; q.push(item); return { ok: true, item, position: 'end' }; },
     async play(query) { this.played.push(query); return { ok: true, started: true, item: { title: query.split(' by ')[0], artists: ['A'] } }; },
-    async upNext() { return { now: null, next: q.map(i => ({ title: i.title, artist: i.artists[0] })) }; },
+    async upNext(count) { this.upNextCalls.push(count); return { now: null, next: q.map(i => ({ title: i.title, artist: i.artists[0], duration: i.duration })), repeat: this.repeat }; },
     async clear() { q.length = 0; return { removed: 0 }; },
   };
 }
@@ -128,6 +129,56 @@ test('youtube_music: secret picks never show a title, can be played by number, a
 test('youtube_music: a normal add still names the song', async () => {
   const tool = createYtMusicTool({ ytm: fakeYtm() });
   assert.match(await tool.run({ action: 'add_to_queue', query: 'Gamma by Band' }), /Gamma/);
+});
+
+test('youtube_music: up_next asks for 5 songs by default, passes count through and clamps it to 1..25', async () => {
+  const ytm = fakeYtm();
+  const tool = createYtMusicTool({ ytm });
+  assert.equal(await tool.run({ action: 'up_next' }), 'Nothing is queued after this song.');
+  await tool.run({ action: 'up_next', count: 10 });
+  await tool.run({ action: 'up_next', count: 99 });
+  await tool.run({ action: 'up_next', count: 0 });
+  await tool.run({ action: 'up_next', count: undefined });
+  await tool.run({ action: 'up_next', count: -1 });
+  assert.deepEqual(ytm.upNextCalls, [5, 10, 25, 5, 5, 1]);
+});
+
+test('youtube_music: up_next shows each song length and the total across m:ss and h:mm:ss', async () => {
+  const ytm = fakeYtm(['3:45', '1:02:03']);
+  const tool = createYtMusicTool({ ytm });
+  await tool.run({ action: 'add_to_queue', query: 'Alpha Song by Band' });
+  await tool.run({ action: 'add_to_queue', query: 'Beta Song by Band' });
+  const r = await tool.run({ action: 'up_next' });
+  assert.match(r, /"Alpha Song" by Band \(3:45\);/);
+  assert.match(r, /"Beta Song" by Band \(1:02:03\)\./);
+  assert.match(r, /Total 1:05:48\.$/);
+  ytm.repeat = 'LIST';
+  assert.match(await tool.run({ action: 'up_next' }), /Total 1:05:48\. Repeat LIST\.$/);
+});
+
+test('youtube_music: up_next notes how many queued songs have no length', async () => {
+  const ytm = fakeYtm(['3:45', '', '']);
+  const tool = createYtMusicTool({ ytm });
+  for (const query of ['Alpha Song by Band', 'Beta Song by Band', 'Gamma Song by Band']) await tool.run({ action: 'add_to_queue', query });
+  const r = await tool.run({ action: 'up_next' });
+  assert.match(r, /"Beta Song" by Band; "Gamma Song" by Band\./);   // no length: no duration shown
+  assert.match(r, /Total 3:45 \(2 without a length\)\.$/);
+});
+
+test('youtube_music: up_next adds no total when no song has a parseable length', async () => {
+  const tool = createYtMusicTool({ ytm: fakeYtm(['']) });
+  await tool.run({ action: 'add_to_queue', query: 'Alpha Song by Band' });
+  assert.equal(await tool.run({ action: 'up_next' }), 'Up next: "Alpha Song" by Band.');
+});
+
+test('youtube_music: up_next leaks no title or length for secret picks', async () => {
+  const ytm = fakeYtm(['3:45', '1:02:03']);
+  const tool = createYtMusicTool({ ytm });
+  await tool.run({ action: 'add_to_queue', query: 'Alpha Song by Band', secret: true });
+  await tool.run({ action: 'add_to_queue', query: 'Beta Song by Band', secret: true });
+  const r = await tool.run({ action: 'up_next' });
+  assert.doesNotMatch(r, /Alpha|Beta|Band|3:45|1:02:03/);
+  assert.match(r, /a secret pick; a secret pick/);
 });
 
 test('orchestrator: a text reply that claims a state with no tool is taken back and redone with a tool', async () => {

@@ -1,12 +1,13 @@
 // Timers, alarms and reminders on disk: <data>/timers.json, atomic write (temp + rename).
 // A corrupt file is moved to <data>/broken/timers.json and the store starts empty.
-// Timer: { id, kind: 'timer'|'alarm'|'reminder', label, due (epoch ms), created }
+// Timer: { id, kind: 'timer'|'alarm'|'reminder', label, due (epoch ms), created, repeat? } (repeat: see recur.js)
 const fs = require('node:fs');
 const path = require('node:path');
 
 const KINDS = ['timer', 'alarm', 'reminder'];
 const valid = t => t && typeof t.id === 'string' && KINDS.includes(t.kind) && typeof t.label === 'string' && Number.isFinite(t.due) && Number.isFinite(t.created);
-const clean = t => ({ id: t.id, kind: t.kind, label: t.label, due: t.due, created: t.created });
+const { validRepeat } = require('./recur');
+const clean = t => ({ id: t.id, kind: t.kind, label: t.label, due: t.due, created: t.created, ...(validRepeat(t.repeat) ? { repeat: t.repeat } : {}) });
 
 function createTimerStore({ file, log = () => {} }) {
   let timers = [];

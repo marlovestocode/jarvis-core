@@ -7,7 +7,7 @@ const { NullProvider } = require('../src/core/providers/null-provider');
 const { createEngineRegistries } = require('../src/core/voice/engines');
 const { applyPatch } = require('../src/core/settings');
 
-const WANT = { timersSoon: { enabled: false, leadMin: 10 }, sysmon: { enabled: false, cpu: 90, ram: 90, disk: 95, temp: 85 } };
+const WANT = { timersSoon: { enabled: false, leadMin: 10 }, sysmon: { enabled: false, cpu: 90, ram: 90, disk: 95, temp: 85 }, weatherAlerts: { enabled: true }, followedTeams: { enabled: false }, lowBattery: { enabled: false, percent: 20 }, taskDone: { enabled: false } };
 
 test('defaults are exact and deeply frozen', () => {
   assert.deepEqual(DEFAULT_MONITORS, WANT);

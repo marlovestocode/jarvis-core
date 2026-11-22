@@ -10,11 +10,46 @@ const { buildCatalog } = require('../skills');
 const { resolveInvented, closest } = require('./invented');
 const { checkArgs } = require('./args');
 
-const DIRECT_MAX = 300;      // a result longer than this still goes through the model
+const { speakerReason } = require('./speaker');
+const { firstSentence } = require('./constrain');
+const { ledgerGate, ledgerRecord, ledgerTimeout } = require('./ledger');
+
+// Guest turns (turn.speaker 'guest': speaker recognition heard a voice that is not the owner's) are DEFAULT DENY: only these
+// tools run, everything else is refused with the guest text, before its arguments are checked or its group is loaded. Allowed:
+// pure or public lookups that read nothing of the owner's (no memory, chats, music, media, timers, browser, clipboard, files,
+// windows, PC or system settings, JARVIS's own config and logs, analytics, tasks). A value names an argument the guest must give
+// itself: without it the tool would fall back to the owner's home or followed teams. A new tool stays denied until added here.
+const GUEST_TOOLS = new Map([
+  ['get_time', null], ['more_skills', null],
+  ['lookup_knowledge', null], ['read_article', null], ['web_search', null], ['web_open', null], ['news_headlines', null],
+  ['get_weather', 'place'], ['weather_alerts', 'place'], ['weather_threat', 'place'], ['sports_scores', 'team'],
+  ['calculate', null], ['solve_equation', null], ['integrate', null], ['differentiate', null], ['statistics', null],
+  ['convert_units', null], ['physics_constant', null], ['date_calc', null],
+  ['find_song_by_lyric', null],
+]);
+// null = the tool may run for this turn; otherwise the refusal
+function guestRefusal(tool, args, ctx) {
+  if (ctx.turn?.speaker !== 'guest') return null;
+  if (!GUEST_TOOLS.has(tool.name)) return { ok: false, denied: true, text: `Error: ${speakerReason(ctx.turn)}` };
+  const need = GUEST_TOOLS.get(tool.name);
+  const v = need && args && typeof args === 'object' ? args[need] : undefined;
+  if (need && !(typeof v === 'string' && v.trim())) return { ok: false, denied: true, text: `Error: name the ${need}. For a guest I never use my owner's ${need === 'place' ? 'home' : 'teams'}.` };
+  return null;
+}
+
+// Why discovery should not offer a tool this turn, or null. ADVISORY: it hides tools the model could not run anyway;
+// exec() and guestRefusal() above still decide, so a wrong answer here can never grant anything.
+function eligibility(tool, turn = {}) {
+  if (turn.speaker === 'guest' && !GUEST_TOOLS.has(tool.name)) return 'guest';
+  if (turn.tainted && (tool.risk === 'confirm' || tool.needsClean === true)) return 'tainted';
+  return null;
+}
+
+const DIRECT_MAX = 300;     // a result longer than this still goes through the model
 const MAX_EXTRA_LOADS = 2;   // more_skills and auto-load share this cap per turn
 const norm = s => String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_').replace(/_?(?:skills?|group)$/, '');
 
-function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
+function createToolRunner(tools, { timeoutMs = 10000, groups = null, toolIndex = null } = {}) {
   const byName = new Map(tools.map(t => [t.name, t]));
   const names = [...byName.keys()];
   for (const t of tools) for (const a of t.aliases || []) if (!byName.has(a)) byName.set(a, t);
@@ -41,29 +76,38 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
   const groupList = () => (catalog ? catalog.groups.map(g => ({ id: g.id, label: g.label })) : []);
   // confirm tools need a known clean turn; durable-state tools (needsClean: memory) only refuse a turn known to be tainted
   const tainted = (tool, ctx) => (tool.risk === 'confirm' && (!ctx.turn || ctx.turn.tainted)) || (tool.needsClean === true && !!ctx.turn?.tainted);
-  const taintedText = { ok: false, text: "Error: I won't start that from text I read. Ask me directly." };
+  const pageText = { ok: false, denied: true, text: "Error: I won't start that from text I read. Ask me directly." };
+  // a turn tainted by who is speaking (speaker recognition: unsure or guest) says so; a page or file taint keeps the text above
+  const taintedText = ctx => { const r = speakerReason(ctx.turn); return r ? { ok: false, denied: true, text: `Error: ${r}` } : pageText; };
 
   function specs() {
     return tools.map(({ name, description, params }) => ({ name, description, params }));
   }
 
   async function exec(tool, name, args, ctx) {
+    // a guest turn runs only the allowlisted tools (GUEST_TOOLS)
+    const guest = guestRefusal(tool, args, ctx);
+    if (guest) return guest;
     // confirm tools only start from the user's own words (see brain/guard.js)
-    if (tainted(tool, ctx)) return taintedText;
+    if (tainted(tool, ctx)) return taintedText(ctx);
     // the arguments must fit the tool's own schema before its code runs ("5" becomes 5; a missing or impossible value is refused, not guessed)
     const flag = tool.untrusted === true ? { untrusted: true } : {};   // only set when true, so results of ordinary tools stay { ok, text }
     const checked = checkArgs(tool, args);
     if (!checked.ok) return note(tool, { ok: false, text: checked.text, badArgs: true, ...flag });
     args = checked.args;
+    // after every refusal above, so a denied or badly-formed call never reaches the ledger (owner turns only; see ledger.js)
+    const g = ledgerGate(tool, name, args, ctx); if (g.res) return g.res;
     let timer;
     try {
       const timeout = new Promise((_, rej) => {
-        timer = setTimeout(() => rej(new Error(`tool ${name} timed out`)), tool.timeoutMs || timeoutMs);
+        timer = setTimeout(() => rej(Object.assign(new Error(`tool ${name} timed out`), { timedOut: true })), tool.timeoutMs || timeoutMs);
       });
-      const text = await Promise.race([Promise.resolve().then(() => tool.run(args || {}, ctx)), timeout]);
-      return note(tool, { ok: true, text: String(text), ...flag });
+      const text = String(await Promise.race([Promise.resolve().then(() => tool.run(args || {}, ctx)), timeout]));
+      ledgerRecord(g, ctx, name, args, text, flag.untrusted);
+      return note(tool, { ok: true, text, ...flag });
     } catch (err) {
-      return note(tool, { ok: false, text: `Error: ${err?.message || err}`, ...flag });
+      ledgerTimeout(g, ctx, name, args, err);
+      return note(tool, { ok: false, text: `Error: ${err?.message || err}`, ...(err?.timedOut && { timedOut: true }), ...flag });
     } finally {
       clearTimeout(timer);
     }
@@ -90,6 +134,10 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
     for (const id of ids) if (catalog.ids.includes(id)) add(id);
     let extra = 0;
     const group = id => catalog.groups.find(g => g.id === id);
+    // offered: once discovery ran, specs() shows only these tools plus the meta tools. Narrowing lives in specs() alone:
+    // authorization (scopedRun, exec) never looks at it, so a tool outside it still runs by name under the same checks.
+    let offered = null;
+    const META = ['find_tools', 'more_skills'];
     const inScope = tool => loaded.some(id => group(id).tools.includes(tool));
 
     function resolveGroup(want) {
@@ -104,11 +152,51 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
       if (!id) return { ok: false, text: `Unknown group. Groups: ${catalog.ids.join(', ')}.` };
       const g = group(id);
       const list = g.tools.map(t => t.name).join(', ');
-      if (loaded.includes(id)) return { ok: true, text: `Already loaded ${g.label}: ${list}.` };
+      if (loaded.includes(id)) {
+        if (offered) for (const t of g.tools) offered.add(t.name);   // narrowed by discovery: asking for the group shows it whole
+        return { ok: true, text: `Already loaded ${g.label}: ${list}.` };
+      }
       if (extra >= MAX_EXTRA_LOADS) return { ok: false, text: `Cannot load more skills this turn (limit ${MAX_EXTRA_LOADS}). Answer with what you have.` };
       extra++;
       add(id);
+      if (offered) for (const t of g.tools) offered.add(t.name);   // asked for by the model: its tools are shown whole
       return { ok: true, text: `Loaded ${g.label}: ${list}.` };
+    }
+
+    // discovery narrows from "everything in the loaded groups" to what was found
+    const startOffer = () => { if (!offered) offered = new Set(META); return offered; };
+    function offerNames(names, turn, charge) {
+      const set = startOffer();
+      const out = [];
+      for (const n of names) {
+        const tool = byName.get(n);
+        if (!tool || eligibility(tool, turn || {})) continue;
+        const gid = catalog.groupOf(tool.name);
+        if (gid && !loaded.includes(gid)) {
+          if (charge && extra >= MAX_EXTRA_LOADS - 1) continue;   // auto-offer keeps one unit for the model's own find_tools/more_skills
+          if (charge) extra++;
+          add(gid);
+        }
+        set.add(tool.name);
+        out.push(tool.name);
+      }
+      return out;
+    }
+    const offer = (names, { turn } = {}) => offerNames(names, turn, true);
+
+    // find_tools: one unit of the same per-turn budget as more_skills; candidates come from the global index with the caller's own turn
+    async function find(query, ctx = {}) {
+      if (!toolIndex) throw new Error('Tool search is not available.');
+      if (extra >= MAX_EXTRA_LOADS) throw new Error(`Cannot load more skills this turn (limit ${MAX_EXTRA_LOADS}). Answer with what you have.`);
+      extra++;
+      const t = ctx.turn || {};
+      const r = await toolIndex.find(String(query ?? ''), { groups: null, speaker: t.speaker || 'owner', tainted: !!t.tainted, exclude: offered ? new Set(offered) : new Set() });
+      if (r.outcome === 'unavailable') throw new Error('Tool search is busy. Use the tools you have.');
+      if (r.outcome === 'none') return 'No tool can do that. Do not invent one; say you cannot.';
+      if (r.outcome === 'not_permitted') return 'I am not allowed to do that in this turn.';
+      if (!offered) { offered = new Set(META); for (const id of loaded) for (const x of group(id).tools) offered.add(x.name); }
+      const names = offerNames(r.tools.map(x => x.name), t, false);   // already paid for above
+      return names.map(n => `${n}: ${byName.get(n).summary || firstSentence(byName.get(n).description, 140)}`).join('\n');
     }
 
     async function scopedRun(name, args, ctx = {}) {
@@ -118,14 +206,16 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
         if (alt?.tool) return reroute(await scopedRun(alt.tool, { ...(args || {}), ...alt.args }, ctx), name, alt.tool);
         if (alt?.group) {          // a group's name called as a tool: load the group and say which tools it has
           const r = load(alt.group);
-          return r.ok ? { ok: true, text: `${name} is a skill group, not a tool. ${r.text} Call one of those tools.` } : r;
+          return r.ok ? { ok: true, groupLoad: true, text: `${name} is a skill group, not a tool. ${r.text} Call one of those tools.` } : r;
         }
         return unknown(name);
       }
-      const c = { ...ctx, skills: { ...view, load, loaded: () => [...loaded] } };
+      const c = { ...ctx, skills: { ...view, load, loaded: () => [...loaded], find } };
       if (!inScope(tool)) {
-        // refuse before loading anything: auto-load never gets around risk or taint
-        if (tainted(tool, c)) return taintedText;
+        // refuse before loading anything: auto-load never gets around risk, taint or the guest allowlist
+        const guest = guestRefusal(tool, args, c);
+        if (guest) return guest;
+        if (tainted(tool, c)) return taintedText(c);
         const gid = catalog.groupOf(tool.name);
         if (gid) {
           const r = load(gid);
@@ -136,7 +226,8 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
     }
 
     return {
-      specs: () => loaded.flatMap(id => group(id).tools).map(({ name, description, params }) => ({ name, description, params })),
+      specs: () => loaded.flatMap(id => group(id).tools).filter(t => !offered || offered.has(t.name)).map(({ name, description, params }) => ({ name, description, params })),
+      offer,
       run: scopedRun,
       resolves,
       loaded: () => [...loaded],
@@ -153,7 +244,7 @@ function createToolRunner(tools, { timeoutMs = 10000, groups = null } = {}) {
     return out && out.length <= DIRECT_MAX && out.split('\n').length <= 6 ? out : null;
   };
   const resolves = name => byName.has(name) || !!resolveInvented(name, tools, groupList());
-  return { specs, run, turn, resolves, direct, stats: view.stats };
+  return { specs, run, turn, resolves, direct, stats: view.stats, get: n => byName.get(n) };   // get: the tool itself, for the round's parallel-safety check
 }
 
-module.exports = { createToolRunner, MAX_EXTRA_LOADS };
+module.exports = { createToolRunner, eligibility, MAX_EXTRA_LOADS };

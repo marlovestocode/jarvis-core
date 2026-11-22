@@ -4,6 +4,16 @@
 const { entityKey } = require('../memory/facts');
 
 const ABOUT_MAX = 1200;
+const LIST_MAX = 2000;
+const SELF_TOPIC = /^(?:me|myself|i|user|the user|owner|you know about me)$/i;
+
+// every saved fact, numbered; an empty memory says so
+function listText(memory) {
+  const facts = typeof memory?.list === 'function' ? memory.list() : [];
+  if (!facts.length) return 'Nothing is saved about the user yet.';
+  const out = `Saved about the user (${facts.length}): ${facts.map((f, i) => `${i + 1}. ${f}`).join(' ')}`;
+  return out.length <= LIST_MAX ? out : out.slice(0, LIST_MAX - 1).replace(/\s+\S*$/, '') + '…';
+}
 const date = ms => new Date(ms).toISOString().slice(0, 10);
 
 // memory_about text: the topic's entity (by key, else the best keyword match), its active facts, chats and reminders
@@ -78,9 +88,21 @@ function createMemoryTools({ memory, chats = null, cortex = null, getConfig = ()
     hint: 'memory_about: everything saved about one person, pet, place or project: its facts, the chats it came up in, reminders.',
     description: 'Everything saved about one person, pet, place or project the user named: its facts, the chats it came up in, its reminders.',
     params: { type: 'object', properties: { topic: { type: 'string', description: 'The name, e.g. "Rex"' } }, required: ['topic'], additionalProperties: false },
-    async run({ topic } = {}) { return aboutText(cortex, topic); },
+    async run({ topic } = {}) {
+      // "about me" is the user's own saved facts, not an entity lookup (an entity called "User" never exists)
+      if (SELF_TOPIC.test(String(topic ?? '').trim())) return listText(memory);
+      return aboutText(cortex, topic);
+    },
   };
-  return [remember, forget, ...(chats ? [recallChats] : []), ...(cortex ? [about] : [])];
+  const listAllFacts = {
+    name: 'memory_list',
+    examples: ['list my memories', 'what do you remember about me', 'show everything you have saved'],
+    hint: 'memory_list: every fact saved about the user, as a numbered list. memory_about: one named person, pet, place or project.',
+    description: 'List every fact saved about the user (the whole saved memory, newest last). Use it for "what do you remember about me", "list my memories".',
+    params: { type: 'object', properties: {}, additionalProperties: false },
+    async run() { return listText(memory); },
+  };
+  return [remember, forget, ...(chats ? [recallChats] : []), ...(cortex ? [about, listAllFacts] : [])];
 }
 
 module.exports = { createMemoryTools, aboutText };

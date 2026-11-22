@@ -8,7 +8,7 @@ const REPLY_CHARS = 4000;
 const FAIL_LIMIT = 2;           // a tool (or tool action) that failed this many times in one turn is not run again that turn
 const ASK_ANSWER_WORDS = 6;     // an answer to JARVIS's own question is at most this long to be read together with the question
 const ASK_DROPPED = /\b(?:never ?mind|forget it|cancel|nothing|no thanks?|stop)\b/i;
-const NO_RETRY = /not running|not in Ollama|not allowed|must be local|timed out|aborted/i;   // errors a second try cannot fix
+const { NO_RETRY } = require('./tools/recover');   // errors a second try cannot fix
 const NOT_MODEL = /not running|must be local|not allowed/i;   // errors that are not the model's fault (daemon down, config): no modelfail
 const GROUPS_TTL_MS = 15 * 60 * 1000;   // how long the last turn's skill areas count for follow-ups
 const LAST_GROUPS_MAX = 64;     // sessions whose last skill groups are remembered (follow-up bonus only)
@@ -53,12 +53,38 @@ function forProvider(m) {
 const { repairCall } = require('./tools/constrain');
 const { unbackedClaim, stripClaims, softFail, ungroundedFigures, UNBACKED_FIX, NEEDS_OK } = require('./brain/guard');
 const { resolveFollowUp } = require('./livestate/followup');
+const { isContinue } = require('./context/workmem');
+const { liveContext } = require('./livestate/context');
 const { plan } = require('./brain/plan');
+const { instant } = require('./brain/instant');
+const { resolveSelection: resolveSelectionDefault, looksUnsure, ACT_MIN } = require('./skills/discover');
+const { speakerReason } = require('./tools/speaker');
+const { runRound } = require('./tools/round');
+const { budgetFor, isDeliberateRepeat, createProgress, closeRivals, OFF } = require('./tools/progress');
+const { parallelSafe, toolContract } = require('./skills/toolcards');
+
+// A model-written question or decline is spoken as it is: one line, no control characters, capped (discover.js already
+// cleans it; this is the last fence before speech). It is never passed to a tool.
+const SPOKEN_MAX = 200;
+const spoken = v => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, SPOKEN_MAX).trim() : '');
+// The owner's recent chat the interpreter reads ("do that again" needs the turn before); guest-marked turns and tool chatter stay out.
+const HISTORY_TURNS = 4;
+const historyTail = (messages, end) => messages.slice(0, end)
+  .filter(m => (m.role === 'user' && !m.speaker) || (m.role === 'assistant' && !m.toolCalls && !m.silent && String(m.content || '').trim()))
+  .slice(-HISTORY_TURNS).map(m => ({ role: m.role, content: String(m.content) }));
+
+// speaker (speaker recognition): absent or 'owner' = the owner; 'unsure' and 'guest' taint the turn (no confirm tools, no memory or
+// clipboard writes, no memory recall, no shortcut that acts); 'guest' also loses the owner's personal context in the prompt.
+// Any other value fails closed as 'guest'.
+const speakerOf = v => (v === undefined || v === null || v === 'owner' ? 'owner' : v === 'unsure' ? 'unsure' : 'guest');
+// the owner's personal facts in promptInfo(): a guest's prompt never gets them
+const GUEST_DROP = { user: undefined, memory: undefined, memoryIds: [], library: undefined, media: undefined, live: undefined };
 
 // A tool result the model sees is capped: a log dump or a long list swamps a small context window and the model loses the thread.
 // This turn's results keep more (the model is answering from them); results from earlier turns are only a reminder.
 const TOOL_CHARS_NOW = 2500;
 const TOOL_CHARS_OLD = 400;
+const TOOL_CHARS_LOOKUP = 5000;   // lookup_knowledge on a planet or the solar system returns a longer extract (see SPACE_TOTAL_MAX)
 function capText(text, max) {
   const t = String(text ?? '');
   return t.length <= max ? t : t.slice(0, max).replace(/\s+\S*$/, '') + ` … [${t.length - max} more characters cut]`;
@@ -76,12 +102,22 @@ function toolLabel(name, args) {
 }
 // Asked of a model that answered nothing: say it once more, plainly. Never saved to the chat.
 const NUDGE_AFTER_TOOL = 'Answer the user now, in one or two sentences, using the tool results above.';
+// A reply that refuses ("I cannot access the queue") or asks the user to clarify, on a turn where a skill area matched and no tool was called:
+// the small model gave up without trying. It is asked once more, with the names of the tools it has.
+const GAVE_UP = /\b(?:I (?:cannot|can't|can not|am unable|am not able|do not have|don't have)|(?:unable|not able) to|no way to|cannot access|(?:are|do) you (?:referring|mean)|did you mean|could you (?:clarify|specify)|can you (?:clarify|specify))\b/i;
+const nudgeGaveUp = names => `You answered without trying a tool, but these tools are loaded for this request: ${names.join(', ')}. Read-only questions need no confirmation. Pick the one that fits and call it now, then answer from its result. Only say you cannot do it if none of them fits.`;
 const NUDGE_CLAIM = 'Your last reply said something was done, or stated what is playing, without calling a tool. Call the tool that does it or checks it now, then answer only from its result. If no tool fits, say you cannot do that.';
 const nudgeGround = figs => `Your reply gave figures that appear in no tool result or message: ${figs.join(', ')}. Answer again using only the numbers the tools returned, or say you could not confirm them.`;
 const NUDGE_CAP = 'You have used all the tool rounds you are allowed. Answer the user now with what the tool results above gave you, and say plainly what you could not get.';
+const NUDGE_NO_MATCH = 'No tool matches this request: do not invent one; answer from what you know or say you cannot do it.';
 const NUDGE_PLAIN ="Reply to the user's last message in one or two sentences.";
+// Typed text is not a transcript: "I did not catch that" on a typed request is a router miss, not a mishearing.
+const REFUSAL = /\b(?:did ?n[o']?t|didn't) catch\b|\bsay it again\b/i;
+const NUDGE_REDO = 'The user typed this request; it is not a mishearing. If a tool can do what they asked, call it now and answer from its result. If no tool fits, answer plainly.';
 
-function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, rankTools = null, learnTool = null, onQuestionLost = () => {}, memoryBlock = null, live = null, catalog = null, selectWithModel = require('./skills/select').selectWithModel }) {
+function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeoutMs = 60000, maxToolRounds = 5, systemPrompt, stamp, route, selectGroups, promptInfo = () => ({}), fastPath, rankTools = null, learnTool = null, onQuestionLost = () => {}, memoryBlock = null, context: assembler = null, live = null, catalog = null, resolveSelection = resolveSelectionDefault, embed = null, toolIndex = null, intelligence = {}, ledger = null, workmem = null }) {
+  if (intelligence === false) intelligence = OFF;   // the old loop, exactly
+  else if (!intelligence) intelligence = {};
   let current = null; // AbortController of the running turn
   const lastGroupsAt = new Map(); // session id → when lastGroups was last set
   // the areas the last turn used, only while that turn is recent: "make it 10" an hour later does not mean the timer from back then
@@ -91,6 +127,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
   // memoryBlock (W1 §4): { forTurn, afterTurn, onUserMessage }. lastRecall = what the last turn recalled, so a
   // correction in the next message ("no, that's wrong") can weaken it (E10).
   let lastRecall = null;
+  let flight = null;              // { s, queue } while a turn runs: the session it holds and messages appended meanwhile
 
   function pickProvider() {
     const id = getConfig().provider;
@@ -160,8 +197,10 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
     return { toolCalls, usage };
   }
 
-  async function send(sessionId, text, { source = 'text' } = {}) {
+  async function send(sessionId, text, { source = 'text', speaker: speakerIn } = {}) {
     if (current) throw busyError();
+    const speaker = speakerOf(speakerIn);
+    const owner = speaker === 'owner';
     const ac = new AbortController();
     current = ac;
     const lookups = new Map();
@@ -172,19 +211,35 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
     try {
       let s = sessionId ? sessions.load(sessionId) : null;
       if (!s) s = sessions.create();
-      s.messages.push({ role: 'user', content: String(text), at: Date.now() });
+      flight = { s, queue: [] };
+      // a non-owner message is marked, so later owner turns never read it as their own (recall, follow-ups) and a guest window can leave out the rest
+      s.messages.push(owner ? { role: 'user', content: String(text), at: Date.now() } : { role: 'user', content: String(text), at: Date.now(), speaker });
       const turnStart = s.messages.length - 1;   // tool results before this message are old
       sessions.save(s);
-      if (memoryBlock) {
+      if (memoryBlock && !owner) lastRecall = null;   // not the owner: no correction of the owner's recall, nothing learned
+      else if (memoryBlock) {
         try { memoryBlock.onUserMessage({ text: String(text), lastIds: lastRecall?.sessionId === s.id ? lastRecall.ids : [] }); } catch { /* memory must not break a turn */ }
         lastRecall = null;
       }
       bus.emit('state', { state: 'thinking' });
 
       // a short answer to JARVIS's own question ("10 minutes") is routed and matched together with the request it answers
-      const asked0 = pendingAsk.get(s.id);
-      pendingAsk.delete(s.id);
-      const routeText = asked0 && String(text).trim().split(/\s+/).length <= ASK_ANSWER_WORDS && !ASK_DROPPED.test(String(text)) ? `${asked0} ${String(text).trim()}` : String(text);
+      // only the owner's turns read, clear or set it: a guest's request never merges into the owner's next answer, and the reverse
+      const asked0 = owner ? pendingAsk.get(s.id) : undefined;
+      if (owner) pendingAsk.delete(s.id);
+      // a reply that is itself a command ("Focus Discord.") is a new request, not an answer: joining it to the
+      // old question turns it into chat and the action is refused. Only a reply that opens with one of the matched
+      // group's own action words counts ("10 minutes" stays an answer even when a group claims it).
+      const answer = String(text).trim();
+      let answerIsCommand = false;
+      if (asked0 && selectGroups) {
+        try {
+          const ids = (selectGroups(answer, { source }) || []).filter(id => id !== 'core' && id !== 'knowledge');
+          const first = answer.split(/\s+/)[0]?.toLowerCase();
+          answerIsCommand = !!first && ids.some(id => (catalog?.groups || []).find(g => g.id === id)?.triggers?.some(t => (t.words || []).some(w => w.toLowerCase() === first)));
+        } catch { /* keep the join */ }
+      }
+      const routeText = asked0 && answer.split(/\s+/).length <= ASK_ANSWER_WORDS && !ASK_DROPPED.test(String(text)) && !answerIsCommand ? `${asked0} ${answer}` : String(text);
 
       // live state: resolve short follow-ups ("do it again", "pause") once; any failure leaves the turn unchanged
       let fu = null;
@@ -192,14 +247,16 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       if (live) {
         try {
           snap = live.snapshot();
-          fu = resolveFollowUp(String(text), snap) || null;
+          fu = owner ? resolveFollowUp(String(text), snap) || null : null;   // "again", "undo that": only the owner continues the owner's actions
           if (fu) bus.emit('followup', { kind: fu.kind });
         } catch (err) { fu = null; bus.emit('log', { level: 'warn', text: `Live state failed, continuing without it: ${err?.message || err}` }); }
       }
 
       if (fastPath) {
         let fp = null;
-        try { fp = await fastPath(routeText, { source, lastGroups: recentGroups(s.id), signal: ac.signal }); } catch (err) { bus.emit('log', { level: 'warn', text: `Skill failed, asking the model: ${err?.message || err}` }); }
+        // not the owner: none of the skill chain runs (it can resolve a pending confirm, save a name or a note, control media,
+        // tasks or timers); only the pure-read instant answers (time, date, arithmetic, units, days) stay. The rest goes to the model.
+        try { fp = owner ? await fastPath(routeText, { source, lastGroups: recentGroups(s.id), signal: ac.signal }) : instant(routeText, { now: new Date() }); } catch (err) { bus.emit('log', { level: 'warn', text: `Skill failed, asking the model: ${err?.message || err}` }); }
         if (fp && !ac.signal.aborted) {
           const id = `skill${Date.now()}`;
           bus.emit('route', { tier: 'skill', think: false, reason: 'skill', model: null });
@@ -212,7 +269,7 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           const msg = { role: 'assistant', content: String(fp.record ?? reply) };
           if (fp.tool) msg.skill = String(fp.tool);   // the chat lists the skill above the reply, like a tool call
           if (!reply) msg.silent = true;
-          if (fp.ask) pendingAsk.set(s.id, routeText);
+          if (fp.ask && owner) pendingAsk.set(s.id, routeText);
           s.messages.push(msg);
           sessions.save(s);
           if (source !== 'voice') bus.emit('state', { state: 'idle' });
@@ -242,22 +299,65 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
         if (tools?.turn && fu?.kind === 'continue' && fu.groups?.length && !picked?.some(id => id !== 'core')) picked = fu.groups;
         if (fu?.kind === 'continue' && hints?.tools === false) hints = { ...hints, tier: 'deep', tools: true, think: false, reason: 'follow-up' };
       }
-      // nothing matched but the turn looks like a command: one short constrained call decides the group, or asks / declines (any failure keeps the rule result)
-      if (picked?.confidence === 'low' && catalog && hints?.tools !== false && p.constrain && tools?.turn && !ac.signal.aborted) {
+      // the cross-system assembler runs at most once per turn: selection may read its hint first, memory recall reuses it below
+      let ctxP = null;
+      const turnContext = () => ctxP || (ctxP = (async () => {
+        if (!assembler) return '';
+        try {
+          const pkg = await assembler.assemble({ text: String(text), speaker, brief: false, sessionId: s.id, snap });
+          if (pkg) bus.emit('ctxpkg', { items: pkg.items?.length || 0, dropped: pkg.dropped?.length || 0, errors: pkg.errors?.length || 0, ms: Number(pkg.ms) || 0 });   // counts only, never text
+          return typeof pkg?.hint === 'string' ? pkg.hint : '';
+        } catch { return ''; }
+      })());
+      // working memory (owner only): the block is saved on the user message like the memo (the UI shows it), but only the newest
+      // user message renders it to the model — a finished task's results never ride into the next one.
+      // the interpreter gets entities only. A guest or unsure turn reads nothing, and nothing from outside becomes an instruction.
+      let wmHint = '';
+      if (workmem && owner) {
+        try {
+          const goOn = isContinue(String(text)) || fu?.kind === 'continue';
+          const b = workmem.block(s.id, { speaker, cont: goOn });
+          if (b) { s.messages[turnStart].wm = b; sessions.save(s); }
+          wmHint = workmem.hint(s.id, { speaker });
+        } catch { /* working memory is a nicety */ }
+      }
+      // intent (ADR A-002): discover.js decides whether the turn needs the interpreter at all (owner only, unsure or risky
+      // matches; simple read-only commands never wait on a model) and may act, ask or decline. It only RECOMMENDS groups:
+      // risk:'confirm', taint and GUEST_TOOLS still decide what runs. Any failure keeps the rule result.
+      let decision = null;
+      let intentRec = null;   // the interpreter's reading, when it ran (deliberate-repeat check)
+      if (picked && catalog && hints?.tools !== false && tools?.turn && !ac.signal.aborted) {
         let d = null;
-        try { d = await selectWithModel(routeText, { provider: p, catalog, picked, signal: ac.signal, hints }); } catch { d = null; }
+        try {
+          const lastG = fu?.kind === 'continue' ? fu.groups : recentGroups(s.id);
+          // the hint is only worth its cost when recall would build it anyway (owner turn with a memory block)
+          const hint = owner && memoryBlock ? await turnContext() : '';
+          let liveText = '';
+          if (owner) { try { liveText = liveContext(snap); } catch { liveText = ''; } }
+          d = await resolveSelection({ text: routeText, rule: picked, history: owner ? historyTail(s.messages, turnStart) : [], lastGroups: lastG, hint, live: liveText, memory: wmHint, catalog, provider: p, embed, owner, signal: ac.signal, hints });
+        } catch { d = null; }
+        // the record rides on the 'route' event only when the gate opened: a plain command's route event stays as it was
+        if (d?.decision && d.decision.gated === false) decision = { ...d.decision, action: d.action, source: d.source };
+        const say = d?.action === 'ask' ? spoken(d.ask) : d?.action === 'decline' ? spoken(d.decline) : '';
         if (d?.action === 'act' && Array.isArray(d.groups) && !ac.signal.aborted) picked = d.groups;
-        else if ((d?.action === 'ask' || d?.action === 'decline') && d.question && !ac.signal.aborted) {
-          bus.emit('route', { tier: 'skill', think: false, reason: 'skill', model: null });
-          bus.emit('clarify', { kind: d.action, reason: 'model' });
-          bus.emit('token', { text: d.question });
-          s.messages.push({ role: 'assistant', content: d.question });
-          if (d.action === 'ask') pendingAsk.set(s.id, routeText);
+        else if (say && !ac.signal.aborted) {
+          bus.emit('route', { tier: 'skill', think: false, reason: 'skill', model: null, ...(decision ? { decision } : {}) });
+          bus.emit('clarify', { kind: d.action, reason: d.source === 'rule' ? 'rule' : 'model' });
+          bus.emit('token', { text: say });
+          s.messages.push({ role: 'assistant', content: say });
+          if (d.action === 'ask' && owner) pendingAsk.set(s.id, routeText);
           sessions.save(s);
           if (source !== 'voice') bus.emit('state', { state: 'idle' });
-          return { reply: d.question, stopped: false, sessionId: s.id, skill: true };
+          return { reply: say, stopped: false, sessionId: s.id, skill: true };
+        }
+        intentRec = d?.intent || null;
+        // a confident reading of plain conversation needs no tool: offering them only invites a pretend action (the escalation below still catches a claim)
+        if (intelligence.needTool !== false && d?.action === 'act' && intentRec?.kind === 'chat' && intentRec.confidence >= ACT_MIN && !d.groups?.some(id => id !== 'core' && id !== 'knowledge')) {
+          hints = { ...hints, tools: false, reason: 'intent chat' };
         }
       }
+      // "send it again" is a deliberate repeat: the ledger lets that one action run again. Set here, from the user's words, never from model arguments.
+      const forceRepeat = intelligence.repeat !== false && owner && isDeliberateRepeat({ text: String(text), intent: intentRec, fu });
       // a short command ("take a screenshot") can look like chat to the router while a skill group clearly matches:
       // quick chat has no tools and would only pretend to act, so the match wins
       if (hints?.tools === false && picked?.some(id => id !== 'core' && id !== 'knowledge')) {
@@ -266,39 +366,82 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       let toolsOn = !!(p.capabilities?.tools && tools && hints?.tools !== false);
       // skill groups: only the groups this request needs are offered; the scope can load more mid-turn
       let scope = toolsOn && picked ? tools.turn(picked) : null;
+      // tool discovery (spec 2): the tools that fit the request are OFFERED; exec() still decides what runs. A simple command
+      // (high confidence) is ranked lexically: no embedding call and no model call. Any failure keeps the whole loaded set.
+      let noMatchNudge = null;
+      if (scope && toolIndex && intelligence.index !== false && typeof scope.offer === 'function' && !ac.signal.aborted) {
+        try {
+          let effectHint = null;
+          try { effectHint = looksUnsure(routeText, []) ? 'read' : null; } catch { effectHint = null; }   // a question or discussion reads, it does not act
+          const r = await toolIndex.find(routeText, { groups: picked.confidence === 'low' ? null : scope.loaded(), speaker, tainted: !owner, effectHint, lexicalOnly: picked.confidence === 'high' });
+          const offerTurn = owner ? { source, tainted: false } : { source, tainted: true, speaker };
+          if (r.outcome === 'tools') {
+            let names = r.tools.map(t => t.name);
+            // two write tools that fit equally well: one constrained question, only when no model call was made for this turn yet
+            const rivals = intelligence.disambiguate !== false && owner && !decision && picked.confidence !== 'high'
+              ? closeRivals(r.tools, n => { const t = tools.get?.(n); return t ? toolContract(t).effect : 'read'; }) : null;
+            if (rivals) {
+              const pick = await toolIndex.disambiguate({ provider: p, text: routeText, candidates: rivals.map(n => ({ name: n, summary: tools.get?.(n)?.description })), signal: ac.signal });
+              if (pick) names = names.filter(n => !rivals.includes(n) || n === pick);
+            }
+            scope.offer(names, { turn: offerTurn });
+          }
+          // zero overlap on a simple command or without embeddings proves nothing ("make it louder"): only a hybrid miss or an unmatched rule narrows to nothing
+          else if (r.outcome === 'none' && (r.mode === 'hybrid' || picked.confidence === 'low')) { scope.offer([], { turn: offerTurn }); noMatchNudge = NUDGE_NO_MATCH; }
+          else if (r.outcome === 'not_permitted' && !owner) {
+            const say = spoken(speakerReason(offerTurn) || 'I only do that for my owner.');
+            bus.emit('route', { tier: 'skill', think: false, reason: 'skill', model: null });
+            bus.emit('token', { text: say });
+            s.messages.push({ role: 'assistant', content: say });
+            sessions.save(s);
+            if (source !== 'voice') bus.emit('state', { state: 'idle' });
+            return { reply: say, stopped: false, sessionId: s.id, skill: true };
+          }
+        } catch (err) { bus.emit('log', { level: 'warn', text: `Tool discovery failed, offering the whole group: ${err?.message || err}` }); }
+      }
       const failed = new Map();     // tool or tool:action → how many times it failed this turn
       const failKey = call => call.name + (typeof call.args?.action === 'string' && call.args.action ? ':' + call.args.action : '');
       const blocked = key => (failed.get(key) || 0) >= FAIL_LIMIT;
       let forceAnswer = false;      // the tool-round limit was hit: one last round with no tools
+      const progress = createProgress({ request: routeText, effectOf: n => { const t = tools.get?.(n); return t ? toolContract(t).effect : 'write'; } });   // what the rounds achieved, and which tools proved wrong this turn
       const currentSpecs = () => {
         if (!toolsOn || forceAnswer) return undefined;
-        let sp = (scope ? scope.specs() : tools.specs()).filter(t => !blocked(t.name));
+        let sp = (scope ? scope.specs() : tools.specs()).filter(t => !blocked(t.name) && !progress.excluded.has(t.name));
         if (avoidTools?.size) { try { const keep = sp.filter(t => !avoidTools.has(t.name)); if (keep.length) sp = keep; } catch { /* the cooldown is a nicety */ } }
         if (rankTools) { try { sp = rankTools(routeText, sp) || sp; } catch { /* ordering is a nicety */ } }   // the likeliest tools first
         return sp.length ? sp : undefined;
       };
       let useTools = currentSpecs();
-      const roundCap = maxToolRounds + (hints?.steps >= 3 ? 2 : 0);   // a request that asks for several things gets a little more room
+      // a request that asks for several things gets a little more room, a lookup or simple command less; unknown steps keep the configured cap
+      const bud = intelligence.budget !== false ? budgetFor({ steps: hints?.steps ?? 2, simple: picked?.confidence === 'high', maxToolRounds, contextMax: st.contextMax || 0 }) : { rounds: maxToolRounds + (hints?.steps >= 3 ? 2 : 0), tokenCap: Infinity };
+      const roundCap = bud.rounds;
       let retriedModel = false;
       let escalated = false;
       let loadedKey = scope ? scope.loaded().join() : '';
       let model = null;
       try { model = p.resolveModel ? p.resolveModel(hints || {}) : null; } catch { model = null; }
-      if (hints) bus.emit('route', { tier: hints.tier, think: !!hints.think, reason: notes.length ? [...new Set([hints.reason, ...notes].filter(Boolean))].join('; ') : hints.reason, model });
+      if (hints) bus.emit('route', { tier: hints.tier, think: !!hints.think, reason: notes.length ? [...new Set([hints.reason, ...notes].filter(Boolean))].join('; ') : hints.reason, model, ...(decision ? { decision } : {}) });
       let sys = null;
       let info = {};
       const turnNow = new Date();
-      const buildSys = () => systemPrompt({ source, now: turnNow, tools: useTools || [], model, brief: hints?.tools === false, groupHints: scope ? scope.hints() : [], matchConfidence: picked?.confidence, ...info });
+      const buildSys = () => systemPrompt({ source, now: turnNow, tools: useTools || [], model, brief: hints?.tools === false, groupHints: scope ? scope.hints() : [], matchConfidence: picked?.confidence, ...info, ...(speaker === 'guest' ? { ...GUEST_DROP, guest: true } : {}) });
       if (systemPrompt) {
         try { info = (await promptInfo({ source, hints })) || {}; } catch { info = {}; }
         sys = buildSys();
       }
-      // the memory block is computed once and saved on the user message, so later turns send the same text (E6)
+      // the memory block is computed once and saved on the user message (the UI shows it); only this turn renders it to the model
       let recalled = [];
-      if (memoryBlock) {
-        const prev = s.messages.slice(0, turnStart).reverse().find(m => m.role === 'user');
+      if (memoryBlock && owner) {
+        const prev = s.messages.slice(0, turnStart).reverse().find(m => m.role === 'user' && !m.speaker);
         try {
-          const r = await memoryBlock.forTurn({ text: String(text), previousUserText: prev ? String(prev.content) : '', brief: hints?.tools === false, profileIds: info.memoryIds || [] });
+          // what is on screen and the active task nudge recall; quick chat (brief) skips it
+          let context = '';
+          if (hints?.tools !== false) {
+            // the cross-system assembler (owner, not brief) gives the hint; live state alone is the fallback if it fails or has nothing
+            context = await turnContext();
+            if (!context) context = liveContext(snap);
+          }
+          const r = await memoryBlock.forTurn({ text: String(text), previousUserText: prev ? String(prev.content) : '', brief: hints?.tools === false, profileIds: info.memoryIds || [], sessionId: s.id, ...(context ? { context } : {}) });
           if (r?.memo) { s.messages[turnStart].memo = String(r.memo); s.messages[turnStart].memoIds = [...(r.ids || [])]; recalled = r.ids || []; sessions.save(s); }
         } catch (err) { bus.emit('log', { level: 'warn', text: `Memory recall failed: ${err?.message || err}` }); }
       }
@@ -308,14 +451,19 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
       let reply = '';
       let error;
       let stopped = false;
-      let toolRounds = 0;
-      let nudge = null;        // set when the model answered nothing: one more try with this added
+      let toolRounds = 0, metaRounds = 0;
+      // a round that only asks for tools (find_tools, more_skills) is not work: it does not use the cap (MAX_EXTRA_LOADS bounds it); 2x is the hard stop
+      const capped = () => intelligence.budget === false ? toolRounds >= roundCap : toolRounds - metaRounds >= roundCap || toolRounds >= 2 * roundCap;   // budget off: the old cap exactly
+      let nudge = noMatchNudge;        // set when the model answered nothing: one more try with this added (and, first round, when no tool matched)
       let emptyRetries = 0;
       let claimRetried = false;
+      let gaveUpRetried = false;
+      let describeRetried = false;
       let groundRetried = false;
       const seenCalls = new Set();   // name+args of every call this turn
       let okTools = 0;   // tools that ran, did not fail and can back an action claim (lookups cannot)
-      const turn = { source, tainted: false };   // tainted: text from outside (pages, files) came in this turn
+      // tainted: text from outside (pages, files) came in this turn, or the speaker is not known to be the owner (turn.speaker says which)
+      const turn = owner ? { source, tainted: false } : { source, tainted: true, speaker };
       let question = null;   // a confirm tool is waiting for the user's yes: this is the question
       let asked = false;     // ...and the user got it (not lost to a stop or an error)
       let sentChars = 0;
@@ -344,10 +492,10 @@ function createOrchestrator({ bus, sessions, providers, tools, getConfig, timeou
           }
         }
         const toolChars = useTools ? Math.ceil(JSON.stringify(useTools).length * TOOL_CHAR_WEIGHT) : 0;
-        let window = fitWindow(s.messages.map((m, i) => (m.role === 'tool' ? { ...m, content: capText(m.content, i < turnStart ? TOOL_CHARS_OLD : TOOL_CHARS_NOW) }
-          : m.role === 'user' && m.memo ? { ...m, content: `${m.content}
-
-${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min(REPLY_CHARS, Math.floor((st.contextMax || 0) * CHARS_PER_TOKEN * REPLY_SHARE)), stamp ? stamp(turnNow).length + 2 : 0).map(m => {
+        // a guest sees this turn only: the owner's earlier chat stays in the saved session but is never sent
+        const base = speaker === 'guest' ? turnStart : 0;
+        let window = fitWindow(s.messages.slice(base).map((m, j) => (m.role === 'tool' ? { ...m, content: capText(m.content, base + j < turnStart ? TOOL_CHARS_OLD : m.name === 'lookup_knowledge' ? TOOL_CHARS_LOOKUP : TOOL_CHARS_NOW) }
+          : m.role === 'user' && (m.memo || m.wm) && speaker !== 'guest' && base + j === turnStart ? { ...m, content: [m.content, m.memo, m.wm].filter(Boolean).join('\n\n') } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min(REPLY_CHARS, Math.floor((st.contextMax || 0) * CHARS_PER_TOKEN * REPLY_SHARE)), stamp ? stamp(turnNow).length + 2 : 0).map(m => {
           const o = forProvider(m);
           if (stamp && m.role === 'user' && m.at) o.content = `${o.content}\n\n${stamp(new Date(m.at))}`;   // its own send time, the same text every turn
           return o;
@@ -403,11 +551,14 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
           }
           // text chat: the model claimed an action or a media state without calling any tool. Take that reply back and make it use a tool,
           // rather than leave a claim (voice has already spoken it, so voice only gets the correction below).
-          // the router took this for quick chat (no tools) but the reply claims an action: a router miss. Redo the turn as a tool turn once.
-          if (source !== 'voice' && !escalated && !useTools && hints?.tools === false && p.capabilities?.tools && tools && toolRounds === 0 && !error && unbackedClaim(reply, okTools)) {
+          // the router took this for quick chat (no tools) but the reply claims an action or refuses a typed request: a router miss. Redo the turn as a tool turn once.
+          const refusal = REFUSAL.test(reply);
+          if (source !== 'voice' && !escalated && !useTools && hints?.tools === false && p.capabilities?.tools && tools && toolRounds === 0 && !error && (unbackedClaim(reply, okTools) || refusal)) {
             escalated = true;
             hints = { ...hints, tier: 'deep', tools: true, think: false, reason: 'escalated' };
             toolsOn = true;
+            // re-read the request for skill groups: the quick-chat pick (core/knowledge) would offer nothing that does it
+            if (selectGroups) { try { picked = selectGroups(routeText, { lastGroups: fu?.kind === 'continue' ? fu.groups : recentGroups(s.id), source }) || picked; } catch { /* keep the prior pick */ } }
             picked = picked || ['core', 'knowledge'];
             scope = tools.turn ? tools.turn(picked) : null;
             loadedKey = scope ? scope.loaded().join() : '';
@@ -415,9 +566,9 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
             bus.emit('route', { tier: hints.tier, think: false, reason: hints.reason, model });
             useTools = currentSpecs();
             if (systemPrompt) sys = buildSys();
-            nudge = NUDGE_CLAIM;
+            nudge = refusal ? NUDGE_REDO : NUDGE_CLAIM;
             bus.emit('retract', {});
-            bus.emit('log', { level: 'warn', text: 'Quick chat claimed an action; redoing the turn with tools' });
+            bus.emit('log', { level: 'warn', text: refusal ? 'Quick chat refused a typed request; redoing the turn with tools' : 'Quick chat claimed an action; redoing the turn with tools' });
             continue;
           }
           if (source !== 'voice' && !claimRetried && useTools && toolRounds === 0 && !error && unbackedClaim(reply, okTools)) {
@@ -426,6 +577,29 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
             bus.emit('retract', {});
             bus.emit('log', { level: 'warn', text: 'Reply claimed an action no tool confirmed; asking again with a tool' });
             continue;
+          }
+          // globe_focus moved the globe and asked for a description via lookup_knowledge, but the small model answered from memory (and invented an excuse): ask once for the lookup
+          if (source !== 'voice' && !describeRetried && toolRounds > 0 && !error && !stopped) {
+            const turnTools = s.messages.slice(turnStart).filter(m => m.role === 'tool');
+            const ask = turnTools.map(m => /call lookup_knowledge with the query "([^"]+)"/.exec(String(m.content))).filter(Boolean).pop();
+            if (ask && !turnTools.some(m => m.name === 'lookup_knowledge') && (useTools || []).some(t => (t.name || t.function?.name) === 'lookup_knowledge')) {
+              describeRetried = true;
+              nudge = `Call lookup_knowledge with the query "${ask[1]}" now, then describe it from the passages it returns. Do not answer from memory.`;
+              bus.emit('retract', {});
+              bus.emit('log', { level: 'warn', text: 'Globe moved but the description was not looked up; asking for the lookup' });
+              continue;
+            }
+          }
+          if (source !== 'voice' && !gaveUpRetried && useTools && toolRounds === 0 && !error && !stopped && reply.trim() && GAVE_UP.test(reply)
+            && (picked || []).some(id => id !== 'core' && id !== 'knowledge')) {
+            const names = (useTools || []).map(t => t.name || t.function?.name).filter(n => n && n !== 'more_skills' && n !== 'find_tools');
+            if (names.length) {
+              gaveUpRetried = true;
+              nudge = nudgeGaveUp(names);
+              bus.emit('retract', {});
+              bus.emit('log', { level: 'warn', text: 'Reply gave up without trying a tool; asking again with the tool names' });
+              continue;
+            }
           }
           // text chat, after tools ran: a precise figure in the answer that no tool result or message contains is checked once
           if (source !== 'voice' && !groundRetried && toolRounds > 0 && !error && reply.trim()) {
@@ -439,24 +613,34 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
               continue;
             }
           }
+          // the small model sometimes copies the "Now: <date> (<zone>)." stamp of the user message into its answer
+          reply = String(reply).replace(/\s*Now: \d{4}-\d{2}-\d{2} \w+ \d{1,2}:\d{2} \([^)]*\)\.?\s*$/, '');
           s.messages.push({ role: 'assistant', content: reply });
           break;
         }
-        if (toolRounds >= roundCap && !forceAnswer) {
+        if (capped() && !forceAnswer) {
           // out of rounds: no more tools, one last round to answer with what the results already gave
           forceAnswer = true;
           nudge = NUDGE_CAP;
           bus.emit('log', { level: 'warn', text: 'Tool-round limit reached; answering with what the tools returned' });
           continue;
         }
-        if (toolRounds >= roundCap) {
+        if (capped() || forceAnswer) {   // forceAnswer alone: the loop ended itself early and the model still asked for a tool
           error = 'Too many tool rounds';
+          // an honest partial instead of silence: what the tools did confirm this turn, never the internal budget wording
+          if (!String(reply || '').trim()) {
+            const got = s.messages.slice(turnStart).filter(m => m.role === 'tool' && !/^error/i.test(String(m.content))).slice(-2).map(m => capText(String(m.content), 300));
+            reply = `I ran out of steps before finishing that.${got.length ? ` Here is what I confirmed: ${got.join(' ')}` : ' I could not confirm anything yet.'} Ask again and I will continue.`;
+          }
           s.messages.push({ role: 'assistant', content: reply, error });
           break;
         }
         toolRounds++;
+        if (round.toolCalls.every(c => c.name === 'find_tools' || c.name === 'more_skills')) metaRounds++;
         s.messages.push({ role: 'assistant', content: reply, toolCalls: round.toolCalls });
         const directs = [];   // each call's own result, when it can be the reply as it is
+        // prepare (sequential): repair, label, start event; calls that never run (blocked, repeated) get their result here
+        const jobs = [];
         for (const call of round.toolCalls) {
           // a call that names no tool, or whose arguments do not fit the tool's schema, is repaired by a short decode the model cannot get
           // wrong (see tools/constrain.js); a valid call costs nothing extra
@@ -466,33 +650,48 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
           }
           const label = toolLabel(call.name, call.args);
           bus.emit('tool', { id: call.id, name: call.name, label, phase: 'start' });
-          inTool = true;
-          let res;
-          let skipped = false;   // a synthetic result (the tool did not run): says nothing about the tool's health, so live state skips it
+          let preset = null;
           // the model re-sent a call it already made this turn: do not run it again, tell it to answer
           const sig = `${call.name}:${JSON.stringify(call.args ?? {})}`;
           if (blocked(failKey(call)) || blocked(call.name)) {
-            skipped = true;
-            res = { ok: false, text: `Error: ${failKey(call)} already failed ${FAIL_LIMIT} times this turn. Do not call it again: use a different tool, or tell the user what failed.` };
-          } else if (seenCalls.has(sig)) {
-            skipped = true;
-            res = { ok: false, text: 'Error: you already made this exact call this turn and got its result. Do not repeat it; answer the user with what you have, or say what failed.' };
-          } else {
-            seenCalls.add(sig);
-            try { res = await (scope || tools).run(call.name, call.args, { signal: ac.signal, turn }); }
-            finally { inTool = false; }
-          }
-          inTool = false;
+            preset = { ok: false, text: `Error: ${failKey(call)} already failed ${FAIL_LIMIT} times this turn. Do not call it again: use a different tool, or tell the user what failed.` };
+          } else if (!(ledger && owner) && seenCalls.has(sig)) {   // with a ledger it replaces this guard (exec checks it); without one this is the baseline
+            preset = { ok: false, text: 'Error: you already made this exact call this turn and got its result. Do not repeat it; answer the user with what you have, or say what failed.' };
+          } else if (!(ledger && owner)) seenCalls.add(sig);
+          jobs.push({ call, label, preset });
+        }
+        // every call, parallel or not, goes through this one exec path; extraCtx lets a caller add to it (e.g. { fresh: true })
+        const run = (call, extraCtx = {}) => (scope || tools).run(call.name, call.args, { signal: ac.signal, turn, sessionId: s.id, ledger: owner ? ledger : null, turnId: s.id + ':' + turnStart, force: forceRepeat, ...extraCtx });   // force: only the user's own repeat request (isDeliberateRepeat), never a call argument
+        // only a tool that is offered this turn, reads, and needs no confirmation or clean turn may share a batch (an unknown name runs alone)
+        const parallelSafeOf = n => { const t = tools.get?.(n); return !!t && !!useTools?.some(x => x.name === n) && parallelSafe(t); };
+        inTool = true;
+        let results;
+        const contractOf = n => { const t = tools.get?.(n); return t ? toolContract(t) : null; };
+        // bad args are repaired by the same constrained decode as before the call; only when the provider can constrain
+        const repair = useTools?.length && p.constrain && getConfig().constrainTools !== false
+          ? c => repairCall({ provider: p, window, call: c, specs: useTools, resolves: n => (scope || tools).resolves?.(n) === true, signal: ac.signal, hints, log: text => bus.emit('log', { level: 'info', text }) }) : null;
+        try { results = await runRound({ jobs, run, turn, signal: ac.signal, parallelSafeOf, parallel: intelligence.parallel !== false, contractOf, repair, recover: intelligence.recover !== false }); }
+        finally { inTool = false; }
+        // finish (sequential, call order): events, accounting and messages never follow completion order
+        for (let i = 0; i < jobs.length; i++) {
+          const { call, label, preset } = jobs[i];
+          const res = results[i];
+          const skipped = !!(preset || res.skipped);   // a synthetic result or a ledger answer: the tool did not run, so live state skips it
           if (!res.ok && !res.badArgs) failed.set(failKey(call), (failed.get(failKey(call)) || 0) + 1);
-          bus.emit('tool', { id: call.id, name: call.name, phase: 'end', ok: res.ok, soft: res.ok && softFail(res.text) || undefined, badArgs: res.badArgs || undefined, skipped: skipped || undefined });
+          bus.emit('tool', { id: call.id, name: call.name, phase: 'end', ok: res.ok, soft: res.ok && (softFail(res.text) || res.verified === false) || undefined, badArgs: res.badArgs || undefined, skipped: skipped || undefined });
           if (res.untrusted) turn.tainted = true;
           if (res.ok && String(res.text).startsWith(NEEDS_OK)) question = String(res.text).slice(NEEDS_OK.length);
-          else if (res.ok && !/^error/i.test(String(res.text)) && !softFail(res.text) && !res.untrusted && call.name !== 'more_skills') okTools++;   // loading a skill is not an action
+          else if (res.ok && !/^error/i.test(String(res.text)) && !softFail(res.text) && res.verified !== false && !res.untrusted && !res.groupLoad && call.name !== 'more_skills') okTools++;   // loading a skill is not an action
           s.messages.push({ role: 'tool', content: capText(res.text, 6000), toolCallId: call.id, name: call.name, label });
-          if (learnTool && res.ok && !res.untrusted && !softFail(res.text) && !String(res.text).startsWith(NEEDS_OK)) { try { learnTool(routeText, call.name); } catch { /* learning is a nicety */ } }
-          directs.push(res.ok && !res.untrusted && !turn.tainted && !String(res.text).startsWith(NEEDS_OK) && !softFail(res.text) ? ((scope || tools).direct?.(call.name, res.text) ?? null) : null);
-          if (ac.signal.aborted) break;
-        }
+          // what the owner's tools touched, for "that file" later; a question to the user, a skill load and a lookup of tools are not results
+          if (workmem && owner && !preset && !res.skipped && !res.ledger && !res.badArgs && !res.groupLoad && res.text !== 'Error: aborted' && !String(res.text).startsWith(NEEDS_OK) && call.name !== 'more_skills' && call.name !== 'find_tools') {
+            try { workmem.record(s.id, { tool: call.name, args: call.args, text: String(res.text ?? ''), ok: res.ok, untrusted: !!res.untrusted }, { speaker }); } catch { /* best effort */ }
+          }
+          if (learnTool && owner && res.ok && !res.untrusted && !softFail(res.text) && !String(res.text).startsWith(NEEDS_OK)) { try { learnTool(routeText, call.name); } catch { /* learning is a nicety */ } }
+          directs.push(res.ok && !res.ledger && !res.untrusted && !turn.tainted && !String(res.text).startsWith(NEEDS_OK) && !softFail(res.text) ? ((scope || tools).direct?.(call.name, res.text) ?? null) : null);
+        }   // no break on abort: every started call gets its end event and tool message (runRound answers the rest 'aborted')
+        // a round that only loaded skill groups taught the model the tool names; like find_tools, it is not work against the cap
+        if (results.length && results.every(r => r.groupLoad)) metaRounds++;
         sessions.save(s);
         if (ac.signal.aborted) { stopped = true; reply = ''; break; }
         // every call was a simple tool whose result already reads as the answer (a timer set, a conversion): that is the reply; the model is not asked to repeat it
@@ -511,19 +710,45 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
           asked = true;
           break;
         }
+        // adaptive: read the round heuristically (no model call). The same signal twice, or the token cap, ends the tool use; otherwise a short
+        // status note rides the next call, and a dead end (nothing found, wrong tool) widens what is offered through the same discovery path.
+        const a = intelligence.adaptive !== false ? progress.step({ calls: round.toolCalls, results }) : null;
+        if (a?.stop || promptTokens + completionTokens > bud.tokenCap) {
+          forceAnswer = true;
+          nudge = NUDGE_CAP;
+          bus.emit('log', { level: 'warn', text: a?.stop ? `Same problem twice (${a.signal}); answering with what the tools returned` : 'Token budget reached; answering with what the tools returned' });
+        } else if (a) {
+          if (a.note && !nudge) nudge = a.note;
+          const before = currentSpecs()?.map(t => t.name).join();
+          if (a.rediscover && toolIndex && scope && typeof scope.offer === 'function' && intelligence.index !== false) {
+            try {
+              const r = await toolIndex.find(routeText, { groups: null, exclude: progress.excluded, speaker, tainted: !owner || turn.tainted });
+              if (r.outcome === 'tools') scope.offer(r.tools.map(t => t.name), { turn });
+            } catch (err) { bus.emit('log', { level: 'warn', text: `Tool rediscovery failed: ${err?.message || err}` }); }
+          }
+          useTools = currentSpecs();
+          if (systemPrompt && useTools?.map(t => t.name).join() !== before) sys = buildSys();   // the prompt lists the offered tools
+        }
       }
 
       if (memoryBlock && recalled.length && !error && !stopped) {
         try { memoryBlock.afterTurn({ ids: recalled, tainted: turn.tainted }); } catch { /* best effort */ }
         lastRecall = { sessionId: s.id, ids: recalled, tainted: turn.tainted };
       }
-      if (scope && !error && !stopped) {
+      if (scope && !error && !stopped && owner) {   // a non-owner turn never becomes what the owner's follow-up continues
         lastGroups.delete(s.id);   // newest last
         lastGroups.set(s.id, scope.loaded().filter(id => id !== 'core'));
         lastGroupsAt.set(s.id, Date.now());
         if (lastGroups.size > LAST_GROUPS_MAX) { const old = lastGroups.keys().next().value; lastGroups.delete(old); lastGroupsAt.delete(old); }
       }
 
+      if (workmem && owner) {   // an unfinished turn keeps its goal open, so "continue" can pick it up; a plain answer closes it
+        try {
+          // "continue" must not overwrite what it continues: the old goal text stays, only open and note move
+          const prior = isContinue(String(text)) || fu?.kind === 'continue' ? workmem.goal(s.id) : null;
+          workmem.setGoal(s.id, { text: prior ? prior.text : routeText.slice(0, 160), open: hints?.tools !== false && !!(error || stopped || forceAnswer || question), note: error ? String(error).slice(0, 100) : '' });
+        } catch { /* best effort */ }
+      }
       // never leave a risky action armed behind a question the user did not hear
       if (question && !asked) { try { onQuestionLost(); } catch { /* best effort */ } }
       const last = s.messages.at(-1);
@@ -560,8 +785,20 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
       return out;
     } finally {
       offNet();
+      // messages appended during the turn go after it (never between a tool call and its result), then the session is saved once more
+      if (flight?.queue.length) {
+        try { flight.s.messages.push(...flight.queue); sessions.save(flight.s); } catch (err) { bus.emit('log', { level: 'warn', text: `appended message lost: ${err.message}` }); }
+      }
+      flight = null;
       if (current === ac) current = null;
     }
+  }
+
+  // append(sessionId, msg) → true when a turn on that session is running and holds msg until it ends; false: the caller saves it itself
+  function append(sessionId, msg) {
+    if (!flight || flight.s.id !== sessionId) return false;
+    flight.queue.push(msg);
+    return true;
   }
 
   function stop() {
@@ -570,6 +807,7 @@ ${m.memo}` } : m)), st.contextMax, (sys ? sys.length : 0) + toolChars + Math.min
 
   return {
     send,
+    append,
     stop,
     announce,
     get busy() { return current !== null; },

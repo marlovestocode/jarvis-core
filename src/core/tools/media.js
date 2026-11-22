@@ -30,6 +30,14 @@ const MEDIA_ACTION = { pause: 'pause', stop: 'stop', play: 'play', resume: 'play
 const MEDIA_MISTAKES = [{ match: /^(?:ytm|ytmusic|youtube_music|music|media|player|chrome)_(pause|stop|play|resume|next|skip|previous|prev)$/, args: m => ({ action: MEDIA_ACTION[m[1]] }) }];
 const MEDIA_CONTROL_HINT = 'media_control: play, pause, stop, skip, previous, seek, volume, mute, shuffle, repeat on the right player; it confirms the result.';   // one guidance line for both variants of the tool
 
+function mediaExpect(a = {}) {
+  if (a.action === 'pause') return { contains: 'Paused:' };
+  if (a.action === 'mute') return { contains: 'muted' };
+  if (a.action === 'shuffle') return { contains: `Shuffle ${a.on === false ? 'off' : 'on'}` };
+  if (a.action === 'repeat') return { contains: `Repeat ${a.mode || 'track'}` };
+  return null;
+}
+
 function createMediaTool({ fetch = globalThis.fetch, timeoutMs = 3000, service } = {}) {
   if (!service) {
     return {
@@ -44,9 +52,12 @@ function createMediaTool({ fetch = globalThis.fetch, timeoutMs = 3000, service }
   }
   return {
     name: 'media_control',
+    examples: ['pause resume skip next previous track', 'volume louder quieter mute', 'go back to the previous song', 'play pause the music'],   // natural action words the tool ranker matches requests against
+    // only actions whose effect media_status shows are verified; the rest return null (nothing checkable)
+    verify: { tool: 'media_status', args: () => ({}), expect: mediaExpect },
     hint: MEDIA_CONTROL_HINT,
     mistakes: MEDIA_MISTAKES,
-    description: 'Control what is playing on this PC and confirm it worked. Actions: play, pause, toggle, stop, next, prev, seek (to or by seconds), volume (set 0-100 or by -100..100 percent points; system volume unless app is given), mute, unmute, shuffle (on), repeat (mode none|track|list), queue (not supported by Windows; returns why). app targets one player, e.g. "Spotify" or "Chrome".',
+    description: 'Control what is playing on this PC and confirm it worked. Actions: play, pause, toggle, stop, next, prev, seek (to or by seconds), volume (set 0-100 or by -100..100 percent points; system volume unless app is given), mute, unmute, shuffle (on), repeat (mode none|track|list). The queue is NOT here: use youtube_music up_next. A per-app volume ("chrome to 100%") is action volume with app and set. app targets one player, e.g. "Spotify" or "Chrome".',
     params: {
       type: 'object',
       properties: {
@@ -65,6 +76,7 @@ function createMediaTool({ fetch = globalThis.fetch, timeoutMs = 3000, service }
       const cmd = { action: a.action };
       if (a.action === 'playpause') cmd.action = 'toggle';
       if (a.action === 'volup' || a.action === 'voldown') { cmd.action = 'volume'; cmd.by = a.action === 'volup' ? 0.1 : -0.1; }
+      if (cmd.action === 'queue') throw new Error('media_control cannot read or change the queue. Call the youtube_music tool instead: action up_next (count = how many songs, up to 25) reads the queue with lengths and a total; clear_queue, add_to_queue and play_next change it.');
       if (!CONTROLS.includes(cmd.action)) throw new Error(`Unknown media action "${a.action}"`);
       if (a.app) cmd.app = a.app;
       if (cmd.action === 'seek') { if (Number.isFinite(a.to)) cmd.to = a.to; else if (Number.isFinite(a.by)) cmd.by = a.by; else throw new Error('seek needs to or by'); }
@@ -88,6 +100,7 @@ function createMediaTool({ fetch = globalThis.fetch, timeoutMs = 3000, service }
 function createMediaStatusTool({ service }) {
   return {
     name: 'media_status',
+    volatile: true,   // what is playing changes every few seconds
     examples: ['what song is playing right now','who sings this track','is anything playing','current track artist'],   // wording the ranker matches requests against (skills/rank.js)
     hint: 'media_status: what is playing now, where, position, volume. Read it before answering about media.',
     description: 'What is playing on this PC right now: title, artist, album or show, app, playing/paused, position and duration, shuffle/repeat, system and app volume. Windows does not expose the queue.',
@@ -110,10 +123,13 @@ function createYtMusicTool({ ytm }) {
   const norm = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   const isSecret = x => secrets.some(p => norm(p.title) === norm(x?.title));
   const keep = it => { if (it && !isSecret(it)) secrets.push({ title: it.title, artist: it.artists?.length ? it.artists.join(', ') : it.artist || '' }); };
+  // queue lengths arrive as 'm:ss' or 'h:mm:ss' strings (sometimes ''); unparseable ones are left out of the total
+  const durSec = s => { const m = /^(\d+):([0-5]?\d)(?::([0-5]?\d))?$/.exec(String(s || '').trim()); return m ? (m[3] !== undefined ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : Number(m[1]) * 60 + Number(m[2])) : null; };
+  const fmtDur = t => { const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`; };
   return {
     name: 'youtube_music',
     examples: ['play some artist or song or genre','put on music','queue a track'],   // wording the ranker matches requests against (skills/rank.js)
-    hint: 'youtube_music: play any song, album, playlist or artist by name NOW (action play; "skip to X" and "play X now" mean play), play_next / add_to_queue only queue it, up next, clear queue, like. Say "playing" only when the result says Playing; for a queued song say it is queued. secret=true hides titles for a surprise (see Secret picks). For "play a random song by X" use action play_random with query X. For "queue 5 random songs by X" use action queue_random with query X and count 5, one call; never refuse it.',
+    hint: 'youtube_music: play any song, album, playlist or artist by name NOW (action play; "skip to X" and "play X now" mean play), play_next / add_to_queue only queue it, up next, clear queue, like. Say "playing" only when the result says Playing; for a queued song say it is queued. secret=true hides titles for a surprise (see Secret picks). For "play a random song by X" use action play_random with query X. For "queue 5 random songs by X" use action queue_random with query X and count 5, one call; never refuse it. up_next shows each song\'s length and the queue total; count sets how many (default 5, max 25).',
     description: 'YouTube Music in Chrome: play a song, album, playlist or artist by name right now (action play; also for "skip to <song>"); play_next and add_to_queue only QUEUE it and do not start it; read what is up next; clear the queue; like or dislike the current song. query is what to search, e.g. "bohemian rhapsody by queen", "album american idiot", "some lofi". play_random plays one random song by the artist in query ("play a random song by X"); queue_random queues `count` random songs by the artist in query ("queue 5 random songs by X"). secret=true when the user wants to be surprised: the titles are then hidden from the result and remembered; play_secret (index 1, 2, ...) plays one of them, reveal_secret tells the user which they were.',
     timeoutMs: 40000,
     params: {
@@ -123,7 +139,7 @@ function createYtMusicTool({ ytm }) {
         query: { type: 'string', description: 'for play / play_next / add_to_queue' },
         secret: { type: 'boolean', description: 'true to hide the title from the result and remember it as a secret pick' },
         index: { type: 'number', description: 'for play_secret: which secret pick, 1 is the first' },
-        count: { type: 'number', description: 'for queue_random: how many songs (default 5, at most 10)' },
+        count: { type: 'number', description: 'for queue_random (default 5, max 10) or up_next (default 5, max 25): how many songs' },
       },
       required: ['action'],
       additionalProperties: false,
@@ -141,7 +157,9 @@ function createYtMusicTool({ ytm }) {
         const r = await ytm.queueRandom(query, count, 'end');
         if (!r.ok) throw new Error(r.message);
         if (secret) { for (const it of r.added) keep(it); return `Added ${r.added.length} secret picks to the end of the queue (verified)${r.failed ? `, ${r.failed} could not be queued` : ''}. The titles stay hidden.`; }
-        return `Added ${r.added.length} random songs to the end of the queue (verified): ${r.added.map(it => named(it)).join('; ')}${r.failed ? `. ${r.failed} could not be queued` : ''}.`;
+        const asked = Math.max(1, Math.min(10, Math.round(Number(count)) || 5));
+        const short = r.added.length < asked ? ` Only ${r.added.length} of the ${asked} asked for could be added; say so.` : '';
+        return `Added ${r.added.length}${r.added.length < asked ? ` of ${asked}` : ''} random songs to the end of the queue (verified): ${r.added.map(it => named(it)).join('; ')}${r.failed ? `. ${r.failed} could not be queued` : ''}.${short}`;
       }
       if (action === 'play_secret') {
         const n = Math.round(Number(index) || 1);
@@ -170,10 +188,15 @@ function createYtMusicTool({ ytm }) {
         return r.started ? `Queue was empty, so ${named(r.item)} is playing.` : `${action === 'play_next' ? 'Queued to play next' : 'Added to the end of the queue'}, NOT playing yet: ${named(r.item)} (verified). That is what was asked: do not call play, just tell the user it is queued.`;
       }
       if (action === 'up_next') {
-        const q = await ytm.upNext(5);
+        const n = Math.max(1, Math.min(25, Math.round(Number(count) || 5)));
+        const q = await ytm.upNext(n);
         if (q.none) return 'No YouTube Music tab is open.';
-        const shown = x => (isSecret(x) ? 'a secret pick' : `"${x.title}"${x.artist ? ' by ' + x.artist : ''}`);
-        return q.next.length ? 'Up next: ' + q.next.map(shown).join('; ') + (q.repeat && q.repeat !== 'NONE' ? `. Repeat ${q.repeat}.` : '.') : 'Nothing is queued after this song.';
+        const shown = x => (isSecret(x) ? 'a secret pick' : `"${x.title}"${x.artist ? ' by ' + x.artist : ''}${durSec(x.duration) != null ? ` (${x.duration})` : ''}`);
+        const secs = q.next.map(x => durSec(x.duration)).filter(v => v != null);
+        const missing = q.next.length - secs.length;
+        const total = secs.length ? ` Total ${fmtDur(secs.reduce((a, b) => a + b, 0))}${missing ? ` (${missing} without a length)` : ''}.` : '';
+        const repeat = q.repeat && q.repeat !== 'NONE' ? ` Repeat ${q.repeat}.` : '';
+        return q.next.length ? 'Up next: ' + q.next.map(shown).join('; ') + '.' + total + repeat : 'Nothing is queued after this song.';
       }
       if (action === 'clear_queue') { const r = await ytm.clear(); secrets.length = 0; return `Removed ${r.removed} songs after the current one.`; }
       if (action === 'like' || action === 'dislike') { const r = await ytm.like(action === 'like' ? 'LIKE' : 'DISLIKE'); return `Song is now ${r.value.toLowerCase()}d.`; }

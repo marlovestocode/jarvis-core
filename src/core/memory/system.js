@@ -120,6 +120,8 @@ function createMemorySystem({
     cortex, memory, chats, block, extractor, scheduler, ready,
     profile: ({ brief = false } = {}) => block.profile({ brief }),
     about: topic => aboutText(cortex, topic),
+    // the live embedder for callers outside the cortex (tool discovery); rejects when there is none so they fall back to lexical
+    embed: async (texts, opts) => { if (!ref.embedder) throw new Error('no embedder'); return ref.embedder.embed(texts, opts); },
     embedderStatus, installEmbedder, tick, start, close, check, onChatRemoved,
     stats: () => { const s = ref.c.stats(); return { nodes: s.nodes, edges: s.edges, vectors: s.vectors, bytes: s.bytes, matrixBytes: s.matrixBytes, queue: s.queue }; },
     trim: () => ref.c.trim(),

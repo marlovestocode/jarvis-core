@@ -24,6 +24,10 @@ const DEFAULTS = Object.freeze({
   endSilenceMs: 700,                   // quiet that ends a spoken turn; 550 passes the corpus pause set with Silero (Phase 4)
   continuationGuard: false,            // a turn ending on "and"/"the"/... listens 1.5 s more before answering (Phase 4)
   speakerGate: true,                   // once a voice is enrolled, only that voice wakes JARVIS by "Jarvis" (the hotkey always works)
+  speakerMode: 'guest',                // gate on: 'guest' = an unrecognised voice still gets answers (no personal data or actions), 'block' = it is ignored
+  speakerGuestBelow: 0.30,             // a score under this is a guest; between this and speakerThreshold is unsure (config.json only)
+  speakerLearn: true,                  // an owner-matched utterance refines the voice profile
+  speakerLearnAbove: 0.60,             // only a match at least this strong is learned from (config.json only)
   speakerThreshold: 0.45,              // cosine match needed (same voice ~0.8-0.9, another voice ~0.1-0.3)
   micDeviceId: null,
   voiceRate: 1.0,
@@ -31,7 +35,7 @@ const DEFAULTS = Object.freeze({
   constrainTools: true,                // repair a tool call that names no tool or has bad arguments with a schema-constrained decode (tools/constrain.js)
   port: 47801,
   // knowledge & live data (spec 2026-11-10-knowledge §3): allowlisted lookups only
-  online: Object.freeze({ enabled: true, weather: true, news: true, sports: true, wiki: true, web: true, lyrics: true }),
+  online: Object.freeze({ enabled: true, weather: true, news: true, sports: true, wiki: true, web: true, lyrics: true, finance: true, broker: false }),   // broker: Alpaca paper (StockMan, D23) is OFF until you switch it on
   // who the user is: JARVIS addresses them by name and treats this as known (settings or "call me ...")
   user: Object.freeze({ name: '', about: '' }),
   location: Object.freeze({ city: 'Abilene, TX', lat: 32.4487, lon: -99.7331, country: 'US', units: 'F' }),
@@ -63,15 +67,19 @@ const DEFAULTS = Object.freeze({
   // wallpaperLabels: the wallpaper may ask for a few words per memory node it shows (strict local route, see core/bridge.js)
   cortex: Object.freeze({ embedModel: 'nomic-embed-text', wallpaperLabels: true }),
   // how he talks (core/voice/dialect.js): the dialect names his word choice and register, the rest tunes the spoken text
-  speech: Object.freeze({ dialect: 'british-formal', contractions: true, pauses: true, dateOrder: 'mdy' }),
+  speech: Object.freeze({ dialect: 'human-jarvis', contractions: true, pauses: true, dateOrder: 'mdy', speakChatReplies: false }),   // speakChatReplies: also say the answer to a typed message out loud
   // the offline library (Kiwix/ZIM store): an absolute folder, default where scripts/install-library.ps1 puts it
   library: Object.freeze({ dir: 'C:\\JarvisData\\library' }),
   // live state: windowTitle puts the title of the window in front into the live picture (it can hold private text; never sent on any stream or into the prompt)
   livestate: Object.freeze({ windowTitle: false }),
+  // screen vision: the small local vision model that reads the screen on request (scripts/Modelfile.jarvis-vision); it leaves VRAM after keepAlive so the main model keeps the GPU
+  vision: Object.freeze({ model: 'jarvis-vision', keepAlive: '1m', maxEdge: 1280, maxTokens: 400 }),
+  // morning brief (core/brief): auto = offer it on the first wake of the day; lastDate = local day it last ran ('YYYY-MM-DD' or '')
+  brief: Object.freeze({ auto: true, onFirstWake: true, newsCount: 3, lastDate: '' }),
 });
 
 const VADS = ['silero', 'energy'];
-const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive', 'pc', 'browser', 'memory', 'cortex', 'speech', 'library', 'livestate'];
+const NESTED = ['user', 'engines', 'hotkeys', 'ollama', 'online', 'location', 'news', 'sports', 'music', 'proactive', 'pc', 'browser', 'memory', 'cortex', 'speech', 'library', 'livestate', 'vision', 'brief'];
 const MODEL_NAME = /^[\w.:-]{1,64}$/;   // an Ollama model tag, e.g. nomic-embed-text:latest
 const HHMM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;   // "22:00"
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -81,6 +89,9 @@ function okValue(key, def, v) {
   if (key === 'micDeviceId') return v === null || typeof v === 'string';
   if (key === 'vad') return VADS.includes(v);
   if (key === 'wakeInterrupt') return v === 'now' || v === 'sentence';
+  if (key === 'speakerMode') return v === 'guest' || v === 'block';
+  if (key === 'speakerGuestBelow') return typeof v === 'number' && v >= 0.1 && v <= 0.5;
+  if (key === 'speakerLearnAbove') return typeof v === 'number' && v >= 0.5 && v <= 0.95;
   if (key === 'speakerThreshold') return typeof v === 'number' && v >= 0.2 && v <= 0.9;
   if (key === 'sttPrompt') return ['v0', 'v1', 'none'].includes(v);
   if (key === 'sttModel') return typeof v === 'string' && /^[\w-][\w.-]*\.bin$/.test(v);
@@ -123,13 +134,18 @@ function merge(raw) {
         out[key].cooldownMin = clampNumber(out[key].cooldownMin, 1, 240);
         out[key].maxPerHour = clampNumber(out[key].maxPerHour, 1, 60);
       }
-      if (key === 'library' && !path.isAbsolute(out[key].dir)) out[key].dir = def.dir;   // inspectConfig reports library.dir as ignored
+      if (key === 'brief') {
+        out[key].newsCount = Math.round(clampNumber(out[key].newsCount, 1, 5));
+        if (!/^(?:|\d{4}-\d{2}-\d{2})$/.test(out[key].lastDate)) out[key].lastDate = def.lastDate;
+      }
+      if (key === 'library' &&!path.isAbsolute(out[key].dir)) out[key].dir = def.dir;   // inspectConfig reports library.dir as ignored
       if (key === 'cortex' && !MODEL_NAME.test(out[key].embedModel)) out[key].embedModel = def.embedModel;
     } else {
       out[key] = v !== undefined && okValue(key, def, v) ? v : def;
       if (key === 'endSilenceMs') out[key] = Math.round(Math.max(300, Math.min(1500, out[key])));
     }
   }
+  if (out.speakerGuestBelow >= out.speakerThreshold) out.speakerGuestBelow = DEFAULTS.speakerGuestBelow >= out.speakerThreshold ? Math.round(out.speakerThreshold * 0.5 * 1000) / 1000 : DEFAULTS.speakerGuestBelow;   // guests sit below the owner threshold
   return out;
 }
 

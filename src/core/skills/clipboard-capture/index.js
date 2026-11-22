@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const win = require('node:path').win32;
 const { matchText } = require('../../media/rank');
 const { own } = require('../util');
+const { speakerReason } = require('../../tools/speaker');
 
 const obj = (properties, required) => ({ type: 'object', properties, ...(required ? { required } : {}), additionalProperties: false });
 const MAX_READ = 4000;
@@ -44,7 +45,7 @@ function createClipboardTools({ host, capture = {} }) {
     params: obj({ text: { description: 'the text to put on the clipboard', type: 'string' } }, ['text']),
     async run({ text } = {}, ctx = {}) {
       // text from outside must not reach the clipboard on its own (the user may paste it somewhere that runs it)
-      if (!ctx.turn || ctx.turn.tainted) throw new Error("I won't write the clipboard from text I read. Tell me the text directly.");
+      if (!ctx.turn || ctx.turn.tainted) throw new Error(speakerReason(ctx.turn) || "I won't write the clipboard from text I read. Tell me the text directly.");
       if (typeof text !== 'string' || !text) throw new Error('What should I copy?');
       if (text.length > MAX_WRITE) throw new Error(`That is ${text.length} characters; I copy at most ${MAX_WRITE}`);
       await host.clipboardWrite(text);

@@ -9,12 +9,13 @@ const TYPES = Object.freeze({
   by: { halfLife: 365, fanOut: 5 }, contains: { halfLife: 365, fanOut: 50 }, next: { halfLife: 90, fanOut: 10 },
   similar: { halfLife: 120, fanOut: 5 }, same_as: { halfLife: 3650, fanOut: 5 }, supersedes: { halfLife: 3650, fanOut: 2 },
   contradicts: { halfLife: 3650, fanOut: 5 }, touched: { halfLife: 30, fanOut: 20 }, about: { halfLife: 180, fanOut: 20 },
+  traded: { halfLife: 180, fanOut: 20 },   // strategy → instrument, from closed StockMan paper trades (vault D30)
 });
 const STRUCTURAL = new Set(['supersedes', 'contradicts', 'same_as']);   // facts about records, not associations: never weakened
 // How much of its activation an edge type passes on during recall. Edges the user or the structure of the data states
 // (part_of, by, contains) pass it whole; inferred or behavioural ones (touched, next) pass little; bookkeeping about records
 // (supersedes, contradicts, same_as) passes none, so a replaced or disputed node never pulls its counterpart into a result.
-const PROPAGATE = Object.freeze({ part_of: 1, by: 1, contains: 0.8, about: 0.8, similar: 0.8, from: 0.7, mentions: 1, next: 0.6, touched: 0.4, same_as: 0, supersedes: 0, contradicts: 0 });
+const PROPAGATE = Object.freeze({ part_of: 1, by: 1, contains: 0.8, about: 0.8, similar: 0.8, from: 0.7, mentions: 1, next: 0.6, touched: 0.4, traded: 0.4, same_as: 0, supersedes: 0, contradicts: 0 });
 // A "mentions"-style edge points from the specific thing to the general one (fact → entity). Walking it backwards (an entity to
 // everything that ever mentioned it) fans out into unrelated records, so that direction passes less.
 const REVERSE = Object.freeze({ mentions: 0.8, about: 0.8, touched: 0.5, from: 0.8 });
@@ -107,6 +108,17 @@ function createEdges(db, { now = Date.now } = {}) {
     });
   }
 
+  // one edge loses weight (a losing StockMan paper trade weakens only its own strategy → instrument edge, vault D30)
+  function weakenEdge(src, dst, type, factor = 0.6) {
+    checkType(type);
+    if (STRUCTURAL.has(type)) return false;
+    const t = now();
+    const cur = db.stmt('SELECT weight, last_used FROM edge WHERE src = ? AND dst = ? AND type = ?').get(src, dst, type);
+    if (!cur) return false;
+    db.stmt('UPDATE edge SET weight = ?, last_used = ? WHERE src = ? AND dst = ? AND type = ?').run(clamp(effective(cur.weight, cur.last_used, type, t) * factor), t, src, dst, type);
+    return true;
+  }
+
   // delete edges whose effective weight fell under the floor; works through `limit` source nodes per call
   function prune({ floor = FLOOR, fromSrc = 0, limit = 1e9 } = {}) {
     const t = now();
@@ -121,7 +133,7 @@ function createEdges(db, { now = Date.now } = {}) {
     return { removed, nextSrc: srcs.length > limit ? srcs[limit] : null };
   }
 
-  return { link, unlink, neighbors, strengthen, weaken, prune, around };
+  return { link, unlink, neighbors, strengthen, weaken, weakenEdge, prune, around };
 }
 
 module.exports = { createEdges, effective, TYPES, STRUCTURAL, PROPAGATE, REVERSE, ETA_LINK, ETA_USE, FLOOR };

@@ -123,3 +123,45 @@ test('applyPatch: library.dir must be an absolute path', () => {
   assert.equal(bad.config.library.dir, DEFAULTS.library.dir);
   assert.ok(bad.errors.some(e => /library/i.test(e)));
 });
+
+test('applyPatch: speakerMode accepts guest/block, refuses the rest', () => {
+  const providers = { get: () => null };
+  const ok = applyPatch(DEFAULTS, { speakerMode: 'block' }, { providers, engines: {} });
+  assert.equal(ok.config.speakerMode, 'block');
+  assert.deepEqual(ok.errors, []);
+  const bad = applyPatch(DEFAULTS, { speakerMode: 'open' }, { providers, engines: {} });
+  assert.equal(bad.config.speakerMode, DEFAULTS.speakerMode);
+  assert.ok(bad.errors.some(e => /speaker mode/i.test(e)));
+});
+
+test('applyPatch: speakerLearn is a boolean, anything else refused', () => {
+  const providers = { get: () => null };
+  const ok = applyPatch(DEFAULTS, { speakerLearn: false }, { providers, engines: {} });
+  assert.equal(ok.config.speakerLearn, false);
+  assert.deepEqual(ok.errors, []);
+  const bad = applyPatch(DEFAULTS, { speakerLearn: 'no' }, { providers, engines: {} });
+  assert.equal(bad.config.speakerLearn, DEFAULTS.speakerLearn);
+  assert.ok(bad.errors.some(e => /learn/i.test(e)));
+});
+
+test('applyPatch: speaker thresholds are config.json only', () => {
+  const providers = { get: () => null };
+  const r = applyPatch(DEFAULTS, { speakerGuestBelow: 0.2, speakerLearnAbove: 0.8 }, { providers, engines: {} });
+  assert.equal(r.config.speakerGuestBelow, DEFAULTS.speakerGuestBelow);
+  assert.equal(r.config.speakerLearnAbove, DEFAULTS.speakerLearnAbove);
+});
+
+test('applyPatch: brief switches and news count, lastDate is not settable, the old config is not mutated', () => {
+  const { providers, engines } = regs();
+  const cfg = { ...DEFAULTS, brief: { ...DEFAULTS.brief } };
+  const { config, errors } = applyPatch(cfg, { brief: { auto: false, onFirstWake: false, newsCount: 9, lastDate: '2020-01-01' } }, { providers, engines });
+  assert.deepEqual(errors, []);
+  assert.equal(config.brief.auto, false);
+  assert.equal(config.brief.onFirstWake, false);
+  assert.equal(config.brief.newsCount, 5);
+  assert.equal(config.brief.lastDate, '');
+  assert.equal(cfg.brief.auto, true);
+  const bad = applyPatch(cfg, { brief: { auto: 'yes' } }, { providers, engines });
+  assert.equal(bad.errors.length, 1);
+  assert.equal(bad.config.brief.auto, true);
+});

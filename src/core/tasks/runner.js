@@ -5,8 +5,9 @@
 const { validatePlan, resolveRefs, check } = require('./plan');
 const { NEEDS_OK } = require('../brain/guard');
 const { isReadOnly } = require('./effects');
+const { speakerReason } = require('../tools/speaker');
 
-const NO_RETRY = /not running|not in Ollama|not allowed|must be local|timed out|aborted/i;
+const { NO_RETRY } = require('../tools/recover');
 const LINE_CAP = 160;
 const MAX_REPLANS = 2;
 const FINISHED = ['done', 'cancelled', 'failed'];
@@ -51,7 +52,7 @@ function reportFailed(task, step, why) {
   return `${head}\n${lines}\nUse task_control with action replan to fix the remaining steps, or cancel to drop the task.`;
 }
 
-function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirmPending = () => null, onCancel = null, now = Date.now, log = () => {}, retryDelayMs = 0 }) {
+function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirmPending = () => null, onCancel = null, now = Date.now, log = () => {}, retryDelayMs = 0, canRetry = null }) {
   const emit = (type, payload) => { try { bus?.emit(type, payload); } catch { /* observers must not break a run */ } };
   const toolId = (task, step) => `${task.id}:${step.id}`;
 
@@ -70,7 +71,7 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
     while (step.attempts < 2) {
       step.attempts++;
       try { result = await tools.run(step.tool, args, ctx); } catch (err) { result = { ok: false, text: String(err?.message || err) }; }
-      if (result?.ok || NO_RETRY.test(String(result?.text ?? '')) || signal?.aborted || step.attempts >= 2) break;
+      if (result?.ok || (canRetry && !canRetry(step.tool)) || NO_RETRY.test(String(result?.text ?? '')) || signal?.aborted || step.attempts >= 2) break;
       await sleep(retryDelayMs);
     }
     return result || { ok: false, text: 'tool returned nothing' };
@@ -105,7 +106,7 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
         return { ok: false, text: err || `Task ${task.id} ${task.status} before ${step.id}. ${describe(task)}`, task };
       }
       // Results read so far may carry untrusted text into this step's args: no confirm tool from them.
-      if ((turn?.tainted || task.tainted) && riskOf(step.tool) === 'confirm') return fail(task, step, `${step.tool} needs the user's OK, and this task read untrusted content. Do that action directly with the user instead`);
+      if ((turn?.tainted || task.tainted) && riskOf(step.tool) === 'confirm') return fail(task, step, turn?.tainted && speakerReason(turn) ? `${step.tool}: ${speakerReason(turn)}` : `${step.tool} needs the user's OK, and this task read untrusted content. Do that action directly with the user instead`);
       const refs = resolveRefs(step.args, doneResults(task));
       if (!refs.ok) return fail(task, step, refs.text);
 
@@ -166,7 +167,7 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
     return t;
   }
 
-  const validate = (steps, turn) => validatePlan(steps, { resolves: n => tools.resolves(n), riskOf, tainted: !!turn?.tainted });
+  const validate = (steps, turn) => validatePlan(steps, { resolves: n => tools.resolves(n), riskOf, tainted: !!turn?.tainted, speaker: turn?.speaker });
 
   // An awaiting_confirm task stays so only while confirm still holds its step's action; otherwise
   // the question was answered elsewhere, timed out or dropped, and the task is paused.
@@ -203,6 +204,12 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
       task = store.create({ title: String(title || 'Untitled task').slice(0, 120), steps: plan.steps, origin: { source: turn?.source ?? null, ...(sessionId ? { sessionId } : {}) } });
     } catch (err) {
       return { ok: false, text: String(err?.message || err) };
+    }
+    // planned in a tainted turn (outside text, or a guest or unsure voice): the task keeps the taint when the owner resumes it later
+    if (turn?.tainted) {
+      task.tainted = true;
+      const err = persist(task);
+      if (err) return { ok: false, text: err, task };
     }
     return execute(task, { turn, signal });
   }
@@ -260,6 +267,7 @@ function createTaskRunner({ store, tools, bus, riskOf = () => undefined, confirm
     if (risky) return { ok: false, text: `Step ${risky.id} uses "${risky.tool}", which needs the user's OK, and this task read untrusted content. Do that action directly with the user instead.` };
     task.steps = [...kept, ...plan.steps.slice(k)];
     task.replans = (task.replans || 0) + 1;
+    if (turn.tainted) task.tainted = true;   // new steps from a tainted turn: the task stays tainted (saved by the run)
     return execute(task, { turn, signal });
   }
 

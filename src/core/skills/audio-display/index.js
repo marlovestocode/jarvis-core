@@ -22,14 +22,14 @@ function createAudioDisplayTools({ host }) {
   const audioOutputSet = {
     name: 'audio_output_set', risk: 'safe',
     hint: 'audio_output_set: see audio_devices.',
-    description: 'Switch the default sound output device by name, e.g. "headphones" or "speakers".',
+    description: 'Switch the default sound output DEVICE by name, e.g. "headphones" or "speakers". Never for volume and never for an app: "chrome to 100%" is media_control volume with app.',
     params: obj({ name: { description: 'device name or a word from it, e.g. "headphones"', type: 'string' } }, ['name']),
     async run({ name } = {}) {
       const q = String(name || '').trim();
       if (!q) throw new Error('Which output device?');
       const ds = await host.audioDevices();
       const scored = ds.map(d => ({ d, s: norm(d.name) === norm(q) ? 1 : matchText(q, d.name) })).filter(x => x.s >= 0.5).sort((a, b) => b.s - a.s);
-      if (!scored.length) throw new Error(`No sound output matches "${q}". Outputs: ${ds.map(d => d.name).join('; ') || 'none'}.`);
+      if (!scored.length) throw new Error(`No sound output matches "${q}". Outputs: ${ds.map(d => d.name).join('; ') || 'none'}. If "${q}" is an app (Chrome, Spotify), this is the wrong tool: change an app's volume with media_control, action volume, app "${q}", set 0-100.`);
       const close = scored.filter(x => x.s >= scored[0].s - 0.05);
       if (close.length > 1 && scored[0].s < 1) throw new Error(`Which one: ${listWords(close.map(x => x.d.name))}?`);
       const target = scored[0].d;

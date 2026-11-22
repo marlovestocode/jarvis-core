@@ -200,3 +200,8 @@ test('review #2: a question lost to a stopped turn is dropped, so a later yes do
   await orc.send(s.id, 'yes', { source: 'voice' });
   assert.deepEqual(ran, []);
 });
+
+test('guard: isYes accepts a natural short yes with no negation or change of plan', () => {
+  for (const t of ['yes, shut it down', 'Yeah go ahead and do it', 'Jarvis, yes please do that', 'sure, go for it', 'yes shut it down now.']) assert.equal(isYes(t), true, t);
+  for (const t of ['yes but not that one', "yes, don't do it", 'yes however cancel it', 'yes shut it down and then restart the whole machine', 'yes move it instead', 'yes wait', 'no yes', 'yesterday I shut it down', 'the answer is yes']) assert.equal(isYes(t), false, t);
+});

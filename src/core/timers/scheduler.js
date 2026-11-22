@@ -1,6 +1,7 @@
 // One setTimeout to the next due timer, re-armed on add/cancel. Fired items leave the store first,
 // then `timer { id, label, kind, due, missed }` goes on the bus (speaking is the proactive engine's job).
 // start() on boot: items already past due fire once with missed:true, the rest are armed.
+const { nextDue } = require('./recur');
 const MAX_DELAY = 2 ** 31 - 1;   // setTimeout limit; longer waits are re-armed in chunks
 const LATE_MS = 60e3;            // fired this late (PC asleep) → said as missed, not "it's 7:00"
 
@@ -21,6 +22,11 @@ function createScheduler({ store, bus, now = Date.now, setTimer = setTimeout, cl
     for (const t of store.list().filter(x => x.due <= now()).sort((a, b) => a.due - b.due)) {
       try { store.remove(t.id); } catch (err) { log(`timer ${t.id} could not be removed: ${err.message}`); }
       emit(t, missed || now() - t.due > LATE_MS);
+      // a repeating one is put back for its next occurrence, counted from now: a PC that was off fires it once, not once per missed day
+      if (t.repeat) {
+        const due = nextDue(t.repeat, now());
+        if (due) { try { store.add({ kind: t.kind, label: t.label, due, created: now(), repeat: t.repeat }); } catch (err) { log(`repeat of ${t.id} could not be saved: ${err.message}`); } }
+      }
       n++;
     }
     return n;
@@ -42,8 +48,8 @@ function createScheduler({ store, bus, now = Date.now, setTimer = setTimeout, cl
     return { fired, armed: store.list().length };
   }
 
-  function add({ kind, label = '', due }) {
-    const t = store.add({ kind, label: String(label || '').trim(), due, created: now() });
+  function add({ kind, label = '', due, repeat }) {
+    const t = store.add({ kind, label: String(label || '').trim(), due, created: now(), ...(repeat ? { repeat } : {}) });
     arm();
     return t;
   }

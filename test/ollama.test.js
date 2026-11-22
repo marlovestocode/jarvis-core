@@ -345,3 +345,12 @@ test('ollama chat: a model that can think gets the think flag and an untouched s
   assert.equal(body.messages[0].content, 'You are JARVIS.');
   assert.equal(body.think, true);
 });
+
+test('ollama: the not-running wait doubles with each consecutive failure, up to 30 s', async () => {
+  let calls = 0, t = 1000000;
+  const p = createOllamaProvider({ getConfig, now: () => t, fetch: async () => { calls++; throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }); }, retryBaseMs: 1 });
+  await p.status(); const c1 = calls;          // failure 1: remembered 3 s
+  t += 3100; await p.status(); const c2 = calls; assert.ok(c2 > c1, 'rechecked after 3 s');   // failure 2: remembered 6 s
+  t += 3100; await p.status(); assert.equal(calls, c2, 'still inside the 6 s wait');
+  t += 3100; await p.status(); assert.ok(calls > c2, 'rechecked after 6 s');
+});

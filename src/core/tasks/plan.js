@@ -1,6 +1,7 @@
 'use strict';
 // Pure plan logic for the persistent task runner: validation, whole-value reference resolution, expect checks.
 const { softFail } = require('../brain/guard');
+const { speakerReason } = require('../tools/speaker');
 
 const MAX_STEPS = 12;
 const EXPECT_KEYS = ['nonEmpty', 'contains', 'matches'];
@@ -20,7 +21,8 @@ function parseRegex(src) {
   return m ? new RegExp(m[1], m[2]) : null;
 }
 
-function validatePlan(steps, { resolves, riskOf, tainted } = {}) {
+// speaker: turn.speaker of a speaker-tainted turn ('unsure' | 'guest'): the refusal says that instead of "untrusted content"
+function validatePlan(steps, { resolves, riskOf, tainted, speaker } = {}) {
   if (!Array.isArray(steps) || !steps.length) return { ok: false, text: 'Plan needs at least one step: [{ tool, args?, expect? }].' };
   if (steps.length > MAX_STEPS) return { ok: false, text: `Plan has ${steps.length} steps; the limit is ${MAX_STEPS}. Split it into smaller tasks.` };
   const out = [];
@@ -30,7 +32,10 @@ function validatePlan(steps, { resolves, riskOf, tainted } = {}) {
     if (!s || typeof s !== 'object' || typeof s.tool !== 'string' || !s.tool) return { ok: false, text: `Step ${id} needs a "tool" name.` };
     if (TASK_TOOLS.has(s.tool)) return { ok: false, text: `Step ${id} uses "${s.tool}": a task cannot start or control another task. Put the steps in this plan instead.` };
     if (!resolves(s.tool)) return { ok: false, text: `Step ${id} uses unknown tool "${s.tool}". Use only tools you have.` };
-    if (tainted && riskOf(s.tool) === 'confirm') return { ok: false, text: `Step ${id} uses "${s.tool}", which needs the user's OK, and this plan was influenced by untrusted content. Do that action directly with the user instead.` };
+    if (tainted && riskOf(s.tool) === 'confirm') {
+      const why = speakerReason({ speaker });
+      return { ok: false, text: why ? `Step ${id} uses "${s.tool}": ${why}` : `Step ${id} uses "${s.tool}", which needs the user's OK, and this plan was influenced by untrusted content. Do that action directly with the user instead.` };
+    }
     if (s.args != null && (typeof s.args !== 'object' || Array.isArray(s.args))) return { ok: false, text: `Step ${id} args must be an object.` };
     const args = s.args ?? {};
     let refErr = null;

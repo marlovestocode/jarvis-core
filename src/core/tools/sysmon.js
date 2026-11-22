@@ -23,9 +23,29 @@ function summarize(s) {
   return parts.join('; ') + '.';
 }
 
+// process_top: the heaviest apps on this PC right now, from the PC host (grouped by app name)
+function createProcessTopTool({ host }) {
+  const gb = mb => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`);
+  const clock = s => (s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.floor(s % 3600 / 60)} min` : s >= 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`);
+  return {
+    name: 'process_top', risk: 'safe', effect: 'read', volatile: true,
+    examples: ['which apps use the most ram', 'what is using all my memory', 'heaviest tasks running', 'top processes'],
+    hint: 'process_top: the apps using the most memory (by memory) or CPU time (by cpu), grouped by app. For total RAM or CPU load use get_system_stats.',
+    description: 'List the apps using the most memory or CPU time right now (grouped by app name). by: memory (default) or cpu (total CPU time used so far, not a live percent). count: 1 to 25, default 5.',
+    params: { type: 'object', properties: { by: { description: 'memory or cpu', type: 'string', enum: ['memory', 'cpu'] }, count: { description: 'how many apps, 1 to 25 (default 5)', type: 'integer', minimum: 1, maximum: 25 } }, additionalProperties: false },
+    async run({ by = 'memory', count = 5 } = {}) {
+      const rows = await host.processTop(by, count);
+      if (!rows.length) return 'I could not read the running apps.';
+      const line = (p, i) => `${i + 1}. ${p.name}${p.count > 1 ? ` (${p.count} processes)` : ''}: ${by === 'cpu' ? `${clock(p.cpuSec)} of CPU time` : gb(p.memMB)}`;
+      return `Top ${rows.length} by ${by === 'cpu' ? 'CPU time used so far' : 'memory'}: ${rows.map(line).join('; ')}.`;
+    },
+  };
+}
+
 function createSysmonTool({ fetch = globalThis.fetch, timeoutMs = 3000 } = {}) {
   return {
     name: 'get_system_stats',
+    volatile: true,
     examples: ['how hot is my graphics card','cpu gpu ram usage load','computer performance temperature'],   // wording the ranker matches requests against (skills/rank.js)
     hint: 'get_system_stats: live CPU/GPU load, temperatures, memory in use, VRAM, network, disk. Use it for any "how much memory/CPU/GPU is used" question, including JARVIS own use.',
     description: 'Get current PC stats from the local system monitor: CPU, GPU, RAM, network, disk.',
@@ -45,4 +65,4 @@ function createSysmonTool({ fetch = globalThis.fetch, timeoutMs = 3000 } = {}) {
   };
 }
 
-module.exports = { createSysmonTool, summarize, SYSMON };
+module.exports = { createProcessTopTool, createSysmonTool, summarize, SYSMON };

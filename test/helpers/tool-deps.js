@@ -9,6 +9,7 @@ const { createScheduler } = require('../../src/core/timers/scheduler');
 const { createConfirm } = require('../../src/core/pc/confirm');
 const { createActionLog } = require('../../src/core/pc/actions-log');
 const { createFakePcHost } = require('./fake-pc-host');
+const { createTokens } = require('../../src/core/routines/close-tool');
 
 function toolDeps() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jtd-'));
@@ -19,7 +20,7 @@ function toolDeps() {
   const browserLink = { connected: false, request: async () => { throw new Error('no extension in tests'); } };
   const analytics = { metrics: { summary: () => 'ok', query: () => ({}) }, openDashboard: async () => 'http://127.0.0.1:47801/ai/dashboard' };
   const self = { getChecks: () => [], about: () => ({ version: '0.0.0', startedAt: 0 }), logFile: path.join(dir, 'jarvis.log'), dataDir: dir };
-  return { self, analytics, browserLink, getStatus: async () => ({}), fetch: async () => ({}), fetcher: any, web: any, kiwix: any, getConfig: () => DEFAULTS, applySettings: () => [], bus: createBus(), media: any, ytm: any, lyrics: any, ytPlaylists: any, memory: any, chats: any, cortex: any, playLog: any, scheduler, pc };
+  return { self, analytics, browserLink, getStatus: async () => ({}), fetch: async () => ({}), fetcher: any, web: any, kiwix: any, getConfig: () => DEFAULTS, applySettings: () => [], bus: createBus(), media: any, ytm: any, lyrics: any, ytPlaylists: any, memory: any, chats: any, cortex: any, playLog: any, scheduler, lists: require('../../src/core/lists/store').createListStore({ file: path.join(dir, 'lists.json') }), pc, vision: { client: { describe: async () => 'a screen' } }, routines: { tokens: createTokens() }, stockman: require('../../src/core/stockman').createStockman({ env: {}, dataDir: dir, provider: require('../../src/core/stockman').createMockProvider() }) };
 }
 
 // the real tool objects for some names, as the prompt now takes them (its guidance line is the tool's own hint)

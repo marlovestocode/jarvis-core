@@ -1,4 +1,4 @@
-// Weather from Open-Meteo (current, hourly, up to 7 days, air quality) and US alerts from the NWS.
+// Weather from Open-Meteo (current, hourly, up to 16 days, air quality) and US alerts from the NWS.
 // Only coordinates go out. Results carry their source and age; cached "last known" data says so.
 const { describeAge } = require('./age');
 
@@ -8,6 +8,7 @@ const ALERTS = 'https://api.weather.gov/alerts/active';
 const TTL = 10 * 60000;
 const ALERT_TTL = 5 * 60000;
 const MAX_CHARS = 2500;
+const MAX_DAYS = 16;   // Open-Meteo's forecast limit
 
 const WMO = {
   0: 'clear', 1: 'mostly clear', 2: 'partly cloudy', 3: 'overcast', 45: 'fog', 48: 'freezing fog',
@@ -29,12 +30,12 @@ const coord = v => Number(Number(v).toFixed(4));
 
 async function getWeather(fetcher, place, { days = 2, hourly = false, units = 'F' } = {}) {
   const C = String(units).toUpperCase() === 'C';
-  const n = Math.max(1, Math.min(7, Math.round(Number(days) || 2)));
+  const n = Math.max(1, Math.min(MAX_DAYS, Math.round(Number(days) || 2)));
   const url = `${FORECAST}?latitude=${coord(place.lat)}&longitude=${coord(place.lon)}` +
     '&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,is_day' +
     '&hourly=temperature_2m,precipitation_probability,weather_code' +
     '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,uv_index_max,sunrise,sunset' +
-    `&temperature_unit=${C ? 'celsius' : 'fahrenheit'}&wind_speed_unit=${C ? 'kmh' : 'mph'}&precipitation_unit=${C ? 'mm' : 'inch'}&timezone=auto&forecast_days=7`;
+    `&temperature_unit=${C ? 'celsius' : 'fahrenheit'}&wind_speed_unit=${C ? 'kmh' : 'mph'}&precipitation_unit=${C ? 'mm' : 'inch'}&timezone=auto&forecast_days=${n}`;
   const r = await fetcher.getJson('weather', url, { ttlMs: TTL });
   const f = r.data || {};
   const c = f.current || {};
@@ -87,11 +88,17 @@ function formatWeather(w) {
 
 const SEV = { Extreme: 0, Severe: 1, Moderate: 2, Minor: 3, Unknown: 4 };
 
+// GeoJSON polygon(s) → rings of [lat, lon] (GeoJSON is lon, lat). Alerts issued for zones have no geometry: no rings.
+function ringsOf(g) {
+  const polys = g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : [];
+  return polys.map(p => p?.[0]).filter(Array.isArray).map(r => r.filter(q => Array.isArray(q) && Number.isFinite(q[0]) && Number.isFinite(q[1])).map(q => [q[1], q[0]]));
+}
+
 async function getAlerts(fetcher, place) {
   if (place.country && place.country !== 'US') throw new Error('weather alerts are only available for the US');
   const r = await fetcher.getJson('weather', `${ALERTS}?point=${coord(place.lat)},${coord(place.lon)}`, { ttlMs: ALERT_TTL, headers: { Accept: 'application/geo+json' } });
-  const alerts = (r.data?.features || []).map(x => x.properties || {}).map(p => ({
-    event: p.event || 'Alert', severity: p.severity in SEV ? p.severity : 'Unknown', headline: p.headline || '', ends: p.ends || p.expires || '',
+  const alerts = (r.data?.features || []).map(x => ({ ...(x.properties || {}), rings: ringsOf(x.geometry) })).map(p => ({
+    event: p.event || 'Alert', severity: p.severity in SEV ? p.severity : 'Unknown', headline: p.headline || '', ends: p.ends || p.expires || '', rings: p.rings,
   })).sort((a, b) => SEV[a.severity] - SEV[b.severity]);
   return { place: place.name, source: 'National Weather Service', ageMs: r.ageMs, stale: !!r.stale, alerts };
 }

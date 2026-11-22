@@ -10,7 +10,8 @@ const SECRET = /\b(?:password|passcode|passphrase|pin\s*(?:code|number)?|api[\s_
 // Per-kind text caps (plan D10). The keys are the closed set of node kinds (plan D9).
 const CAPS = { fact: 300, entity: 120, chat: 1200, knowledge: 2000, reminder: 200, track: 300, artist: 300, playlist: 300, file: 600, folder: 600 };
 const NODE_KINDS = new Set(Object.keys(CAPS));
-const EVENT_KINDS = new Set(['play', 'action', 'playlist_edit', 'tool', 'reminder_fired', 'lookup']);
+// 'trade': a closed StockMan paper trade, written by the engine's own writer outside any turn (vault D30, CL-0050)
+const EVENT_KINDS = new Set(['play', 'action', 'playlist_edit', 'tool', 'reminder_fired', 'lookup', 'trade']);
 const SOURCE_KINDS = new Set(['user', 'tool', 'import', 'wiki', 'web', 'model']);
 const MIN_TEXT = 3;
 const MAX_DATA = 4096;

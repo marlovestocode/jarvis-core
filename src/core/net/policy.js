@@ -4,8 +4,15 @@ const BASE_HOSTS = Object.freeze([
   'api.open-meteo.com', 'geocoding-api.open-meteo.com', 'air-quality-api.open-meteo.com',
   'api.weather.gov', 'en.wikipedia.org', 'site.api.espn.com',
   'lrclib.net', 'api.genius.com',   // lyrics (src/core/lyrics): LRCLIB for the text, Genius only to name a song from a line
+  'query1.finance.yahoo.com',       // finance (StockMan): unofficial chart API, delayed quotes and daily bars only
+  'api.nasdaq.com',                 // finance (StockMan): Nasdaq-100 member list (/api/quote/list-type/nasdaq100), keyless
+  // broker (StockMan, vault D23, CL-0062): Alpaca PAPER trading and market data only. There is no live-trading host here on purpose
+  // (api.alpaca.markets is NOT allowed: live money is refused, D1). Source 'broker', its own switch online.broker, OFF by default.
+  'gmail.googleapis.com', 'oauth2.googleapis.com', // email (src/core/email): Gmail API, OAuth2 token endpoint
+  'mapservices.weather.noaa.gov', // weather (src/core/weather): NOAA radar map tiles, keyless
+  'paper-api.alpaca.markets', 'data.alpaca.markets',
 ]);
-const SOURCES = ['weather', 'news', 'sports', 'wiki', 'web', 'lyrics'];
+const SOURCES = ['weather', 'news', 'sports', 'wiki', 'web', 'lyrics', 'finance', 'broker', 'email'];
 const { isIP } = require('node:net');
 
 function feedUrl(value) {

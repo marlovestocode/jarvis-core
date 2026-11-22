@@ -258,9 +258,9 @@ test('task_control status of a tainted task taints the turn: a needsClean step a
 
 test('without the tasks option the core group and a plain turn are as before', async () => {
   const plain = createGroup({});
-  assert.deepEqual(plain.tools.map(t => t.name), ['get_time', 'more_skills']);
+  assert.deepEqual(plain.tools.map(t => t.name), ['get_time', 'more_skills', 'find_tools']);
   const withTasks = createGroup({ tasks: createTaskTools({ runner: {} }) });
-  assert.deepEqual(withTasks.tools.map(t => t.name), ['get_time', 'task_run', 'task_control', 'more_skills']);
+  assert.deepEqual(withTasks.tools.map(t => t.name), ['get_time', 'task_run', 'task_control', 'more_skills', 'find_tools']);
 
   async function turn(group) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jc-tasks-int-'));
@@ -276,7 +276,7 @@ test('without the tasks option the core group and a plain turn are as before', a
     return { reply: res.reply, specs: fp.calls[0].tools.map(t => t.name), roles: sessions.load(s.id).messages.map(m => m.role) };
   }
   const a = await turn(plain);
-  assert.deepEqual(a.specs, ['get_time', 'more_skills']);
+  assert.deepEqual(a.specs, ['get_time', 'more_skills', 'find_tools']);
   assert.ok(!a.specs.some(n => n.startsWith('task_')));
   assert.equal(a.reply, 'It is noon');
   assert.deepEqual(a.roles, ['user', 'assistant', 'tool', 'assistant']);

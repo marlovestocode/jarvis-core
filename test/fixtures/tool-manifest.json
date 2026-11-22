@@ -266,7 +266,7 @@
   },
   {
     "name": "get_weather",
-    "description": "Live weather: current conditions and up to a 7-day forecast (highs, lows, rain chance, wind, UV, air quality). Default place is the user's home.",
+    "description": "Live weather: current conditions and up to a 16-day forecast (highs, lows, rain chance, wind, UV, air quality). days counts from TODAY: for tomorrow use days 2 and read the Tomorrow line; for a week use 7. Default place is the user's home.",
     "params": {
       "type": "object",
       "properties": {
@@ -275,10 +275,10 @@
           "description": "City, e.g. \"Dallas\" or \"Springfield, IL\". Omit for home."
         },
         "days": {
-          "description": "forecast days, 1 to 7 (default 2)",
+          "description": "forecast days counted from today, 1 to 16 (default 2); tomorrow needs 2",
           "type": "integer",
           "minimum": 1,
-          "maximum": 7
+          "maximum": 16
         },
         "hourly": {
           "type": "boolean",
@@ -337,7 +337,7 @@
   },
   {
     "name": "list_timers",
-    "description": "List the timers, alarms and reminders that are set.",
+    "description": "List the timers, alarms and reminders that are set, with repeats.",
     "params": {
       "type": "object",
       "properties": {},
@@ -389,7 +389,7 @@
   },
   {
     "name": "media_control",
-    "description": "Control what is playing on this PC and confirm it worked. Actions: play, pause, toggle, stop, next, prev, seek (to or by seconds), volume (set 0-100 or by -100..100 percent points; system volume unless app is given), mute, unmute, shuffle (on), repeat (mode none|track|list), queue (not supported by Windows; returns why). app targets one player, e.g. \"Spotify\" or \"Chrome\".",
+    "description": "Control what is playing on this PC and confirm it worked. Actions: play, pause, toggle, stop, next, prev, seek (to or by seconds), volume (set 0-100 or by -100..100 percent points; system volume unless app is given), mute, unmute, shuffle (on), repeat (mode none|track|list). The queue is NOT here: use youtube_music up_next. A per-app volume (\"chrome to 100%\") is action volume with app and set. app targets one player, e.g. \"Spotify\" or \"Chrome\".",
     "params": {
       "type": "object",
       "properties": {
@@ -707,6 +707,10 @@
         "label": {
           "description": "what the alarm is for, optional",
           "type": "string"
+        },
+        "repeat": {
+          "description": "optional: repeat it; \"daily\", \"weekdays\", \"weekends\", \"weekly\", \"monthly\", or day names like \"monday and thursday\". Needs at (a clock time).",
+          "type": "string"
         }
       },
       "required": [
@@ -733,6 +737,10 @@
         },
         "in": {
           "description": "delay before reminding, e.g. \"20 minutes\"; or give at instead",
+          "type": "string"
+        },
+        "repeat": {
+          "description": "optional: repeat it; \"daily\", \"weekdays\", \"weekends\", \"weekly\", \"monthly\", or day names like \"monday and thursday\". Needs at (a clock time).",
           "type": "string"
         }
       },
@@ -940,7 +948,7 @@
         },
         "count": {
           "type": "number",
-          "description": "for queue_random: how many songs (default 5, at most 10)"
+          "description": "for queue_random (default 5, max 10) or up_next (default 5, max 25): how many songs"
         }
       },
       "required": [

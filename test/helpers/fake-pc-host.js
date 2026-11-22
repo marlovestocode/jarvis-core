@@ -9,7 +9,7 @@ const path = require('node:path');
 function createFakePcHost({ windows = [], opens = {}, binDir = null, stubborn = [], focusOk = true, lockOk = true, monitors = [{ n: 1, primary: true, x: 0, y: 0, w: 1920, h: 1080 }], desktops = true, foreground = null, placeWrong = false,
   audioDevices = [], audioStuck = false, brightness = null, brightnessStuck = false, displays = [], nightLight = null, nightStuck = false,
   wifi = null, wifiStuck = false, bluetooth = null, bluetoothStuck = false, battery = null, powerPlans = [], planStuck = false, focusAssist = null, focusStuck = false,
-  clipboard = null, clipboardStuck = false, screenshotEmpty = false } = {}) {
+  clipboard = null, clipboardStuck = false, screenshotEmpty = false, processes = [] } = {}) {
   let clip = clipboard;
   let wifiNow = wifi && { ...wifi }, btNow = bluetooth && { ...bluetooth }, focusNow = focusAssist;
   const plans = powerPlans.map(p => ({ ...p }));
@@ -66,6 +66,7 @@ function createFakePcHost({ windows = [], opens = {}, binDir = null, stubborn = 
       w.rect = { x: m.x + 50, y: m.y + 50, w: Math.min(r.w, m.w - 100), h: Math.min(r.h, m.h - 100) };
       return { ok: true, rect: { ...w.rect } };
     },
+    async processTop(by = 'memory', count = 5) { log('processTop', { by, count }); return processes.map(p => ({ ...p })).sort((a, b) => (by === 'cpu' ? b.cpuSec - a.cpuSec : b.memMB - a.memMB)).slice(0, count); },
     async audioDevices() { log('audioDevices'); return devs.map(d => ({ ...d })); },
     async audioSetDefault(id) { log('audioSetDefault', id); if (!audioStuck) for (const d of devs) d.default = d.id === id; return true; },
     async brightness() { log('brightness'); return bright; },

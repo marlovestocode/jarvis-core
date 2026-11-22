@@ -32,8 +32,9 @@ test('splitter: a long run without a full stop is cut at a comma so speech start
 
 test('articulation: times, dates, money, ranges, abbreviations, acronyms, pauses', () => {
   const { speakable } = require('../src/core/voice/speech-text');
-  assert.equal(speakable('Meeting at 3:05 PM, or 15:00, or 9am.'), 'Meeting at 3 oh 5 P M, or fifteen hundred, or 9 A M.');
-  assert.equal(speakable('Released 2026-11-10 for $5.99, not $1.5 million.'), 'Released November 10, twenty twenty-six for 5 dollars 99 cents, not 1.5 million dollars.');
+  const formal = { dialect: require('../src/core/voice/dialect').resolve({ dialect: 'british-formal' }) };
+  assert.equal(speakable('Meeting at 3:05 PM, or 15:00, or 9am.', formal), 'Meeting at 3 oh 5 P M, or fifteen hundred, or 9 A M.');
+  assert.equal(speakable('Released 2026-11-10 for $5.99, not $1.5 million.', formal), 'Released November 10, twenty twenty-six for 5 dollars 99 cents, not 1.5 million dollars.');
   assert.equal(speakable('Takes 10-20 ms on the GPU (about 4 GB); e.g. Chrome vs. Edge — fine.'),
     'Takes 10 to 20 milliseconds on the G P U, about 4 gigabytes. for example Chrome versus Edge, fine.');
   assert.equal(speakable('Song by Scrim feat. Ghostemane, #1 hit.'), 'Song by Scrim featuring Ghostemane, number 1 hit.');
@@ -54,17 +55,19 @@ test('humanize: contractions, no filler closers, no emoji; stressed forms are le
 
 test('years are read as years, slang is lifted to a formal register, and numbers that are not years are left alone', () => {
   const { speakable, humanize } = require('../src/core/voice/speech-text');
+  const fd = require('../src/core/voice/dialect').resolve({ dialect: 'british-formal' });
   assert.equal(speakable('Founded in 1999 and renewed in 2026.'), 'Founded in nineteen ninety-nine and renewed in twenty twenty-six.');
   assert.equal(speakable('Back in 2005 it opened.'), 'Back in two thousand and five it opened.');
   assert.equal(speakable('The war of 1812 ended in 1815.'), 'The war of eighteen twelve ended in eighteen fifteen.');
   assert.equal(speakable('You have 2026 files and 1500 meters. By 1500 meters it ends.'), 'You have 2026 files and 1500 meters. By 1500 meters it ends.');
-  assert.equal(humanize('Yeah, okay, I am gonna do it. Nope.'), "Yes, very well, I'm going to do it. No.");
-  assert.equal(humanize('Awesome, no worries.'), 'Excellent, not at all.');
+  assert.equal(humanize('Yeah, okay, I am gonna do it. Nope.', fd), "Yes, very well, I'm going to do it. No.");
+  assert.equal(humanize('Awesome, no worries.', fd), 'Excellent, not at all.');
 });
 
 // ---- Phase 5: dialect and number style ----
 const { resolve: dialectOf } = require('../src/core/voice/dialect');
-const say = (t, speech) => speakable(t, { dialect: dialectOf(speech) });
+const say = (t, speech) => speakable(t, { dialect: dialectOf({ dialect: 'british-formal', ...speech }) });
+const sayDefault = (t, speech) => speakable(t, { dialect: dialectOf(speech) });
 
 test('speech: big numbers, ordinals and glued units are read as a person says them', () => {
   assert.equal(say('It cost 1,234,567 dollars.'), 'It cost one million two hundred and thirty-four thousand five hundred and sixty-seven dollars.');
@@ -92,7 +95,7 @@ test('speech: the dialect decides the register; formal rewrites casual words, ne
   assert.equal(say('Okay, I am on it.', { dialect: 'neutral' }), "Okay, I'm on it.");
   assert.equal(say('I am sure it is not here.', { contractions: false }), 'I am sure it is not here.');
   assert.equal(say('I am sure it is not here.'), "I'm sure it isn't here.");
-  assert.equal(say('Yeah.', { dialect: 'does-not-exist' }), 'Yes.', 'an unknown dialect falls back to the default');
+  assert.equal(sayDefault('Yeah.', { dialect: 'does-not-exist' }), 'Yeah.', 'an unknown dialect falls back to the default (human-jarvis leaves it alone)');
 });
 
 test('speech: a long sentence gets a breath before its first joining word, a number never does, and it can be turned off', () => {
@@ -101,4 +104,40 @@ test('speech: a long sentence gets a breath before its first joining word, a num
   assert.equal(say(long, { pauses: false }), long);
   assert.doesNotMatch(say('It costs 1,234,567 dollars on the third of March and it is on sale for the whole week.'), /five hundred, and sixty/);
   assert.equal(say('Short and sweet.'), 'Short and sweet.');
+});
+
+// ---- human-jarvis: natural times and dates ----
+const natural = (t, today = new Date(2026, 10, 14)) => speakable(t, { dialect: { ...dialectOf({}), today: () => today } });
+
+test('natural: clock times are said the way a person says them', () => {
+  assert.equal(natural('At 3:15 PM.'), 'At quarter past three.');
+  assert.equal(natural('At 3:30 PM.'), 'At half past three.');
+  assert.equal(natural('At 3:45 PM.'), 'At quarter to four.');
+  assert.equal(natural('At 3:05 PM.'), 'At five past three.');
+  assert.equal(natural('At 3:40 PM.'), 'At twenty to four.');
+  assert.equal(natural('At 3:00 PM.'), "At three o'clock.");
+  assert.equal(natural('At 15:00.'), "At three o'clock.");
+  assert.equal(natural('At 18:07.'), 'At six oh seven.');
+  assert.equal(natural('At 9am.'), "At nine o'clock.");
+  assert.equal(natural('At 12:45 AM.'), 'At quarter to one.');
+});
+
+test('natural: dates become today, tomorrow, a weekday or a plain day', () => {
+  assert.equal(natural('Due 2026-11-14.'), 'Due today.');
+  assert.equal(natural('Due 2026-11-15.'), 'Due tomorrow.');
+  assert.equal(natural('Due 2026-11-13.'), 'Due yesterday.');
+  assert.equal(natural('Due 2026-11-18.'), 'Due Wednesday.');
+  assert.equal(natural('Due 2026-12-25.'), 'Due December twenty-fifth.');
+  assert.equal(natural('Due 2027-03-02.'), 'Due March second, twenty twenty-seven.');
+});
+
+test('natural: titles and plain numbers that merely look like times or years survive', () => {
+  assert.equal(natural('Playing 1st things first.'), 'Playing first things first.');
+  assert.equal(natural('You have 2026 files.'), 'You have 2026 files.');
+  assert.equal(natural('Ratio 3:1 today.'), 'Ratio 3:1 today.');
+});
+
+test('natural: "on tomorrow" is not said', () => {
+  assert.equal(natural('Meeting on 2026-11-15 at 3:45 PM.'), 'Meeting tomorrow at quarter to four.');
+  assert.equal(natural('Meeting on 2026-11-18.'), 'Meeting on Wednesday.');
 });

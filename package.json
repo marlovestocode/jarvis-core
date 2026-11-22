@@ -6,7 +6,8 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "test": "node --test \"test/**/*.test.js\""
+    "test": "node --test \"test/**/*.test.js\"",
+    "loc": "node scripts/loc.js"
   },
   "devDependencies": {
     "electron": "^45.2.3"

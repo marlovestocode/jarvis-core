@@ -40,12 +40,15 @@
     for (const k of ['stt', 'tts', 'wake']) opt($(k), d.engines[k], c.engines[k]);
     $('wakeEnabled').checked = !!c.wakeEnabled;
     $('speakerGate').checked = !!c.speakerGate;
+    $('speakerMode').value = c.speakerMode === 'block' ? 'block' : 'guest';
+    $('speakerLearn').checked = c.speakerLearn !== false;
     if (document.activeElement !== $('userName')) $('userName').value = c.user.name;
     if (document.activeElement !== $('userAbout')) $('userAbout').value = c.user.about;
     $('sttGpu').checked = !!c.sttGpu;
     $('logPlays').checked = !!c.music.logPlays;
     $('browserOn').checked = !!c.browser.enabled;
     $('proactiveOn').checked = !!c.proactive.enabled;
+    $('briefAuto').checked = !!c.brief?.auto;
     $('dnd').checked = !!c.proactive.dnd;
     $('quietStart').value = c.proactive.quietStart;
     $('quietEnd').value = c.proactive.quietEnd;
@@ -53,6 +56,11 @@
     const mt = mon.timersSoon || {}, ms = mon.sysmon || {};
     $('monTimers').checked = !!mt.enabled;
     $('monSys').checked = !!ms.enabled;
+    $('monWeather').checked = !!mon.weatherAlerts?.enabled;
+    $('monTeams').checked = !!mon.followedTeams?.enabled;
+    $('monBat').checked = !!mon.lowBattery?.enabled;
+    $('monTask').checked = !!mon.taskDone?.enabled;
+    if (document.activeElement !== $('monBatPct') && mon.lowBattery?.percent != null) $('monBatPct').value = mon.lowBattery.percent;
     for (const [id, v] of [['monLead', mt.leadMin], ['monCpu', ms.cpu], ['monRam', ms.ram], ['monDisk', ms.disk], ['monTemp', ms.temp]]) if (document.activeElement !== $(id) && v != null) $(id).value = v;
     $('startAtLogin').checked = !!c.startAtLogin;
     if (c.memory) { $('memAuto').checked = !!c.memory.autoCapture; $('memChats').checked = !!c.memory.usePastChats; }
@@ -100,6 +108,7 @@
       const d = await S.set(patch);
       render(d);
       $('saved').textContent = d.errors?.length ? 'NOT SAVED' : 'SAVED';
+      $('saved').classList.remove('hud-flash'); void $('saved').offsetWidth; $('saved').classList.add('hud-flash');
       clearTimeout(savedT);
       savedT = setTimeout(() => { $('saved').textContent = ''; }, 1200);
       return !d.errors?.length;
@@ -186,11 +195,14 @@
   $('libraryDir').addEventListener('change', e => save({ library: { dir: e.target.value } }));
   $('userAbout').addEventListener('change', e => save({ user: { about: e.target.value } }));
   $('speakerGate').addEventListener('change', e => save({ speakerGate: e.target.checked }));
+  $('speakerMode').addEventListener('change', e => save({ speakerMode: e.target.value }));
+  $('speakerLearn').addEventListener('change', e => save({ speakerLearn: e.target.checked }));
   $('logPlays').addEventListener('change', e => save({ music: { logPlays: e.target.checked } }));
   $('browserOn').addEventListener('change', e => save({ browser: { enabled: e.target.checked } }));
   $('sttGpu').addEventListener('change', e => save({ sttGpu: e.target.checked }));
   $('memAuto').addEventListener('change', e => save({ memory: { autoCapture: e.target.checked } }));
   $('memChats').addEventListener('change', e => save({ memory: { usePastChats: e.target.checked } }));
+  $('briefAuto').addEventListener('change', e => save({ brief: { auto: e.target.checked } }));
   $('proactiveOn').addEventListener('change', e => save({ proactive: { enabled: e.target.checked } }));
   $('dnd').addEventListener('change', e => save({ proactive: { dnd: e.target.checked } }));
   $('quietStart').addEventListener('change', e => save({ proactive: { quietStart: e.target.value } }));
@@ -198,20 +210,57 @@
   $('monTimers').addEventListener('change', e => save({ proactive: { monitors: { timersSoon: { enabled: e.target.checked } } } }));
   $('monLead').addEventListener('change', async e => { if (e.target.value === '') { e.target.blur(); render(await S.get()); return; } save({ proactive: { monitors: { timersSoon: { leadMin: Number(e.target.value) } } } }); });
   $('monSys').addEventListener('change', e => save({ proactive: { monitors: { sysmon: { enabled: e.target.checked } } } }));
+  $('monTask').addEventListener('change', e => save({ proactive: { monitors: { taskDone: { enabled: e.target.checked } } } }));
+  $('monBat').addEventListener('change', e => save({ proactive: { monitors: { lowBattery: { enabled: e.target.checked } } } }));
+  $('monBatPct').addEventListener('change', async e => { if (e.target.value === '') { e.target.blur(); render(await S.get()); return; } save({ proactive: { monitors: { lowBattery: { percent: Number(e.target.value) } } } }); });
+  $('monTeams').addEventListener('change', e => save({ proactive: { monitors: { followedTeams: { enabled: e.target.checked } } } }));
+  $('monWeather').addEventListener('change', e => save({ proactive: { monitors: { weatherAlerts: { enabled: e.target.checked } } } }));
   for (const [id, f] of [['monCpu', 'cpu'], ['monRam', 'ram'], ['monDisk', 'disk'], ['monTemp', 'temp']]) $(id).addEventListener('change', async e => { if (e.target.value === '') { e.target.blur(); render(await S.get()); return; } save({ proactive: { monitors: { sysmon: { [f]: Number(e.target.value) } } } }); });
+  // every registered person, with how many samples they have (enrolled from the sentences + learned from use) and a button to forget just them
+  function renderVoices(list) {
+    const ul = $('voiceList'); ul.textContent = '';
+    for (const v of list) {
+      const li = document.createElement('li'), span = document.createElement('span'), b = document.createElement('button');
+      span.textContent = `${v.name}: ${v.enrolled} from the sentences` + (v.learned ? `, ${v.learned} learned from use` : '');
+      b.type = 'button'; b.textContent = 'Remove';
+      b.addEventListener('click', async () => { if (window.confirm(`Forget ${v.name}'s voice? JARVIS will stop treating them as you.`)) showVoice(await S.speakerRemove(v.id), `${v.name} removed.`); });
+      li.append(span, b); ul.appendChild(li);
+    }
+  }
   function showVoice(v, msg) {
     $('voiceState').textContent = v.available ? (v.enrolled ? 'Your voice: enrolled' : 'Your voice: not enrolled') : 'Your voice: model missing';
-    $('voiceEnroll').textContent = v.enrolled ? 'Re-enroll' : 'Enroll';
+    $('voiceEnroll').textContent = v.enrolled ? 'Replace all voices' : 'Enroll'; $('voiceEnroll').dataset.has = v.enrolled ? '1' : '';
     $('voiceEnroll').disabled = !v.available || v.enrolling;
     $('voiceClear').hidden = !v.enrolled;
+    renderVoices(v.voices || []);
+    $('voiceAdd').hidden = !v.enrolled; $('voiceAdd').disabled = !v.available || v.enrolling;
     $('voiceDetail').textContent = msg || (v.enrolled ? 'Only your voice can wake JARVIS by name. The hotkey always works.' : 'Enroll once so JARVIS knows your voice.');
   }
-  $('voiceEnroll').addEventListener('click', async () => {
-    $('voiceEnroll').disabled = true;
-    $('voiceDetail').textContent = 'Listening for 12 seconds. Keep talking in your normal voice: read something aloud, or just chat.';
-    try { const r = await S.speakerEnroll(); showVoice(r, r.ok ? `Done: ${r.count} voice samples saved.` : r.reason); }
-    catch (err) { $('voiceDetail').textContent = err.message; $('voiceEnroll').disabled = false; }
-  });
+  // guided enrolment: the same sentences for everyone, one at a time, each listened to for 6 seconds. append = add another person to the voices already enrolled.
+  async function guidedEnroll(append) {
+    const btns = [$('voiceEnroll'), $('voiceAdd')]; btns.forEach(b => { b.disabled = true; });
+    const say = t => { $('voiceDetail').textContent = t; };
+    try {
+      const phrases = await S.speakerPhrases();
+      say(append ? 'The new person reads each sentence aloud when it appears. Once added, JARVIS treats them as you.' : 'Read each sentence aloud when it appears, in your normal voice.');
+      await new Promise(r => setTimeout(r, 1800));
+      for (let i = 0; i < phrases.length; i++) {
+        for (let tries = 0; ; tries++) {
+          say(`Sentence ${i + 1} of ${phrases.length}. Say:  \u201c${phrases[i]}\u201d`);
+          const r = await S.speakerRecord();
+          if (r.ok) break;
+          if (tries >= 2) { await S.speakerCancel(); showVoice(r, r.reason); return; }
+          say(r.reason); await new Promise(res => setTimeout(res, 1600));
+        }
+      }
+      say('Working it out\u2026');
+      const r = await S.speakerFinish({ append, name: $('voiceName').value });
+      showVoice(r, r.ok ? `Done: ${r.count} voice samples saved.` : r.reason);
+    } catch (err) { try { await S.speakerCancel(); } catch { /* ignore */ } say(err.message); }
+    finally { btns.forEach(b => { b.disabled = false; }); }
+  }
+  $('voiceEnroll').addEventListener('click', () => { if (!$('voiceEnroll').dataset.has || confirm('This REPLACES the voices JARVIS knows now (yours and anyone added). To keep them and add another person, press “Add another person” instead. Replace?')) guidedEnroll(false); });
+  $('voiceAdd').addEventListener('click', () => guidedEnroll(true));
   $('voiceClear').addEventListener('click', async () => showVoice(await S.speakerClear(), 'Voice print removed.'));
   $('mic').addEventListener('change', e => save({ micDeviceId: e.target.value || null }));
   $('rate').addEventListener('input', e => { $('rateVal').textContent = Number(e.target.value).toFixed(2) + '×'; });
@@ -363,4 +412,88 @@
   });
   refresh().catch(err => say(err.message));
   embedder().catch(() => {});
+})();
+
+// Settings → Routines: a named list of steps. Each step is one tool with one value; the main process validates the whole routine.
+(() => {
+  const $ = id => document.getElementById(id);
+  const R = window.jarvis.settings.routines;
+  if (!R) { $('routines').hidden = true; return; }
+  const say = t => { $('routineDetail').textContent = t || ''; };
+  // tool → what the step is called and the one value it takes
+  const KINDS = {
+    routine_close: { label: 'Close app', key: 'name', kind: 'text', hint: 'Discord' },
+    open_app: { label: 'Open app', key: 'name', kind: 'text', hint: 'Spotify' },
+    focus_assist: { label: 'Focus assist', key: 'on', kind: 'bool' },
+    set_system_volume: { label: 'Volume', key: 'percent', kind: 'number', hint: '0-100' },
+    audio_output_set: { label: 'Sound output', key: 'name', kind: 'text', hint: 'headphones' },
+    brightness_set: { label: 'Brightness', key: 'percent', kind: 'number', hint: '0-100' },
+    power_plan_set: { label: 'Power plan (asks first)', key: 'name', kind: 'text', hint: 'high performance' },
+    night_light: { label: 'Night light', key: 'on', kind: 'bool' },
+    bluetooth_set: { label: 'Bluetooth', key: 'on', kind: 'bool' },
+    youtube_music: { label: 'Play music', key: 'query', kind: 'text', hint: 'lo-fi beats', fixed: { action: 'play' } },
+  };
+  const mk = (tag, props, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids); return n; };
+
+  function stepRow(step = { tool: 'focus_assist', args: { on: true } }) {
+    const row = mk('div', { className: 'editor routine-step' });
+    const pick = mk('select', { ariaLabel: 'Step' }, ...Object.entries(KINDS).map(([tool, k]) => mk('option', { value: tool, textContent: k.label })));
+    pick.value = step.tool in KINDS ? step.tool : 'focus_assist';
+    const slot = mk('span', { className: 'routine-value' });
+    const build = (tool, value) => {
+      const k = KINDS[tool];
+      const input = k.kind === 'bool'
+        ? mk('select', { ariaLabel: 'Value' }, mk('option', { value: 'true', textContent: 'on' }), mk('option', { value: 'false', textContent: 'off' }))
+        : mk('input', { ariaLabel: 'Value', placeholder: k.hint || '', maxLength: 80, type: k.kind === 'number' ? 'number' : 'text' });
+      if (value !== undefined) input.value = String(value);
+      slot.replaceChildren(input);
+    };
+    build(pick.value, step.args?.[KINDS[pick.value].key]);
+    pick.addEventListener('change', () => build(pick.value));
+    const del = mk('button', { type: 'button', textContent: 'REMOVE' });
+    del.addEventListener('click', () => row.remove());
+    row.append(pick, slot, del);
+    row.read = () => {
+      const k = KINDS[pick.value];
+      const raw = slot.firstChild.value;
+      const value = k.kind === 'bool' ? raw === 'true' : k.kind === 'number' ? Number(raw) : raw.trim();
+      return { tool: pick.value, args: { ...(k.fixed || {}), [k.key]: value } };
+    };
+    return row;
+  }
+
+  const sentence = r => r.steps.map(s => {
+    const k = KINDS[s.tool];
+    if (!k) return s.tool;
+    const v = s.args?.[k.key];
+    return `${k.label.replace(' (asks first)', '').toLowerCase()} ${k.kind === 'bool' ? (v ? 'on' : 'off') : v}`;
+  }).join(', ');
+
+  function load(r) {
+    $('routineName').value = r?.name || '';
+    $('routineSteps').replaceChildren(...(r?.steps || []).map(stepRow));
+  }
+
+  async function refresh() {
+    const list = await R.list();
+    $('routineList').replaceChildren(...list.map(r => {
+      const li = mk('li', {}, mk('span', { textContent: `${r.name}: ${sentence(r)}` }));
+      const edit = mk('button', { type: 'button', textContent: 'EDIT' });
+      edit.addEventListener('click', () => { load(r); say(`Editing ${r.name}.`); });
+      const del = mk('button', { type: 'button', textContent: 'DELETE' });
+      del.addEventListener('click', async () => { await R.remove(r.name); say(`Deleted ${r.name}.`); refresh(); });
+      li.append(edit, del);
+      return li;
+    }));
+  }
+
+  $('routineAddStep').addEventListener('click', () => $('routineSteps').append(stepRow()));
+  $('routineClear').addEventListener('click', () => { load(null); say(''); });
+  $('routineForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const name = $('routineName').value.trim();
+    const res = await R.save({ name, steps: [...$('routineSteps').children].map(r => r.read()) });
+    if (res?.ok) { say(`Saved ${name}.`); load(null); refresh(); } else say(res?.error || 'Not saved.');
+  });
+  refresh().catch(() => {});
 })();

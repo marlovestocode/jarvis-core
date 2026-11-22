@@ -57,3 +57,12 @@ test('bad input', () => {
   assert.equal(resolveFollowUp('yes', null), null);
   assert.equal(resolveFollowUp('yes', undefined), null);
 });
+
+test('continue shapes: "continue" / "carry on" ride the same guards and return the last groups', () => {
+  const go = { kind: 'continue', groups: ['media'] };
+  for (const t of ['continue', 'carry on', 'keep going', 'go on', 'continue it', 'carry on that', 'finish the task', 'finish the previous task', 'Please continue.'])
+    assert.deepEqual(resolveFollowUp(t, ran(30000)), go, t);
+  assert.equal(resolveFollowUp('continue', snap()), null);   // no recent tool
+  assert.equal(resolveFollowUp('continue', ran(5 * 60 * 1000)), null);
+  assert.equal(resolveFollowUp('continue the story about dragons', ran(1000)), null);
+});

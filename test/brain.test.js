@@ -23,6 +23,18 @@ test('prompt: identity, date, tool guidance, no LaTeX, hardware facts', () => {
   assert.ok(p.length < 6000, `prompt is ${p.length} chars`);
 });
 
+test('prompt: capability questions ground in the catalog; persona reads as examples, not a closed boundary', () => {
+  const p = systemPrompt({ source: 'text', now: new Date('2026-11-09T19:00:00'), tools: TOOLS, model: 'jarvis-worker:latest',
+    hardware: { cpu: 'Ryzen 5 5600X', gpu: 'RTX 3050 8 GB', ramGB: 15.9 } });
+  // "what can you do" must be answered from the live catalog / tools, calling skills_list when offered, not refused
+  assert.match(p, /what can you do/i);
+  assert.match(p, /skills_list/);
+  // the persona fields must read as examples, not a closed capability boundary the model echoes in refusals
+  assert.match(p, /examples, not limits/);
+  assert.doesNotMatch(p, /expert-level across/);
+  assert.ok(p.length < 6000, `prompt is ${p.length} chars`);
+});
+
 test('prompt: only names tools that exist; voice mode asks for short spoken replies', () => {
   const p = systemPrompt({ source: 'voice', now: new Date(), tools: [] });
   assert.doesNotMatch(p, /calculate/);

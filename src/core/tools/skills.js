@@ -123,6 +123,7 @@ function skillTools() {
 function createStatusTool({ getStatus }) {
   return {
     name: 'jarvis_status',
+    volatile: true,
     hint: 'jarvis_status: the PC\'s hardware (CPU, GPU, total RAM) and JARVIS parts. It has NO live usage: never answer a usage question from it.',
     description: "Facts about this PC and JARVIS itself: CPU, RAM, GPU and VRAM, Windows version, the AI model in use, and whether sysmon, the wallpaper, voice and hotkeys are working. Use it for any question about the user's computer or JARVIS.",
     params: obj({}),

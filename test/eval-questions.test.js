@@ -25,7 +25,8 @@ test('eval: the tool-choice questions cover every skill group', () => {
   const picks = QUESTIONS.filter(q => q.group === 'tools');
   assert.ok(picks.length >= 25, `${picks.length} tool-choice questions`);
   const covered = new Set(picks.map(q => catalog.groupOf(q.pick)));
-  const missing = catalog.ids.filter(id => id !== 'core' && id !== 'ytmusic' ? !covered.has(id) : false);
+  // routines holds only the token-gated close a running routine uses: the model is never asked to pick it
+  const missing = catalog.ids.filter(id => id !== 'core' && id !== 'ytmusic' && id !== 'routines' ? !covered.has(id) : false);
   assert.deepEqual(missing, [], 'groups without a tool-choice question');
   assert.ok(covered.has('ytmusic'), 'ytmusic is covered');
 });
