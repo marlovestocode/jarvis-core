@@ -170,7 +170,7 @@ function wiring() {
   b += box(720, 150, 330, 130, 'LED supply', ['1000 uF / 6.3 V across the', 'LED PCB 5 V and GND input', 'firmware cap: about 2.5 A'], { stroke: PWR });
   b += wire([[640, 295], [680, 295], [680, 215], [720, 215]], PWR, '5 V', 650, 210);
   // controller
-  b += box(720, 380, 360, 470, 'XIAO ESP32-S3', ['5V in from the rail, 3V3 out', '', 'D0  GPIO1   I2S out BCLK', 'D1  GPIO2   I2S out LRC', 'D2  GPIO3   I2S out DIN', 'D3  GPIO4   LED data (via shifter)', 'D5  GPIO6   mute switch to GND', 'D8  GPIO7   I2S in BCLK', 'D9  GPIO8   I2S in WS', 'D10 GPIO9   I2S in data', '', 'GND common to everything'], { stroke: GOLD, tc: GOLD });
+  b += box(720, 380, 360, 470, 'XIAO ESP32-S3', ['5V in from the rail, 3V3 out', '', 'D0  GPIO1   I2S out BCLK', 'D1  GPIO2   I2S out LRC', 'D2  GPIO3   I2S out DIN', 'D3  GPIO4   LED data (via shifter)', 'D5  GPIO6   mute-state sense only', 'D8  GPIO7   I2S in BCLK', 'D9  GPIO8   I2S in WS', 'D10 GPIO9   I2S in data', '', 'GND common to everything'], { stroke: GOLD, tc: GOLD });
   b += wire([[640, 330], [680, 330], [680, 415], [720, 415]], PWR, '5 V', 650, 325);
   // amp + speaker
   b += box(1260, 330, 330, 170, 'Adafruit 3006: MAX98357A amp', ['VIN 5 V, GND', 'BCLK, LRC, DIN from the ESP32', 'GAIN open (9 dB), SD to 3V3', 'OUT+  OUT-  to the speaker'], { stroke: I2S });
@@ -178,7 +178,7 @@ function wiring() {
   b += wire([[1080, 495], [1180, 495], [1180, 360], [1260, 360]], I2S, 'BCLK / LRC / DIN', 1100, 488);
   b += wire([[1590, 415], [1700, 415]], I2S, 'OUT+ / OUT-', 1600, 405);
   // mics
-  b += box(1260, 570, 330, 190, 'Mics: 2 x INMP441 (I2S)', ['VDD 3V3, GND', 'SCK <- D8, WS <- D9', 'SD (both mics) -> D10', 'L/R: one to GND, one to 3V3', 'under two of the four ports'], { stroke: I2S });
+  b += box(1260, 570, 330, 190, 'Mics: 2 x INMP441 (I2S)', ['VDD 3V3, GND', 'SCK <- D8, WS <- D9', 'SD (both mics) -> D10', 'L/R: one to GND, one to 3V3', 'hardware isolation required when muted'], { stroke: I2S });
   b += wire([[1080, 710], [1260, 710]], I2S, 'SCK / WS / SD', 1110, 702);
   b += `<rect x="1260" y="800" width="670" height="70" rx="8" fill="none" stroke="#3a4756" stroke-dasharray="6 5"/>` + T(1280, 830, 'Better option: ReSpeaker XVF3800 4-mic array on XIAO ESP32-S3. It adds echo cancellation,', { size: 14, fill: DIM }) + T(1280, 852, 'so you can talk over Jarvis. Its I2S pins are fixed on the board; use its pin table instead.', { size: 14, fill: DIM }) + '\n';
   // LED chain
@@ -190,7 +190,7 @@ function wiring() {
   b += wire([[1590, 995], [1700, 995]], DATA, 'DOUT to DIN', 1600, 985);
   b += wire([[1050, 215], [1985, 215], [1985, 1100], [1425, 1100], [1425, 1070]], PWR, '5 V and GND to the LED PCB and seam strip', 1560, 205);
   // mute switch
-  b += box(80, 480, 260, 120, 'Mic mute switch', ['one side to D5, other to GND', 'internal pull-up in firmware'], { stroke: GRN });
+  b += box(80, 480, 260, 120, 'Physical mic mute', ['latching switch controls hardware isolation', 'D5 reads state only; GPIO cannot unmute'], { stroke: GRN });
   b += wire([[340, 540], [720, 540]], GRN, 'GPIO6', 400, 532);
   // notes
   b += T(80, 1134, 'Every 5 V consumer (ESP32, amp, level shifter, LED PCB, seam strip) hangs off the fused 5 V rail; red lines show the main paths only.', { size: 14, fill: DIM });
@@ -208,7 +208,7 @@ function speakerSheet() {
   const W = 2200, H = 1600;
   let b = `<rect width="${W}" height="${H}" fill="${BG}"/>\n`;
   b += T(80, 90, 'JARVIS DISC  MK I', { size: 30, fill: GOLD, ls: 10 }) + T(80, 128, 'Speaker and chamber: placement, sealed volume, expected response (taller plinth, Dayton CE52N-4)', { size: 17, fill: DIM, ls: 2 }) + '\n';
-  b += T(W - 80, 90, 'All dimensions in mm', { size: 15, anchor: 'end', fill: DIM }) + T(W - 80, 116, 'Volumes are estimates; depth 30.8 is from the maker page, the mounting holes are not listed', { size: 15, anchor: 'end', fill: DIM }) + '\n';
+  b += T(W - 80, 90, 'All dimensions in mm', { size: 15, anchor: 'end', fill: DIM }) + T(W - 80, 116, 'Volumes are estimates; depth 30.8 is from the maker page, the mounting-hole pattern is not specified', { size: 15, anchor: 'end', fill: DIM }) + '\n';
   const BLUE = '#4a90c0', CH = '#1b4f75';
   // ---- numbers (true z, table = 0; plinth lifted 16.5 over the low version)
   const zS = 5, zStep = 29.5, zTop = 39;                                   // chamber floor, step to the neck, top of the neck
@@ -251,7 +251,7 @@ function speakerSheet() {
   b += lab(-30, 5.2, -44, 16, 'Foam gasket 0.5 mm', 'closed cell, seals the flange') + lab(-12.7, 40, -26, 51, 'Foam plug in cable hole', 'seals the 24 mm hole in the floor') + lab(-34, 10.6, -58, 28, 'Boards on 4 mm pads', 'beside the driver, above the flange');
   b += lab(49, 35, 64, 58, 'Light band moves up', 'under the body, z 31.5 to 39');
   const hd = (x0, x1, y, t) => L(X(x0), y, X(x1), y, { c: INK }) + L(X(x0), y - 6, X(x0), y + 6, { c: INK }) + L(X(x1), y - 6, X(x1), y + 6, { c: INK }) + T((X(x0) + X(x1)) / 2, y + 22, t, { anchor: 'middle', size: 15 }) + '\n';
-  b += hd(-23, 23, Z(0) + 60, 'opening 46 round') + hd(-26, 26, Z(0) + 115, 'driver flange 52');
+  b += hd(-24, 24, Z(0) + 60, 'opening 48 round (provisional)') + hd(-26, 26, Z(0) + 115, 'driver flange 52');
 
   // ---- B: plan view of the plinth interior
   const pcx = 1660, pcy = 560, ps = 6.5;
@@ -260,7 +260,7 @@ function speakerSheet() {
   b += `<circle cx="${pcx}" cy="${pcy}" r="${f(49.6 * ps)}" fill="${CH}" fill-opacity="0.4" stroke="${BLUE}" stroke-width="2"/>\n<circle cx="${pcx}" cy="${pcy}" r="${f(43.6 * ps)}" fill="none" stroke="${BLUE}" stroke-dasharray="6 4"/>\n`;
   b += `<circle cx="${pcx}" cy="${pcy}" r="${f(23 * ps)}" fill="#0b0f14" stroke="#e8b45a" stroke-dasharray="6 4"/>\n`;
   b += `<circle cx="${pcx}" cy="${pcy}" r="${f(26 * ps)}" fill="#6b7380" fill-opacity="0.8" stroke="#aab3bf" stroke-width="1.5"/>\n<circle cx="${pcx}" cy="${pcy}" r="${f(21 * ps)}" fill="#8f98a6" stroke="#2a3038"/>\n<circle cx="${pcx}" cy="${pcy}" r="${f(13 * ps)}" fill="#4b5260"/>\n`;
-  // mounting holes: pattern not on the maker page, not drawn
+  // mounting-hole pattern is not specified by manufacturer; retention not designed
   for (const a of [0, 135, 225]) { const [x, y] = IP(38, a); b += `<circle cx="${f(x)}" cy="${f(y)}" r="${4 * ps}" fill="#4b5663" stroke="#06080b"/><circle cx="${f(x)}" cy="${f(y)}" r="${1.45 * ps}" fill="#0b0f14"/>`; }
   for (const a of [45, 315, 180]) { const [x, y] = IP(34, a); b += `<rect x="${f(x - 3 * ps)}" y="${f(y - 3 * ps)}" width="${6 * ps}" height="${6 * ps}" rx="6" fill="#4b5663" stroke="#06080b"/>`; }
   for (const a of [45, 315]) {   // boards on the pads, tangent to the wall
@@ -271,7 +271,7 @@ function speakerSheet() {
   { const [x, y] = IP(50, 180); b += `<rect x="${f(x - 6 * ps)}" y="${f(y - 1)}" width="${12 * ps}" height="${3 * ps}" fill="#0b0f14" stroke="${GOLD}"/>` + T(x, y - 14, 'USB-C slot (seal)', { size: 13, anchor: 'middle', fill: GOLD }); }
   { const [x, y] = IP(50, 215); b += `<circle cx="${f(x)}" cy="${f(y)}" r="${3.1 * ps}" fill="#0b0f14" stroke="${GOLD}"/>` + T(x - 30, y - 6, 'mute button', { size: 13, anchor: 'end', fill: GOLD }); }
   b += T(pcx, pcy + 49.6 * ps + 34, 'FRONT', { size: 15, anchor: 'middle', fill: GOLD, ls: 6 });
-  b += T(1300, 962, 'Grey disc = driver flange (52); dashed gold = Ø46 opening in the plinth floor; its mounting holes are not on the maker page.', { size: 13, fill: DIM }) + T(1300, 982, 'Dark green = controller and amp boards on 4 mm pads at r 34, just above the flange; M3 posts at r 38 merge into the neck wall.', { size: 13, fill: DIM }) + '\n';
+  b += T(1300, 962, 'Grey disc = driver flange (52); dashed gold = Ø48 provisional opening in the plinth floor; its manufacturer drawing does not specify mounting holes.', { size: 13, fill: DIM }) + T(1300, 982, 'Dark green = controller and amp boards on 4 mm pads at r 34, just above the flange; M3 posts at r 38 merge into the neck wall.', { size: 13, fill: DIM }) + '\n';
 
   // ---- C: volume budget + response table
   let y0 = 1040;
@@ -288,7 +288,7 @@ function speakerSheet() {
   ['Chamber', 'Qtc', 'Fc', '-3 dB at', 'Peak'].forEach((h, i) => b += T(cols[i], y0 + 36, h, { size: 14, fill: DIM }));
   const vbs = [[net / 1000, 'this plinth'], [0.15, ''], [0.097, 'the old low plinth'], [0.5, 'not possible here']];
   vbs.forEach(([vb, note], i) => { const y = y0 + 66 + i * 28, hl = i === 0 ? GOLD : INK, q = Qtc(vb); b += T(cols[0], y, vb.toFixed(3) + ' L', { size: 15, fill: hl, weight: i === 0 ? 500 : 0 }) + T(cols[1], y, q.toFixed(2), { size: 15, fill: hl }) + T(cols[2], y, Fc(vb).toFixed(0) + ' Hz', { size: 15, fill: hl }) + T(cols[3], y, f3(vb).toFixed(0) + ' Hz', { size: 15, fill: hl }) + T(cols[4], y, peak(q) > 0 ? '+' + peak(q).toFixed(1) + ' dB' : 'none', { size: 15, fill: hl }) + T(cols[5], y, note, { size: 13, fill: DIM }); });
-  b += T(tx, y0 + 192, 'Qtc 0.7 is flat. This driver gives about ' + Qtc(net / 1000).toFixed(2) + ' here: a tiny bump, no EQ needed.', { size: 13, fill: DIM }) + T(tx, y0 + 212, 'Expect a clean desk speaker down to about ' + (Math.round(f3(net / 1000) / 10) * 10) + ' Hz: fuller than the Adafruit 3351, still not a bass speaker.', { size: 13, fill: DIM }) + T(tx, y0 + 232, 'Xmax is only 0.85 mm: high-pass at 150 Hz in firmware and keep the volume moderate.', { size: 13, fill: DIM }) + '\n';
+  b += T(tx, y0 + 192, 'Qtc 0.7 is flat. This driver gives about ' + Qtc(net / 1000).toFixed(2) + ' here: a tiny bump, no EQ needed.', { size: 13, fill: DIM }) + T(tx, y0 + 212, 'Expect a clean desk speaker down to about ' + (Math.round(f3(net / 1000) / 10) * 10) + ' Hz: still not a bass speaker.', { size: 13, fill: DIM }) + T(tx, y0 + 232, 'Xmax is only 0.85 mm: high-pass at 150 Hz in firmware and keep the volume moderate.', { size: 13, fill: DIM }) + '\n';
 
   // ---- D: speaker + notes
   const dx = 1280;
@@ -298,9 +298,9 @@ function speakerSheet() {
   b += T(dx, y0 + 170, 'CHECK BEFORE ORDERING', { size: 14, fill: GOLD, ls: 3 }) + '\n';
   ['Mounting hole pattern and flange thickness are not on the maker page: open the spec sheet drawing.', 'Depth 30.8 leaves 2.7 mm under the neck top; the lift could drop to 15 if you want it shorter.', 'Parts Express may be out of stock; Sound Imports (EU) lists it. Buy 2 to 3, they are cheap.', 'Check the cone moves freely before gluing the gasket: it only has 0.85 mm of travel.'].forEach((t, i) => b += T(dx, y0 + 196 + i * 22, t, { size: 13, fill: DIM }));
   b += T(dx, y0 + 296, 'SEAL EVERYTHING, THE BOX MUST BE AIRTIGHT', { size: 14, fill: GOLD, ls: 3 }) + '\n';
-  ['Cable hole in the body floor: foam plug or grommet around the wires', 'Body-to-neck joint: 1 mm closed-cell foam ring or a bead of silicone', 'USB-C slot and mute-button hole: silicone or hot glue around the part', 'Driver flange: 0.5 mm foam gasket, six screws pull it down evenly'].forEach((t, i) => b += T(dx, y0 + 322 + i * 22, t, { size: 13, fill: DIM }));
+  ['Cable hole in the body floor: foam plug or grommet around the wires', 'Body-to-neck joint: 1 mm closed-cell foam ring or a bead of silicone', 'USB-C slot and mute-button hole: silicone or hot glue around the part', 'Driver flange: 0.5 mm foam gasket; retention design and fastener count are not yet validated'].forEach((t, i) => b += T(dx, y0 + 322 + i * 22, t, { size: 13, fill: DIM }));
   b += T(80, H - 60, 'Slit under the plinth: 327 mm x 3 mm = about 980 mm2 against a 1260 mm2 cone: close enough. Feet of 4 mm (+1 mm overall) would match it.', { size: 13, fill: DIM }) + '\n';
-  b += T(80, H - 36, 'jarvis_disc.scad is updated (lift 16.5, round 46 opening, 4 mm board pads) but the STL files are not re-exported: OpenSCAD is not installed on this machine.', { size: 13, fill: DIM });
+  b += T(80, H - 36, 'jarvis_disc.scad is updated (lift 16.5, round 48 opening (provisional), 4 mm board pads) but the STL files are not re-exported: OpenSCAD is not installed on this machine.', { size: 13, fill: DIM });
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><title>Jarvis Disc Mk I speaker and chamber</title>\n${b}</svg>\n`;
 }
 fs.writeFileSync(path.join(out, 'jarvis-disc-speaker.svg'), speakerSheet());

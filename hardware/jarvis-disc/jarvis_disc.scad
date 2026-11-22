@@ -1,5 +1,5 @@
 // Jarvis Disc, Mk I: parametric enclosure. All units are millimetres.
-// Front of the device is +Y. Table is z = 0. Total height 36.8 + lift = 53.3, diameter 139.
+// Front of the device is +Y. Table is z = 0. Base design height 36.8 + lift = 53.3, diameter 139.
 // lift: the plinth is taller by this much so the 30.8 mm deep Dayton CE52N-4 fits (sealed chamber, about 0.2 L).
 //
 // Render one printable part (print orientation) from the command line:
@@ -7,7 +7,7 @@
 // part = "plinth" | "sleeve" | "body" | "baffle" | "bezel" | "assembly"
 //
 // Chosen parts (sizes from the sellers' listings, see README):
-//   speaker  Dayton Audio CE52N-4, 2 inch full range, 4 ohm: frame 52 round, 30.8 deep, cutout 47.5 (mounting holes: check the spec sheet)
+//   speaker  Dayton Audio CE52N-4, 2 inch full range, 4 ohm: frame 52, depth 30.8, nominal baffle cutout 47.5. Retention is not yet validated.
 //   amp      Adafruit I2S 3W Class D Amp Breakout MAX98357A, product 3006: 19.4 x 17.8 x 3.0
 //   mics     2 x INMP441 breakout, about 14 x 14 x 3 (third-party listing, check yours)
 // Still a custom/placeholder size: the LED PCB (positions in led_layout.csv).
@@ -29,7 +29,7 @@ dif_top    = 33.5;   // diffuser sheet 1 mm
 acr_top    = 35.5;   // smoked acrylic 2 mm
 top_z      = 36.8;   // top of the bezel
 
-// ---- speaker (Adafruit 3351), mounted face down, long side along X ------------
+// ---- speaker: Dayton Audio CE52N-4, mounted face down --------------------------
 spk_l = 52; spk_w = 52; spk_d = 30.8;     // CE52N-4 frame diameter and depth
 cut_l = 46;  cut_w = 46;                  // sound opening in the plinth floor (round)
 plpost_r = 38;                            // M3 post circle
