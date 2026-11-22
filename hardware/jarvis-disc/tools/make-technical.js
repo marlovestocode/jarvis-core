@@ -40,12 +40,12 @@ function technical() {
   b += poly([[0, 5], [49.6, 5], [49.6, 13], [43.6, 13], [43.6, 21], [0, 21]], '#1b4f75', { op: 0.5, stroke: '#4a90c0' });   // sealed chamber
   b += poly([[26, 3], [50, 3], [52, 5], [52, 15], [46, 15], [46, 21], [43.6, 21], [43.6, 13], [49.6, 13], [49.6, 5], [26, 5]], '#2d3844');
   // ghost posts that join body and plinth (at 0/120/240 deg, r = 38)
-  b += sym(37.3, 5, 43.7, 21, '#1d252e', { stroke: '#46525f', dash: '4 3' });
+  b += sym(34, 5, 42, 21, '#1d252e', { stroke: '#46525f', dash: '4 3' });
   // speaker driver (face down)
-  b += rectR(-36.75, 5, 36.75, 5.5, '#c9c2a8', { sw: 0.4 });   // 0.5 mm foam gasket
-  b += rectR(-36.75, 5.5, 36.75, 8.5, '#6b7380', { sw: 1.2 }) + rectR(-25, 8.5, 25, 20, '#59616f', { sw: 1 }) + rectR(-15, 20, 15, 37.5, '#4b5260', { sw: 1.2 }) + rectR(-23, 5.5, 23, 8.5, '#aab3bf', { sw: 0.6 });
+  b += rectR(-26, 5, 26, 5.5, '#c9c2a8', { sw: 0.4 });   // 0.5 mm foam gasket
+  b += rectR(-26, 5.5, 26, 8.5, '#6b7380', { sw: 1.2 }) + rectR(-19, 8.5, 19, 20, '#59616f', { sw: 1 }) + rectR(-13, 20, 13, 36.3, '#4b5260', { sw: 1.2 }) + rectR(-22, 5.5, 22, 8.5, '#aab3bf', { sw: 0.6 });
     // controller + amp boards on the plinth floor
-  b += symR(40.5, 5, 45.5, 23, '#17261e', { stroke: '#46525f', dash: '3 3' });
+  b += symR(24, 9, 44, 10.6, '#17261e', { stroke: '#46525f', dash: '3 3' }) + symR(31, 5, 37, 9, '#4b5663', { stroke: '#06080b', sw: 0.6 });
   // LED strip on the neck + diffuser sleeve
   b += sym(46, 15.5, 47.6, 20.5, '#e5a84a', { sw: 0.6 });
   b += sym(48.2, 15, 49.6, 21, '#f2efe6', { op: 0.45, stroke: '#cfc9b8' });
@@ -99,7 +99,7 @@ function technical() {
     ['5', 'LED PCB', '70 addressable LEDs, positions in led_layout.csv'], ['6', 'Mic modules', '2 x INMP441, ports up to the window (blue dashes)'],
     ['7', 'Upper body', 'Printed (stl/03): grille, engraving, PCB posts'], ['8', 'PCB posts', '6 x M2, hold the LED PCB'],
     ['9', 'Light band', 'Frosted sleeve (stl/02) over a 5 mm LED strip, 7.5 tall'], ['10', 'Plinth', 'Printed (stl/01): speaker opening, board bay, USB-C slot'],
-    ['11', 'Speaker', 'BLAM Audio FRS 2N50: 50 mm, 4 ohm, 73.5 frame, 32 deep, faces down'], ['12', 'Controller + amp', 'XIAO ESP32-S3 + Adafruit 3006 amp, standing on edge in the ring round the driver'],
+    ['11', 'Speaker', 'Dayton CE52N-4: 52 mm, 4 ohm, 5 W, 30.8 deep, faces down'], ['12', 'Controller + amp', 'XIAO ESP32-S3 + Adafruit 3006 amp, flat on 4 mm pads beside the driver'],
     ['13', 'M3 posts', '3 x posts join body to plinth (ghosted, off the cut plane)'], ['14', 'Feet', '4 x 10 mm rubber feet, 3 mm tall'],
     ['15', 'Sealed chamber', 'About 0.2 L, the plinth interior: see the speaker sheet'],
   ];
@@ -174,7 +174,7 @@ function wiring() {
   b += wire([[640, 330], [680, 330], [680, 415], [720, 415]], PWR, '5 V', 650, 325);
   // amp + speaker
   b += box(1260, 330, 330, 170, 'Adafruit 3006: MAX98357A amp', ['VIN 5 V, GND', 'BCLK, LRC, DIN from the ESP32', 'GAIN open (9 dB), SD to 3V3', 'OUT+  OUT-  to the speaker'], { stroke: I2S });
-  b += box(1700, 360, 260, 110, 'Speaker: BLAM FRS 2N50', ['4 ohm, 25 W nom., 50 mm', 'sealed plinth, faces down'], { stroke: I2S });
+  b += box(1700, 360, 260, 110, 'Speaker: Dayton CE52N-4', ['4 ohm, 5 W, 52 mm round', 'sealed plinth, faces down'], { stroke: I2S });
   b += wire([[1080, 495], [1180, 495], [1180, 360], [1260, 360]], I2S, 'BCLK / LRC / DIN', 1100, 488);
   b += wire([[1590, 415], [1700, 415]], I2S, 'OUT+ / OUT-', 1600, 405);
   // mics
@@ -207,15 +207,15 @@ console.log('wrote jarvis-disc-wiring.svg');
 function speakerSheet() {
   const W = 2200, H = 1600;
   let b = `<rect width="${W}" height="${H}" fill="${BG}"/>\n`;
-  b += T(80, 90, 'JARVIS DISC  MK I', { size: 30, fill: GOLD, ls: 10 }) + T(80, 128, 'Speaker and chamber: placement, sealed volume, expected response (taller plinth)', { size: 17, fill: DIM, ls: 2 }) + '\n';
-  b += T(W - 80, 90, 'All dimensions in mm', { size: 15, anchor: 'end', fill: DIM }) + T(W - 80, 116, 'Volumes are estimates; the driver depth (32) is not confirmed, check the datasheet drawing', { size: 15, anchor: 'end', fill: DIM }) + '\n';
+  b += T(80, 90, 'JARVIS DISC  MK I', { size: 30, fill: GOLD, ls: 10 }) + T(80, 128, 'Speaker and chamber: placement, sealed volume, expected response (taller plinth, Dayton CE52N-4)', { size: 17, fill: DIM, ls: 2 }) + '\n';
+  b += T(W - 80, 90, 'All dimensions in mm', { size: 15, anchor: 'end', fill: DIM }) + T(W - 80, 116, 'Volumes are estimates; depth 30.8 is from the maker page, the mounting holes are not listed', { size: 15, anchor: 'end', fill: DIM }) + '\n';
   const BLUE = '#4a90c0', CH = '#1b4f75';
   // ---- numbers (true z, table = 0; plinth lifted 16.5 over the low version)
   const zS = 5, zStep = 29.5, zTop = 39;                                   // chamber floor, step to the neck, top of the neck
   const vLow = Math.PI * 4.96 ** 2 * (zStep - zS) / 10, vUp = Math.PI * 4.36 ** 2 * (zTop - zStep) / 10;   // cm3
-  const ded = [['Driver body in the chamber', 35], ['Controller + amp boards', 4], ['3 posts', 5], ['Wires, foam, glue', 3]];
+  const ded = [['Driver body in the chamber', 25], ['Controller + amp boards', 4], ['3 posts', 5], ['Wires, foam, glue', 3]];
   const net = vLow + vUp - ded.reduce((a, d) => a + d[1], 0);
-  const Fs = 120, Qts = 0.37, Vas = 0.37;   // BLAM Audio FRS 2N50 datasheet, litres
+  const Fs = 164, Qts = 0.59, Vas = 0.17;   // Dayton CE52N-4 spec table, litres
   const Qtc = vb => Qts * Math.sqrt(1 + Vas / vb), Fc = vb => Fs * Math.sqrt(1 + Vas / vb);
   const f3 = vb => { const q = Qtc(vb), a = 1 / (q * q) - 2; return Fc(vb) * Math.sqrt((a + Math.sqrt(a * a + 4)) / 2); };
   const peak = q => q > Math.SQRT1_2 ? 20 * Math.log10(q * q / Math.sqrt(q * q - 0.25)) : 0;
@@ -234,13 +234,13 @@ function speakerSheet() {
   b += sym(46, 32, 47.6, 38.5, '#e5a84a', { sw: 0.6 }) + sym(48.2, 31.5, 49.6, 39, '#f2efe6', { op: 0.45, stroke: '#cfc9b8' });   // light band on the neck
   b += poly([[12, zTop], [69.5, zTop], [69.5, zTop + 2], [12, zTop + 2]], '#222c37');                          // body floor (body above, not drawn)
   b += rect(-13.5, zTop - 0.5, -12, zTop + 2.4, '#d9b87c', { sw: 0.5 }) + rect(12, zTop - 0.5, 13.5, zTop + 2.4, '#d9b87c', { sw: 0.5 });   // foam plug in the cable hole
-  b += rect(-36.75, 5, 36.75, 5.5, '#c9c2a8', { sw: 0.4 });                                                    // gasket
-  b += rect(-36.75, 5.5, 36.75, 8.5, '#6b7380', { sw: 1.2 });                                                  // flange
-  b += rect(-25, 8.5, 25, 20, '#59616f', { sw: 1, op: 0.9 });                                                  // basket
-  b += rect(-15, 20, 15, 37.5, '#4b5260', { sw: 1.2 });                                                        // magnet and motor
-  b += rect(-23, 5.5, 23, 8.5, '#aab3bf', { sw: 0.8 });                                                        // cone seen through the opening
-  b += T(X(0), Z(29), 'DRIVER', { size: 15, anchor: 'middle', fill: '#e8edf2', ls: 3 }) + T(X(0), Z(25.5), 'FRS 2N50', { size: 13, anchor: 'middle', fill: '#cfd6de' }) + T(X(0), Z(22.5), '73.5 round, 32 deep', { size: 12, anchor: 'middle', fill: '#cfd6de' }) + '\n';
-  b += sym(40.5, 5, 45.5, 23, '#17261e', { stroke: '#46525f', dash: '3 3' }) + '\n';
+  b += rect(-26, 5, 26, 5.5, '#c9c2a8', { sw: 0.4 });
+  b += rect(-26, 5.5, 26, 8.5, '#6b7380', { sw: 1.2 });
+  b += rect(-19, 8.5, 19, 20, '#59616f', { sw: 1, op: 0.9 });
+  b += rect(-13, 20, 13, 36.3, '#4b5260', { sw: 1.2 });
+  b += rect(-22, 5.5, 22, 8.5, '#aab3bf', { sw: 0.8 });
+  b += T(X(0), Z(29), 'DRIVER', { size: 15, anchor: 'middle', fill: '#e8edf2', ls: 3 }) + T(X(0), Z(25.5), 'CE52N-4', { size: 13, anchor: 'middle', fill: '#cfd6de' }) + T(X(0), Z(22.5), '52 round, 30.8 deep', { size: 12, anchor: 'middle', fill: '#cfd6de' }) + '\n';
+  b += sym(24, 9, 44, 10.6, '#17261e', { stroke: '#46525f', dash: '3 3' }) + sym(31, 5, 37, 9, '#4b5663', { stroke: '#06080b', sw: 0.6 }) + '\n';
   for (const sg of [-1, 1]) {
     b += L(X(sg * 22), Z(4), X(sg * 22), Z(2), { c: '#e8b45a', w: 2 }) + L(X(sg * 22), Z(1.5), X(sg * 66), Z(1.5), { c: '#e8b45a', w: 2, dash: '8 5' }) + `<polygon points="${f(X(sg * 68))},${f(Z(1.5))} ${f(X(sg * 65))},${f(Z(2.6))} ${f(X(sg * 65))},${f(Z(0.4))}" fill="#e8b45a"/>\n`;
   }
@@ -248,29 +248,30 @@ function speakerSheet() {
   b += L(cx, Z(-3), cx, Z(zTop + 5), { c: '#46525f', dash: '10 4 2 4' }) + '\n';
   const lab = (x, z, tx, tz, t1, t2) => L(X(x), Z(z), X(tx), Z(tz), { c: GOLD }) + `<circle cx="${f(X(x))}" cy="${f(Z(z))}" r="2.5" fill="${GOLD}"/>` + T(X(tx) + (tx > 0 ? 8 : -8), Z(tz) + 4, t1, { size: 15, anchor: tx > 0 ? 'start' : 'end', weight: 500 }) + T(X(tx) + (tx > 0 ? 8 : -8), Z(tz) + 22, t2, { size: 13, anchor: tx > 0 ? 'start' : 'end', fill: DIM }) + '\n';
   b += lab(47, 18, 64, 28, 'Lower chamber: ' + vLow.toFixed(0) + ' cm3', 'z 5 to 29.5, r 49.6') + lab(40, 34, 64, 46, 'Neck: ' + vUp.toFixed(1) + ' cm3', 'z 29.5 to 39, r 43.6');
-  b += lab(-30, 5.2, -44, 16, 'Foam gasket 0.5 mm', 'closed cell, seals the flange') + lab(-12.7, 40, -26, 51, 'Foam plug in cable hole', 'seals the 24 mm hole in the floor') + lab(-43, 14, -58, 28, 'Boards stand on edge', 'in the ring around the driver');
+  b += lab(-30, 5.2, -44, 16, 'Foam gasket 0.5 mm', 'closed cell, seals the flange') + lab(-12.7, 40, -26, 51, 'Foam plug in cable hole', 'seals the 24 mm hole in the floor') + lab(-34, 10.6, -58, 28, 'Boards on 4 mm pads', 'beside the driver, above the flange');
   b += lab(49, 35, 64, 58, 'Light band moves up', 'under the body, z 31.5 to 39');
   const hd = (x0, x1, y, t) => L(X(x0), y, X(x1), y, { c: INK }) + L(X(x0), y - 6, X(x0), y + 6, { c: INK }) + L(X(x1), y - 6, X(x1), y + 6, { c: INK }) + T((X(x0) + X(x1)) / 2, y + 22, t, { anchor: 'middle', size: 15 }) + '\n';
-  b += hd(-25, 25, Z(0) + 60, 'opening 50 round') + hd(-36.75, 36.75, Z(0) + 115, 'driver flange 73.5');
+  b += hd(-23, 23, Z(0) + 60, 'opening 46 round') + hd(-26, 26, Z(0) + 115, 'driver flange 52');
 
   // ---- B: plan view of the plinth interior
   const pcx = 1660, pcy = 560, ps = 6.5;
   const IP = (r, a) => [pcx - r * ps * Math.sin(rad(a)), pcy + r * ps * Math.cos(rad(a))];
   b += T(1280, 190, 'B. PLAN VIEW OF THE PLINTH, LID OFF (FRONT AT THE BOTTOM)', { size: 15, fill: DIM, ls: 5 }) + '\n';
   b += `<circle cx="${pcx}" cy="${pcy}" r="${f(49.6 * ps)}" fill="${CH}" fill-opacity="0.4" stroke="${BLUE}" stroke-width="2"/>\n<circle cx="${pcx}" cy="${pcy}" r="${f(43.6 * ps)}" fill="none" stroke="${BLUE}" stroke-dasharray="6 4"/>\n`;
-  b += `<circle cx="${pcx}" cy="${pcy}" r="${f(25 * ps)}" fill="#0b0f14" stroke="#e8b45a" stroke-dasharray="6 4"/>\n`;
-  b += `<circle cx="${pcx}" cy="${pcy}" r="${f(36.75 * ps)}" fill="#6b7380" fill-opacity="0.8" stroke="#aab3bf" stroke-width="1.5"/>\n<circle cx="${pcx}" cy="${pcy}" r="${f(25 * ps)}" fill="#8f98a6" stroke="#2a3038"/>\n<circle cx="${pcx}" cy="${pcy}" r="${f(15 * ps)}" fill="#4b5260"/>\n`;
-  for (let k = 0; k < 6; k++) { const [x, y] = IP(33, 30 + k * 60); b += `<circle cx="${f(x)}" cy="${f(y)}" r="${1.6 * ps}" fill="#0b0f14" stroke="#aab3bf"/>`; }
-  for (const a of [0, 135, 225]) { const [x, y] = IP(40.5, a); b += `<circle cx="${f(x)}" cy="${f(y)}" r="${3.2 * ps}" fill="#4b5663" stroke="#06080b"/><circle cx="${f(x)}" cy="${f(y)}" r="${1.45 * ps}" fill="#0b0f14"/>`; }
-  for (const a of [45, 315]) {   // boards on edge, tangent to the wall
-    const [x, y] = IP(43.5, a), ux = -Math.sin(rad(a)), uy = Math.cos(rad(a)), tx = -uy, ty = ux, hl = 10.5 * ps, hw = 2.5 * ps;
+  b += `<circle cx="${pcx}" cy="${pcy}" r="${f(23 * ps)}" fill="#0b0f14" stroke="#e8b45a" stroke-dasharray="6 4"/>\n`;
+  b += `<circle cx="${pcx}" cy="${pcy}" r="${f(26 * ps)}" fill="#6b7380" fill-opacity="0.8" stroke="#aab3bf" stroke-width="1.5"/>\n<circle cx="${pcx}" cy="${pcy}" r="${f(21 * ps)}" fill="#8f98a6" stroke="#2a3038"/>\n<circle cx="${pcx}" cy="${pcy}" r="${f(13 * ps)}" fill="#4b5260"/>\n`;
+  // mounting holes: pattern not on the maker page, not drawn
+  for (const a of [0, 135, 225]) { const [x, y] = IP(38, a); b += `<circle cx="${f(x)}" cy="${f(y)}" r="${4 * ps}" fill="#4b5663" stroke="#06080b"/><circle cx="${f(x)}" cy="${f(y)}" r="${1.45 * ps}" fill="#0b0f14"/>`; }
+  for (const a of [45, 315, 180]) { const [x, y] = IP(34, a); b += `<rect x="${f(x - 3 * ps)}" y="${f(y - 3 * ps)}" width="${6 * ps}" height="${6 * ps}" rx="6" fill="#4b5663" stroke="#06080b"/>`; }
+  for (const a of [45, 315]) {   // boards on the pads, tangent to the wall
+    const [x, y] = IP(34, a), ux = -Math.sin(rad(a)), uy = Math.cos(rad(a)), tx = -uy, ty = ux, hl = 10.5 * ps, hw = 9 * ps;
     const pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) => `${f(x + tx * hl * i + ux * hw * j)},${f(y + ty * hl * i + uy * hw * j)}`).join(' ');
-    b += `<polygon points="${pts}" fill="#17261e" stroke="#46525f" stroke-dasharray="3 3"/>`;
+    b += `<polygon points="${pts}" fill="#17261e" fill-opacity="0.85" stroke="#46525f" stroke-dasharray="3 3"/>`;
   }
   { const [x, y] = IP(50, 180); b += `<rect x="${f(x - 6 * ps)}" y="${f(y - 1)}" width="${12 * ps}" height="${3 * ps}" fill="#0b0f14" stroke="${GOLD}"/>` + T(x, y - 14, 'USB-C slot (seal)', { size: 13, anchor: 'middle', fill: GOLD }); }
   { const [x, y] = IP(50, 215); b += `<circle cx="${f(x)}" cy="${f(y)}" r="${3.1 * ps}" fill="#0b0f14" stroke="${GOLD}"/>` + T(x - 30, y - 6, 'mute button', { size: 13, anchor: 'end', fill: GOLD }); }
   b += T(pcx, pcy + 49.6 * ps + 34, 'FRONT', { size: 15, anchor: 'middle', fill: GOLD, ls: 6 });
-  b += T(1300, 962, 'Grey disc = driver flange with its 6 mounting holes on a 66 circle; dashed gold = Ø50 opening in the plinth floor;', { size: 13, fill: DIM }) + T(1300, 982, 'dark green = controller and amp boards standing on edge; the 3 M3 posts moved out to r 40.5 and merge into the neck wall.', { size: 13, fill: DIM }) + '\n';
+  b += T(1300, 962, 'Grey disc = driver flange (52); dashed gold = Ø46 opening in the plinth floor; its mounting holes are not on the maker page.', { size: 13, fill: DIM }) + T(1300, 982, 'Dark green = controller and amp boards on 4 mm pads at r 34, just above the flange; M3 posts at r 38 merge into the neck wall.', { size: 13, fill: DIM }) + '\n';
 
   // ---- C: volume budget + response table
   let y0 = 1040;
@@ -282,24 +283,24 @@ function speakerSheet() {
   b += T(80, y0 + 272, 'The cone breathes into the 3 mm gap under the plinth, the back into this chamber.', { size: 13, fill: DIM }) + '\n';
 
   const tx = 640;
-  b += T(tx, y0, 'SEALED-BOX BEHAVIOUR', { size: 15, fill: DIM, ls: 5 }) + T(tx + 290, y0, 'Fs 120, Qts 0.37, Vas 0.37 L (BLAM datasheet)', { size: 13, fill: DIM }) + '\n';
+  b += T(tx, y0, 'SEALED-BOX BEHAVIOUR', { size: 15, fill: DIM, ls: 5 }) + T(tx + 290, y0, 'Fs 164, Qts 0.59, Vas 0.17 L (Dayton spec table)', { size: 13, fill: DIM }) + '\n';
   const cols = [tx, tx + 110, tx + 200, tx + 310, tx + 410, tx + 520];
   ['Chamber', 'Qtc', 'Fc', '-3 dB at', 'Peak'].forEach((h, i) => b += T(cols[i], y0 + 36, h, { size: 14, fill: DIM }));
   const vbs = [[net / 1000, 'this plinth'], [0.15, ''], [0.097, 'the old low plinth'], [0.5, 'not possible here']];
   vbs.forEach(([vb, note], i) => { const y = y0 + 66 + i * 28, hl = i === 0 ? GOLD : INK, q = Qtc(vb); b += T(cols[0], y, vb.toFixed(3) + ' L', { size: 15, fill: hl, weight: i === 0 ? 500 : 0 }) + T(cols[1], y, q.toFixed(2), { size: 15, fill: hl }) + T(cols[2], y, Fc(vb).toFixed(0) + ' Hz', { size: 15, fill: hl }) + T(cols[3], y, f3(vb).toFixed(0) + ' Hz', { size: 15, fill: hl }) + T(cols[4], y, peak(q) > 0 ? '+' + peak(q).toFixed(1) + ' dB' : 'none', { size: 15, fill: hl }) + T(cols[5], y, note, { size: 13, fill: DIM }); });
-  b += T(tx, y0 + 192, 'Qtc 0.7 is flat. This driver stays below 0.7 in this chamber, so there is no boom to EQ away.', { size: 13, fill: DIM }) + T(tx, y0 + 212, 'Expect a clean desk speaker down to about 230 Hz: fuller than the Adafruit 3351, still not a bass speaker.', { size: 13, fill: DIM }) + T(tx, y0 + 232, 'Optional firmware: a gentle +3 dB low shelf near 200 Hz, and a high-pass at 150 Hz to protect the cone.', { size: 13, fill: DIM }) + '\n';
+  b += T(tx, y0 + 192, 'Qtc 0.7 is flat. This driver gives about ' + Qtc(net / 1000).toFixed(2) + ' here: a tiny bump, no EQ needed.', { size: 13, fill: DIM }) + T(tx, y0 + 212, 'Expect a clean desk speaker down to about ' + (Math.round(f3(net / 1000) / 10) * 10) + ' Hz: fuller than the Adafruit 3351, still not a bass speaker.', { size: 13, fill: DIM }) + T(tx, y0 + 232, 'Xmax is only 0.85 mm: high-pass at 150 Hz in firmware and keep the volume moderate.', { size: 13, fill: DIM }) + '\n';
 
   // ---- D: speaker + notes
   const dx = 1280;
-  b += T(dx, y0, 'D. SPEAKER CHOICE: BLAM AUDIO FRS 2N50 (4 OHM)', { size: 15, fill: DIM, ls: 5 }) + '\n';
-  const spec = ['50 mm full range, neodymium, kevlar cone, 4 ohm, 25 W nominal (50 W max)', 'Sensitivity 87 dB (2.83 V, 1 m), Re 3.8 ohm, 250 Hz to 22 kHz as rated', 'Sd 16.6 cm2, Xmax 2 mm, Mms 1.8 g, BL 3.6 Tm', 'Fs 120 Hz, Qts 0.37, Vas 0.37 L: suits a small sealed box', 'Frame 73.5 round, 6 holes on a 66 circle, cutout 52 printed on the drawing'];
+  b += T(dx, y0, 'D. SPEAKER CHOICE: DAYTON AUDIO CE52N-4 (4 OHM)', { size: 15, fill: DIM, ls: 5 }) + '\n';
+  const spec = ['2 inch dual-neodymium full range, 4 ohm, 5 W RMS (10 W max), about US$8', 'Sensitivity 85 dB (2.83 V, 1 m), Re 3.3 ohm, 120 Hz to 20 kHz as rated', 'Sd 12.6 cm2, Xmax 0.85 mm, Mms 1.3 g, BL 2.5 Tm', 'Fs 164 Hz, Qts 0.59, Vas 0.17 L: gives Qtc 0.8 in this chamber', 'Frame 52 mm, baffle cutout 47.5 mm, overall depth 30.8 mm'];
   spec.forEach((t, i) => b += T(dx, y0 + 34 + i * 24, t, { size: 14 }));
   b += T(dx, y0 + 170, 'CHECK BEFORE ORDERING', { size: 14, fill: GOLD, ls: 3 }) + '\n';
-  ['Depth: the datasheet drawing is an image; I read 32 as the depth but could not confirm it.', 'If it is deeper than 32, add the difference to the plinth lift in jarvis_disc.scad (lift = 16.5).', 'Hole size and exact cutout: read them off the drawing, then adjust the floor bosses.', 'Maker: blam-audio.com (France). Ask for price, stock and a full drawing.'].forEach((t, i) => b += T(dx, y0 + 196 + i * 22, t, { size: 13, fill: DIM }));
+  ['Mounting hole pattern and flange thickness are not on the maker page: open the spec sheet drawing.', 'Depth 30.8 leaves 2.7 mm under the neck top; the lift could drop to 15 if you want it shorter.', 'Parts Express may be out of stock; Sound Imports (EU) lists it. Buy 2 to 3, they are cheap.', 'Check the cone moves freely before gluing the gasket: it only has 0.85 mm of travel.'].forEach((t, i) => b += T(dx, y0 + 196 + i * 22, t, { size: 13, fill: DIM }));
   b += T(dx, y0 + 296, 'SEAL EVERYTHING, THE BOX MUST BE AIRTIGHT', { size: 14, fill: GOLD, ls: 3 }) + '\n';
   ['Cable hole in the body floor: foam plug or grommet around the wires', 'Body-to-neck joint: 1 mm closed-cell foam ring or a bead of silicone', 'USB-C slot and mute-button hole: silicone or hot glue around the part', 'Driver flange: 0.5 mm foam gasket, six screws pull it down evenly'].forEach((t, i) => b += T(dx, y0 + 322 + i * 22, t, { size: 13, fill: DIM }));
-  b += T(80, H - 60, 'Slit under the plinth: 327 mm x 3 mm = about 980 mm2 against a 1660 mm2 cone, so some top-end loss. Feet of 6 mm (+3 mm overall) give 1960 mm2 and remove it.', { size: 13, fill: DIM }) + '\n';
-  b += T(80, H - 36, 'jarvis_disc.scad is updated (lift 16.5, round 50 opening, posts at r 40.5) but the STL files are not re-exported: OpenSCAD is not installed on this machine.', { size: 13, fill: DIM });
+  b += T(80, H - 60, 'Slit under the plinth: 327 mm x 3 mm = about 980 mm2 against a 1260 mm2 cone: close enough. Feet of 4 mm (+1 mm overall) would match it.', { size: 13, fill: DIM }) + '\n';
+  b += T(80, H - 36, 'jarvis_disc.scad is updated (lift 16.5, round 46 opening, 4 mm board pads) but the STL files are not re-exported: OpenSCAD is not installed on this machine.', { size: 13, fill: DIM });
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><title>Jarvis Disc Mk I speaker and chamber</title>\n${b}</svg>\n`;
 }
 fs.writeFileSync(path.join(out, 'jarvis-disc-speaker.svg'), speakerSheet());

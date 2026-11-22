@@ -1,13 +1,13 @@
 // Jarvis Disc, Mk I: parametric enclosure. All units are millimetres.
 // Front of the device is +Y. Table is z = 0. Total height 36.8 + lift = 53.3, diameter 139.
-// lift: the plinth is taller by this much so the 32 mm deep BLAM FRS 2N50 fits (sealed chamber, about 0.2 L).
+// lift: the plinth is taller by this much so the 30.8 mm deep Dayton CE52N-4 fits (sealed chamber, about 0.2 L).
 //
 // Render one printable part (print orientation) from the command line:
 //   openscad -D 'part="plinth"' -o stl/01_plinth.stl jarvis_disc.scad
 // part = "plinth" | "sleeve" | "body" | "baffle" | "bezel" | "assembly"
 //
 // Chosen parts (sizes from the sellers' listings, see README):
-//   speaker  BLAM Audio FRS 2N50, 50 mm full range, 4 ohm: frame 73.5 round, 32 deep (CHECK the datasheet drawing)
+//   speaker  Dayton Audio CE52N-4, 2 inch full range, 4 ohm: frame 52 round, 30.8 deep, cutout 47.5 (mounting holes: check the spec sheet)
 //   amp      Adafruit I2S 3W Class D Amp Breakout MAX98357A, product 3006: 19.4 x 17.8 x 3.0
 //   mics     2 x INMP441 breakout, about 14 x 14 x 3 (third-party listing, check yours)
 // Still a custom/placeholder size: the LED PCB (positions in led_layout.csv).
@@ -30,9 +30,9 @@ acr_top    = 35.5;   // smoked acrylic 2 mm
 top_z      = 36.8;   // top of the bezel
 
 // ---- speaker (Adafruit 3351), mounted face down, long side along X ------------
-spk_l = 73.5; spk_w = 73.5; spk_d = 32;   // FRS 2N50 frame diameter and depth
-cut_l = 50;  cut_w = 50;                  // sound opening in the plinth floor (round)
-plpost_r = 40.5;                          // M3 posts moved out, clear of the speaker flange
+spk_l = 52; spk_w = 52; spk_d = 30.8;     // CE52N-4 frame diameter and depth
+cut_l = 46;  cut_w = 46;                  // sound opening in the plinth floor (round)
+plpost_r = 38;                            // M3 post circle
 
 // ---- radii ----------------------------------------------------------------
 plinth_r   = 52;
@@ -47,7 +47,7 @@ ring_n = [12, 24, 36];
 mic_r  = 44.5;       // mic port ring (between ring 2 and ring 3)
 post_r = 59;         // LED PCB posts
 body_posts = [0, 135, 225];   // M3 posts plinth -> body, angles from the front (clear of the speaker)
-pad_angles = [];  // board pads removed: the boards stand on edge in the ring round the driver (to design)
+pad_angles = [45, 315, 180];  // board standoff pads at r = 34, 4 mm tall so the boards clear the driver flange
 
 function pol(r, a) = [r * sin(a), r * cos(a)];   // a = 0 is the front (+Y)
 
@@ -72,16 +72,16 @@ module plinth() {
       rotate_extrude()
         polygon([[0,3],[50,3],[52,5],[52,15+lift],[46,15+lift],[46,22.5+lift],[43.6,22.5+lift],[43.6,13+lift],[49.6,13+lift],[49.6,5],[0,5]]);
       // three posts that carry the body (M3 heat-set or self-tap)
-      for (a = body_posts) translate([pol(plpost_r, a)[0], pol(plpost_r, a)[1], 5]) cylinder(d = 6.4, h = 17.5 + lift, $fn = 40);
+      for (a = body_posts) translate([pol(plpost_r, a)[0], pol(plpost_r, a)[1], 5]) cylinder(d = 8, h = 17.5 + lift, $fn = 40);
       // standoff pads for the controller and amp boards (M2 holes)
-      for (a = pad_angles) translate([pol(34, a)[0], pol(34, a)[1], 5]) cylinder(d = 6, h = 3, $fn = 30);
+      for (a = pad_angles) translate([pol(34, a)[0], pol(34, a)[1], 5]) cylinder(d = 6, h = 4, $fn = 30);
     }
     // sound opening for the down-firing speaker (it rests on the floor, glued on a foam gasket)
     translate([0, 0, 2]) linear_extrude(4) slot2d(cut_l, cut_w);
     // post screw holes
     for (a = body_posts) translate([pol(plpost_r, a)[0], pol(plpost_r, a)[1], 9]) cylinder(d = 2.9, h = 14 + lift, $fn = 24);
     // board pad screw holes
-    for (a = pad_angles) translate([pol(34, a)[0], pol(34, a)[1], 5.5]) cylinder(d = 1.8, h = 3, $fn = 20);
+    for (a = pad_angles) translate([pol(34, a)[0], pol(34, a)[1], 5.5]) cylinder(d = 1.8, h = 3.5, $fn = 20);
     // USB-C slot, rear (-Y)
     translate([-6, -plinth_r - 1, 6.5]) cube([12, 6, 5]);
     // mic-mute button hole, rear left

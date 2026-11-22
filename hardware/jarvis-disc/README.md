@@ -39,7 +39,7 @@ For a smoother finish than FDM can give, order the plinth, body and bezel in SLA
 | 1 | Seeed XIAO ESP32-S3 | Controller. Pin plan is in the wiring diagram. |
 | 1 | MAX98357A I2S amplifier breakout | Drives the speaker. |
 | 2 | INMP441 I2S microphone breakout | Budget option. For talking over Jarvis, use a ReSpeaker XVF3800 4-mic array instead (echo cancellation). |
-| 1 | BLAM Audio FRS 2N50 full-range driver, 50 mm, 4 ohm, 25 W nominal | Mounted face down on a 0.5 mm foam gasket, back into the sealed plinth (about 0.2 L). 32 mm deep by my reading of the datasheet drawing: confirm it before ordering. Maker: blam-audio.com. See `drawings/jarvis-disc-speaker.*`. |
+| 1 | Dayton Audio CE52N-4 full-range driver, 2 inch, 4 ohm, 5 W RMS (about US$8) | Mounted face down on a 0.5 mm foam gasket, back into the sealed plinth (about 0.2 L). 52 mm frame, 47.5 mm cutout, 30.8 mm deep (maker page). The mounting hole pattern is not listed: check the spec sheet drawing. Parts Express may be out of stock; Sound Imports (EU) lists it. See `drawings/jarvis-disc-speaker.*`. |
 | 1 | LED PCB, 70 addressable LEDs (SK6812 mini-E or similar) | Custom board: positions are in `led_layout.csv`. A PCB maker can fabricate and assemble a small run. |
 | 1 | 5-6 mm wide LED strip, 17 pixels | Wraps the plinth neck. |
 | 1 | 2 mm smoked acrylic, 124 mm disc | From `laser/top_window.svg` at any laser-cutting service. |
@@ -71,7 +71,7 @@ A ballpark for the whole build is roughly 130 to 250 USD depending on the PCB ru
 ## Honest trade-offs in this version
 
 - **The stack is tight.** Mic board parts sit about 0.5 mm under the LED PCB, and the speaker can be at most 10 mm deep. Check real part heights before ordering.
-- **Music works, bass is limited.** The sealed plinth (about 0.2 L) rolls off near 230 Hz with no boom: a clean desk speaker, not a bass speaker. The plinth must be airtight (cable hole, USB-C slot, mute hole, body joint). `jarvis_disc.scad` has the taller plinth (`lift = 16.5`, 53.3 mm overall) but the STL files are not re-exported yet.
+- **Music works, bass is limited.** The sealed plinth (about 0.2 L) rolls off near 200 Hz with no boom: a clean desk speaker, not a bass speaker. The driver only has 0.85 mm of travel, so high-pass it at 150 Hz and keep the volume moderate. The plinth must be airtight (cable hole, USB-C slot, mute hole, body joint). `jarvis_disc.scad` has the taller plinth (`lift = 16.5`, 53.3 mm overall) but the STL files are not re-exported yet.
 - **The side grille is decorative.** Sound leaves from the speaker firing down, through the 4 mm gap under the feet. Expect modest bass. If you want a louder grille, a later version can use two small side-firing drivers.
 - **Visible LED dots.** Under smoked acrylic the LEDs show as points. The diffuser sheet softens them at some cost in brightness.
 - **The lit blade under MK I** is a plain engraved detail, not a light.
