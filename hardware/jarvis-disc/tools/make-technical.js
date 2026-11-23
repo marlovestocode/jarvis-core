@@ -164,10 +164,10 @@ function wiring() {
   const PWR = '#e0605a', GND = '#7d8c9c', I2S = '#6fb8d8', DATA = '#e8b45a', GRN = '#6fd29a';
 
   // power
-  b += box(80, 220, 260, 150, 'USB-C power in', ['USB-C breakout, 5.1k on CC1', 'and CC2 to GND', '5 V, 3 A supply'], { stroke: PWR });
-  b += box(420, 220, 220, 150, 'Protection', ['3 A resettable fuse', 'then 5 V rail'], { stroke: PWR });
+  b += box(80, 220, 260, 150, 'USB-C power in', ['USB-C PD sink / negotiated input', 'regulated 5 V rail sized from tests', 'do not assume 5 V / 3 A'], { stroke: PWR });
+  b += box(420, 220, 220, 150, 'Protection', ['protection sized to wiring and load', 'then regulated 5 V distribution'], { stroke: PWR });
   b += wire([[340, 295], [420, 295]], PWR, '5 V', 365, 285);
-  b += box(720, 150, 330, 130, 'LED supply', ['1000 uF / 6.3 V across the', 'LED PCB 5 V and GND input', 'firmware cap: about 2.5 A'], { stroke: PWR });
+  b += box(720, 150, 330, 130, 'LED supply', ['1000 uF at LED PCB input', '87 pixels: 5.22 A full-white bound', 'set cap after measured power design'], { stroke: PWR });
   b += wire([[640, 295], [680, 295], [680, 215], [720, 215]], PWR, '5 V', 650, 210);
   // controller
   b += box(720, 380, 360, 470, 'XIAO ESP32-S3', ['5V in from the rail, 3V3 out', '', 'D0  GPIO1   I2S out BCLK', 'D1  GPIO2   I2S out LRC', 'D2  GPIO3   I2S out DIN', 'D3  GPIO4   LED data (via shifter)', 'D5  GPIO6   mute-state sense only', 'D8  GPIO7   I2S in BCLK', 'D9  GPIO8   I2S in WS', 'D10 GPIO9   I2S in data', '', 'GND common to everything'], { stroke: GOLD, tc: GOLD });
