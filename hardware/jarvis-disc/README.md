@@ -16,9 +16,9 @@ A small desk voice node for jarvis-core: a 139 mm disc, 53.3 mm tall, that liste
 | `drawings/jarvis-disc-technical.*` | Section, exploded view, LED map, parts list (SVG + PNG). |
 | `drawings/jarvis-disc-wiring.*` | Wiring diagram (SVG + PNG). |
 | `drawings/jarvis-disc-speaker.*` | Speaker placement, sealed chamber volume and expected response (SVG + PNG). |
-| `tools/` | Scripts that regenerate the CSV, laser file, drawings and check the STLs. |
+| `tools/` | Scripts that regenerate source-derived assets and validate exported STL meshes. |
 
-Export a part yourself, for example: `openscad -D 'part="body"' -o stl/03_upper_body.stl jarvis_disc.scad` (parts: `plinth`, `sleeve`, `body`, `baffle`, `bezel`, `assembly`).
+Export a part yourself, for example: `openscad -D 'part="body"' -o build/stl/03_upper_body.stl jarvis_disc.scad` (parts: `plinth`, `sleeve`, `body`, `baffle`, `bezel`, `assembly`). The CAD validation workflow exports all five printable parts into a generated artifact; it does not silently replace the committed STL files.
 
 ## Printed parts
 
@@ -30,7 +30,7 @@ Export a part yourself, for example: `openscad -D 'part="body"' -o stl/03_upper_
 | `04_led_baffle` | Black PETG, 0.12 mm layers | Print flat. A hole over every LED stops light bleeding between pixels. |
 | `05_bezel` | Printed upside down as exported, or CNC aluminium | Gold look: sand, prime, gold metallic paint, or anodise a CNC ring. |
 
-For a smoother finish than FDM can give, order the plinth, body and bezel in SLA resin or MJF nylon (dyed black) and finish with matt paint. **STL status:** the committed exports predate the latest speaker/enclosure revision. They are not approved for printing. Regenerate them from the current SCAD source and run `tools/stl-check.js` before use.
+For a smoother finish than FDM can give, order the plinth, body and bezel in SLA resin or MJF nylon (dyed black) and finish with matt paint. **STL status:** the committed exports predate the latest speaker/enclosure revision. They are not approved for printing. Regenerate them from the current SCAD source and run `python tools/validate-meshes.py build/stl/*.stl` before use. The GitHub Actions workflow `.github/workflows/jarvis-disc-cad.yml` builds all five parts, validates the meshes, renders drawing previews, and uploads a ZIP artifact on a matching pull request or manual dispatch.
 
 ## Parts you buy (prices are rough guesses, get real quotes)
 
@@ -62,7 +62,7 @@ The former 5 V / 3 A supply assumption is not approved: 87 addressable LEDs have
 3. Wrap the LED strip around the plinth neck and slide the frosted sleeve over it.
 4. Bolt the body to the plinth through the three posts (M3).
 5. In the body: mic board on its standoffs, then the LED PCB on the six posts, then the baffle, diffuser and smoked acrylic.
-6. Glue the bezel on over the acrylic edge. Fill the engraving with paint.
+7. Glue the bezel on over the acrylic edge. Fill the engraving with paint.
 
 ## Things to check before you order
 
