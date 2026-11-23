@@ -32,8 +32,12 @@ const steadyW = nominalRailV * steadyA;
 const peakW = nominalRailV * peakA;
 const designSteadyA = steadyA * (1 + headroomPct / 100);
 const designSteadyW = nominalRailV * designSteadyA;
+const designPeakA = peakA * (1 + headroomPct / 100);
+const designPeakW = nominalRailV * designPeakA;
 const pdInputW = designSteadyW / efficiency;
 const pdInputA = pdInputW / pdV;
+const pdTransientW = designPeakW / efficiency;
+const pdTransientA = pdTransientW / pdV;
 
 const report = {
   source: path.resolve(input),
@@ -48,11 +52,15 @@ const report = {
     configuredHeadroomPercent: headroomPct,
     minimumFiveVoltContinuousCurrentA: designSteadyA,
     minimumFiveVoltContinuousPowerW: designSteadyW,
-    estimatedPdInputPowerW: pdInputW,
-    estimatedPdInputCurrentA: pdInputA,
+    minimumFiveVoltTransientCurrentA: designPeakA,
+    minimumFiveVoltTransientPowerW: designPeakW,
+    estimatedPdContinuousInputPowerW: pdInputW,
+    estimatedPdContinuousInputCurrentA: pdInputA,
+    estimatedPdTransientInputPowerW: pdTransientW,
+    estimatedPdTransientInputCurrentA: pdTransientA,
     negotiatedPdVoltageV: pdV,
     converterEfficiencyFraction: efficiency,
-    transientOutputCapabilityMustBeAtLeastA: peakA
+    measuredTransientPeakA: peakA
   },
   notes: [
     'Use the measured complete-system combined condition, not a sum of unrelated component peaks.',
