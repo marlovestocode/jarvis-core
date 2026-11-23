@@ -21,8 +21,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y openscad inkscape
-          python -m pip install --upgrade pip
-          python -m pip install trimesh
+          python -m venv /tmp/cad-venv
+          /tmp/cad-venv/bin/pip install --upgrade pip trimesh
 
       - name: Regenerate source-derived assets
         working-directory: hardware/jarvis-disc
@@ -45,7 +45,8 @@ jobs:
       - name: Validate STL meshes
         working-directory: hardware/jarvis-disc
         run: |
-          python tools/validate-meshes.py build/stl/*.stl | tee build/mesh-report.json
+          set -o pipefail
+          /tmp/cad-venv/bin/python tools/validate-meshes.py build/stl/*.stl | tee build/mesh-report.json
 
       - name: Render drawing previews
         working-directory: hardware/jarvis-disc
@@ -63,7 +64,7 @@ jobs:
           cp MANUFACTURING_READINESS.md MICROPHONE_MUTE_AND_POWER.md build/
           cp jarvis_disc.scad build/
           cp tools/validate-meshes.py build/
-          cp tools/mesh-report.json build/mesh-report.json 2>/dev/null || true
+          git rev-parse HEAD > build/source-revision.txt
           cd build
           zip -qr ../jarvis-disc-cad-preview.zip .
 
