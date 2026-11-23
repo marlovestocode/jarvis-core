@@ -44,12 +44,16 @@ For a smoother finish than FDM can give, order the plinth, body and bezel in SLA
 | 1 | 5-6 mm wide LED strip, 17 pixels | Wraps the plinth neck. |
 | 1 | 2 mm smoked acrylic, 124 mm disc | From `laser/top_window.svg` at any laser-cutting service. |
 | 1 | 1 mm opal acrylic or frosted film, 123.6 mm disc | The diffuser. |
-| 1 | 74AHCT125, 330 ohm resistor, 1000 uF capacitor, 3 A resettable fuse, USB-C breakout (5.1k resistors) | Power and LED data. |
-| 1 | Latching physical mute switch and hardware microphone isolation circuit | Exact switch and isolation components are not selected. A GPIO-only mute is not acceptable. |
+| 1 | 74AHCT125, 330 ohm resistor, 1000 uF capacitor, USB-C PD input and regulated 5 V power stage sized from measured load | Power and LED data. The previous 5 V / 3 A supply and 3 A fuse assumption is not approved for the full 87-pixel build. |
+| 1 | Latching 4PDT microphone mute switch plus auxiliary state contact | Proposed topology opens mic 3V3, BCLK, WS and SD. Exact switch part number and schematic remain to be selected and validated. See `MICROPHONE_MUTE_AND_POWER.md`. |
 | 4 | Rubber feet, 10 mm, 3 mm tall | |
 | about 12 | M2 and M3 screws, M3 heat-set inserts, standoffs | Plinth posts take M3; PCB posts take M2. |
 
 A ballpark for the whole build is roughly 130 to 250 USD depending on the PCB run and whether the bezel is CNC. That is a guess, not a quote.
+
+## Electrical design status
+
+The former 5 V / 3 A supply assumption is not approved: 87 addressable LEDs have a theoretical full-white upper bound of 5.22 A at 5 V before the rest of the system. The final power architecture must be selected from measured worst-case loads. The proposed physical mute topology and power design gates are documented in `MICROPHONE_MUTE_AND_POWER.md`.
 
 ## Assembly order
 
