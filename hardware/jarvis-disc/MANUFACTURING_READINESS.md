@@ -17,7 +17,8 @@ This checklist is the release gate for the Mk I hardware. A checked item require
 ## B. Physical microphone privacy
 
 - [ ] Select a latching, mechanically stable mute switch.
-- [ ] Design a hardware circuit that disconnects microphone power or isolates every microphone signal path in the muted position.
+- [ ] Review `MICROPHONE_MUTE_AND_POWER.md` and capture a schematic for a mechanically latching 4PDT mute that opens mic 3V3, BCLK, WS, and SD, plus a separate auxiliary state contact.
+- [ ] Select an exact break-before-make switch and auxiliary contact; record manufacturer part numbers, pinout, contact ratings, and mounting dimensions.
 - [ ] Prevent signal-line back-powering of an unpowered microphone. Validate the isolation topology against the selected microphone modules.
 - [ ] Route a separate hardware mute-state signal to the XIAO ESP32-S3. Firmware must only read the state; it must not be able to defeat the isolation.
 - [ ] Make the mute indicator reflect the physical switch state.
@@ -28,6 +29,7 @@ This checklist is the release gate for the Mk I hardware. A checked item require
 
 ## C. Power and thermal validation
 
+- [ ] Replace the assumed 5 V / 3 A supply and 3 A fuse with a measured, documented power architecture; see `MICROPHONE_MUTE_AND_POWER.md`.
 - [ ] Build a complete load budget for 70 main LEDs, 17 seam LEDs, XIAO, microphones, amplifier, and all conversion/level-shifting circuitry.
 - [ ] Measure steady-state and transient current at maximum intended LED brightness and audio output.
 - [ ] Verify supply, connector, fuse, PCB traces, wire gauge, and ground return for measured loads.
@@ -68,4 +70,4 @@ This checklist is the release gate for the Mk I hardware. A checked item require
 
 ## Release decision
 
-The Disc remains **prototype-only** until sections A through E have evidence recorded and section F is complete. The 48.0 mm speaker opening is provisional, the retention method is unresolved, and the physical microphone isolation circuit has not yet been designed or validated.
+The Disc remains **prototype-only** until sections A through E have evidence recorded and section F is complete. The 48.0 mm speaker opening is provisional, the retention method is unresolved, and the proposed 4PDT microphone isolation topology still needs exact component selection, schematic capture, and bench validation. The power architecture is not selected.

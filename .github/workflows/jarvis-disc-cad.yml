@@ -1,0 +1,78 @@
+name: Jarvis Disc CAD validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "hardware/jarvis-disc/**"
+      - ".github/workflows/jarvis-disc-cad.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install CAD and rendering tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openscad inkscape
+          python -m venv /tmp/cad-venv
+          /tmp/cad-venv/bin/pip install --upgrade pip trimesh
+
+      - name: Regenerate source-derived assets
+        working-directory: hardware/jarvis-disc
+        run: |
+          node tools/make-assets.js
+          node tools/make-drawings.js
+          node tools/make-technical.js
+
+      - name: Export all printable parts
+        working-directory: hardware/jarvis-disc
+        run: |
+          mkdir -p build/stl build/png
+          openscad --version
+          for spec in "plinth:01_plinth" "sleeve:02_diffuser_sleeve" "body:03_upper_body" "baffle:04_led_baffle" "bezel:05_bezel"; do
+            part="${spec%%:*}"
+            file="${spec##*:}"
+            openscad -D "part=\"$part\"" -o "build/stl/$file.stl" jarvis_disc.scad
+          done
+
+      - name: Validate STL meshes
+        working-directory: hardware/jarvis-disc
+        run: |
+          set -o pipefail
+          /tmp/cad-venv/bin/python tools/validate-meshes.py build/stl/*.stl | tee build/mesh-report.json
+
+      - name: Render drawing previews
+        working-directory: hardware/jarvis-disc
+        run: |
+          for svg in drawings/*.svg laser/top_window.svg; do
+            name="$(basename "${svg%.svg}")"
+            inkscape "$svg" --export-type=png --export-filename="build/png/$name.png"
+          done
+
+      - name: Package manufacturing preview
+        working-directory: hardware/jarvis-disc
+        run: |
+          cp led_layout.csv build/
+          cp laser/top_window.svg build/
+          cp MANUFACTURING_READINESS.md MICROPHONE_MUTE_AND_POWER.md build/
+          cp jarvis_disc.scad build/
+          cp tools/validate-meshes.py build/
+          cp -R drawings build/
+          git rev-parse HEAD > build/source-revision.txt
+          cd build
+          zip -qr ../jarvis-disc-cad-preview.zip .
+
+      - name: Upload generated CAD package
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-disc-cad-preview
+          path: hardware/jarvis-disc/jarvis-disc-cad-preview.zip
+          if-no-files-found: error
+          retention-days: 30
