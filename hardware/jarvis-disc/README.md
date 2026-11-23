@@ -57,11 +57,12 @@ The former 5 V / 3 A supply assumption is not approved: 87 addressable LEDs have
 
 ## Assembly order
 
-1. Test the electronics on a breadboard first (controller, mic, amp, LED PCB): wake word, a spoken reply, lights.
-2. Fit the speaker and boards into the plinth. Route the USB-C and the mute button.
-3. Wrap the LED strip around the plinth neck and slide the frosted sleeve over it.
-4. Bolt the body to the plinth through the three posts (M3).
-5. In the body: mic board on its standoffs, then the LED PCB on the six posts, then the baffle, diffuser and smoked acrylic.
+1. Test the electronics on a breadboard first (controller, mic, amp, LED PCB): wake word, a spoken reply, lights, and worst-case power draw.
+2. Build and bench-verify the physical 4PDT mic isolation circuit before installing the microphones. Follow `MICROPHONE_MUTE_AND_POWER.md`; a GPIO-only mute is not acceptable.
+3. Fit the physically measured speaker and validated retainer into the plinth. Route the USB-C and the mute switch.
+4. Wrap the LED strip around the plinth neck and slide the frosted sleeve over it.
+5. Bolt the body to the plinth through the three posts (M3).
+6. In the body: mic board on its standoffs, then the LED PCB on the six posts, then the baffle, diffuser and smoked acrylic.
 7. Glue the bezel on over the acrylic edge. Fill the engraving with paint.
 
 ## Things to check before you order
