@@ -1,0 +1,16 @@
+{
+  "description": "Replace null values with measured complete-device values. Measure at the regulated 5 V distribution input.",
+  "measurement": {
+    "date": null,
+    "firmware_commit": null,
+    "ambient_temperature_c": null,
+    "instrument": null,
+    "test_condition": "Combined worst-case intended operation",
+    "five_volt_steady_current_a": null,
+    "five_volt_transient_peak_current_a": null,
+    "five_volt_minimum_voltage_v": null,
+    "pd_input_voltage_v": null,
+    "converter_efficiency_fraction": null,
+    "design_headroom_percent": 25
+  }
+}
