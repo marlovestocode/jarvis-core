@@ -31,7 +31,7 @@ top_z      = 36.8;   // top of the bezel
 
 // ---- speaker: Dayton Audio CE52N-4, mounted face down --------------------------
 spk_l = 52; spk_w = 52; spk_d = 30.8;     // CE52N-4 frame diameter and depth
-cut_l = 46;  cut_w = 46;                  // sound opening in the plinth floor (round)
+cut_l = 48;  cut_w = 48;                  // provisional round opening; confirm against the physical driver
 plpost_r = 38;                            // M3 post circle
 
 // ---- radii ----------------------------------------------------------------
