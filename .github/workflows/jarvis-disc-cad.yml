@@ -30,6 +30,7 @@ jobs:
           node tools/make-assets.js
           node tools/make-drawings.js
           node tools/make-technical.js
+          node --check tools/power-budget.js
 
       - name: Export all printable parts
         working-directory: hardware/jarvis-disc
@@ -61,9 +62,9 @@ jobs:
         run: |
           cp led_layout.csv build/
           cp laser/top_window.svg build/
-          cp MANUFACTURING_READINESS.md MICROPHONE_MUTE_AND_POWER.md build/
+          cp MANUFACTURING_READINESS.md MICROPHONE_MUTE_AND_POWER.md SPEAKER_FIT_AND_RETENTION.md MICROPHONE_MUTE_VALIDATION.md POWER_BUDGET_AND_SIZING.md THERMAL_AND_ACOUSTIC_VALIDATION.md build/
           cp jarvis_disc.scad build/
-          cp tools/validate-meshes.py build/
+          cp tools/validate-meshes.py tools/power-budget.js tools/power-budget-template.json build/
           cp -R drawings build/
           git rev-parse HEAD > build/source-revision.txt
           cd build

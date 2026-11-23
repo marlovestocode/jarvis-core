@@ -16,7 +16,11 @@ A small desk voice node for jarvis-core: a 139 mm disc, 53.3 mm tall, that liste
 | `drawings/jarvis-disc-technical.*` | Section, exploded view, LED map, parts list (SVG + PNG). |
 | `drawings/jarvis-disc-wiring.*` | Wiring diagram (SVG + PNG). |
 | `drawings/jarvis-disc-speaker.*` | Speaker placement, sealed chamber volume and expected response (SVG + PNG). |
-| `tools/` | Scripts that regenerate source-derived assets and validate exported STL meshes. |
+| `SPEAKER_FIT_AND_RETENTION.md` | Physical driver measurement record and mechanical retention release gates. |
+| `MICROPHONE_MUTE_VALIDATION.md` | Mute schematic requirements, back-power checks and privacy bench tests. |
+| `POWER_BUDGET_AND_SIZING.md` | Complete-device load measurement and USB-C PD sizing procedure. |
+| `THERMAL_AND_ACOUSTIC_VALIDATION.md` | Enclosed-device thermal, SPL, response, distortion and echo tests. |
+| `tools/` | Scripts that regenerate assets, validate exported STL meshes, and calculate power requirements from recorded measurements. |
 
 Export a part yourself, for example: `openscad -D 'part="body"' -o build/stl/03_upper_body.stl jarvis_disc.scad` (parts: `plinth`, `sleeve`, `body`, `baffle`, `bezel`, `assembly`). The CAD validation workflow exports all five printable parts into a generated artifact; it does not silently replace the committed STL files.
 
@@ -53,6 +57,8 @@ A ballpark for the whole build is roughly 130 to 250 USD depending on the PCB ru
 
 ## Electrical design status
 
+The speaker retention method is not yet designed or validated; use `SPEAKER_FIT_AND_RETENTION.md` before changing the plinth. The mute proposal is not a schematic and requires the exact switch and bench evidence in `MICROPHONE_MUTE_VALIDATION.md`. Power sizing is measurement-gated; use `POWER_BUDGET_AND_SIZING.md` and `tools/power-budget.js` with a completed `tools/power-budget-template.json`. Thermal and acoustic release tests are defined in `THERMAL_AND_ACOUSTIC_VALIDATION.md`.
+
 The former 5 V / 3 A supply assumption is not approved: 87 addressable LEDs have a theoretical full-white upper bound of 5.22 A at 5 V before the rest of the system. The final power architecture must be selected from measured worst-case loads. The proposed physical mute topology and power design gates are documented in `MICROPHONE_MUTE_AND_POWER.md`.
 
 ## Assembly order
@@ -75,7 +81,7 @@ The former 5 V / 3 A supply assumption is not approved: 87 addressable LEDs have
 
 ## Honest trade-offs in this version
 
-- **The stack is tight.** Mic board parts sit about 0.5 mm under the LED PCB. The selected CE52N-4 is 30.8 mm deep and the plinth was raised to accommodate it. Check actual board and driver clearances before ordering.
+- **The stack is tight.** Mic board parts sit about 0.5 mm under the LED PCB. The selected CE52N-4 is 30.8 mm deep and the plinth was raised to accommodate it. Speaker retention is still unresolved; the proposed retainer is a removable mechanical capture system dimensioned only after measuring the actual flange. Check actual board and driver clearances before ordering.
 - **Music works, bass is limited.** The sealed plinth volume and response are estimates, not measured results. The driver has 0.85 mm Xmax; apply appropriate high-pass protection and validate excursion at the intended maximum level. The plinth must be airtight (cable hole, USB-C slot, mute opening, body joint). `jarvis_disc.scad` has the taller plinth (`lift = 16.5`, 53.3 mm overall) and a provisional 48 mm speaker opening, but the committed STL files have not been re-exported.
 - **The side grille is decorative.** Sound leaves from the speaker firing down, through the 4 mm gap under the feet. Expect modest bass. If you want a louder grille, a later version can use two small side-firing drivers.
 - **Visible LED dots.** Under smoked acrylic the LEDs show as points. The diffuser sheet softens them at some cost in brightness.
