@@ -64,6 +64,7 @@ jobs:
           cp MANUFACTURING_READINESS.md MICROPHONE_MUTE_AND_POWER.md build/
           cp jarvis_disc.scad build/
           cp tools/validate-meshes.py build/
+          cp -R drawings build/
           git rev-parse HEAD > build/source-revision.txt
           cd build
           zip -qr ../jarvis-disc-cad-preview.zip .
