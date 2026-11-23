@@ -16,7 +16,11 @@ A small desk voice node for jarvis-core: a 139 mm disc, 53.3 mm tall, that liste
 | `drawings/jarvis-disc-technical.*` | Section, exploded view, LED map, parts list (SVG + PNG). |
 | `drawings/jarvis-disc-wiring.*` | Wiring diagram (SVG + PNG). |
 | `drawings/jarvis-disc-speaker.*` | Speaker placement, sealed chamber volume and expected response (SVG + PNG). |
-| `tools/` | Scripts that regenerate source-derived assets and validate exported STL meshes. |
+| `SPEAKER_FIT_AND_RETENTION.md` | Physical driver measurement record and mechanical retention release gates. |
+| `MICROPHONE_MUTE_VALIDATION.md` | Mute schematic requirements, back-power checks and privacy bench tests. |
+| `POWER_BUDGET_AND_SIZING.md` | Complete-device load measurement and USB-C PD sizing procedure. |
+| `THERMAL_AND_ACOUSTIC_VALIDATION.md` | Enclosed-device thermal, SPL, response, distortion and echo tests. |
+| `tools/` | Scripts that regenerate assets, validate exported STL meshes, and calculate power requirements from recorded measurements. |
 
 Export a part yourself, for example: `openscad -D 'part="body"' -o build/stl/03_upper_body.stl jarvis_disc.scad` (parts: `plinth`, `sleeve`, `body`, `baffle`, `bezel`, `assembly`). The CAD validation workflow exports all five printable parts into a generated artifact; it does not silently replace the committed STL files.
 
