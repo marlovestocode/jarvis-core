@@ -190,8 +190,8 @@ function wiring() {
   b += wire([[1590, 995], [1700, 995]], DATA, 'DOUT to DIN', 1600, 985);
   b += wire([[1050, 215], [1985, 215], [1985, 1100], [1425, 1100], [1425, 1070]], PWR, '5 V and GND to the LED PCB and seam strip', 1560, 205);
   // mute switch
-  b += box(80, 480, 260, 120, 'Physical mic mute', ['latching switch controls hardware isolation', 'D5 reads state only; GPIO cannot unmute'], { stroke: GRN });
-  b += wire([[340, 540], [720, 540]], GRN, 'GPIO6', 400, 532);
+  b += box(80, 460, 430, 190, 'Physical mic mute: latching 4PDT + aux contact', ['4 poles open mic 3V3, BCLK, WS and SD in MUTED', 'Auxiliary dry contact reports position to D5 / GPIO6', 'D5 is read-only; firmware cannot defeat isolation', 'Break-before-make switch; verify pinout and back-power'], { stroke: GRN });
+  b += wire([[510, 555], [720, 555]], GRN, 'aux state only', 565, 547);
   // notes
   b += T(80, 1134, 'Every 5 V consumer (ESP32, amp, level shifter, LED PCB, seam strip) hangs off the fused 5 V rail; red lines show the main paths only.', { size: 14, fill: DIM });
   b += T(80, 1160, 'Pin numbers are for the Seeed XIAO ESP32-S3 (D0 to D10 = GPIO1, 2, 3, 4, 5, 6, 43, 44, 7, 8, 9). The I2S pins can be moved; verify against the datasheet before ordering.', { size: 14, fill: DIM });
