@@ -9,14 +9,17 @@ This checklist is the release gate for the Mk I hardware. A checked item require
 - [ ] Obtain and archive the current Dayton Audio CE52N-4 manufacturer drawing/specification.
 - [ ] Measure one physical driver: flange OD, flange thickness, body depth, terminal position, and any actual fixing features.
 - [ ] Confirm the 47.5 mm nominal baffle cutout against the actual driver. The SCAD currently uses a 48.0 mm provisional opening for 0.5 mm diametral clearance; this is not a validated fit.
-- [ ] Design and document a positive speaker-retention method. The present CAD does not establish a verified mounting-hole pattern or complete retention system.
+- [ ] Measure the actual driver and complete `SPEAKER_FIT_AND_RETENTION.md` measurement record.
+- [ ] Design and document a removable positive-retention system that captures only the rigid flange; do not invent a fixing pattern or use adhesive as the only retention.
+- [ ] Validate retainer tool access, fastener engagement, gasket compression, terminal clearance, wire strain relief, cone/surround excursion clearance, and repeated serviceability.
 - [ ] Confirm speaker terminals and wires clear the plinth, boards, posts, and enclosure walls.
 - [ ] Confirm gasket compression, sealing land width, and serviceability.
 - [ ] Confirm internal chamber volume from the final assembled geometry, including actual component displacement and leaks.
 
 ## B. Physical microphone privacy
 
-- [ ] Select a latching, mechanically stable mute switch.
+- [ ] Select an exact latching, mechanically stable break-before-make 4PDT switch with independent auxiliary contact; record its datasheet and pinout.
+- [ ] Complete `MICROPHONE_MUTE_VALIDATION.md`, capture a reviewed schematic, and archive all bench evidence.
 - [ ] Review `MICROPHONE_MUTE_AND_POWER.md` and capture a schematic for a mechanically latching 4PDT mute that opens mic 3V3, BCLK, WS, and SD, plus a separate auxiliary state contact.
 - [ ] Select an exact break-before-make switch and auxiliary contact; record manufacturer part numbers, pinout, contact ratings, and mounting dimensions.
 - [ ] Prevent signal-line back-powering of an unpowered microphone. Validate the isolation topology against the selected microphone modules.
@@ -29,12 +32,14 @@ This checklist is the release gate for the Mk I hardware. A checked item require
 
 ## C. Power and thermal validation
 
-- [ ] Replace the assumed 5 V / 3 A supply and 3 A fuse with a measured, documented power architecture; see `MICROPHONE_MUTE_AND_POWER.md`.
+- [ ] Complete the measurement record in `POWER_BUDGET_AND_SIZING.md` using `tools/power-budget-template.json` and `tools/power-budget.js`.
+- [ ] Replace the assumed 5 V / 3 A supply and 3 A fuse with a documented architecture selected from complete-device steady and transient measurements.
 - [ ] Build a complete load budget for 70 main LEDs, 17 seam LEDs, XIAO, microphones, amplifier, and all conversion/level-shifting circuitry.
 - [ ] Measure steady-state and transient current at maximum intended LED brightness and audio output.
 - [ ] Verify supply, connector, fuse, PCB traces, wire gauge, and ground return for measured loads.
 - [ ] Confirm USB-C source negotiation/current capability matches the actual design. Do not assume a generic 5 V / 3 A source is sufficient.
-- [ ] Measure regulator, amplifier, LED, and enclosure temperatures during an extended worst-case test.
+- [ ] Complete the enclosed-device thermal and acoustic procedure in `THERMAL_AND_ACOUSTIC_VALIDATION.md`; archive raw measurements and plots.
+- [ ] Measure regulator, amplifier, LED, connector, wiring, and enclosure temperatures during an extended worst-case test.
 - [ ] Confirm brownout behavior and safe recovery after power interruption.
 
 ## D. CAD and fabrication files
@@ -70,4 +75,4 @@ This checklist is the release gate for the Mk I hardware. A checked item require
 
 ## Release decision
 
-The Disc remains **prototype-only** until sections A through E have evidence recorded and section F is complete. The 48.0 mm speaker opening is provisional, the retention method is unresolved, and the proposed 4PDT microphone isolation topology still needs exact component selection, schematic capture, and bench validation. The power architecture is not selected.
+The Disc remains **prototype-only** until sections A through E have evidence recorded and section F is complete. The 48.0 mm speaker opening is provisional and the retainer is not dimensioned. The 4PDT isolation topology still needs an exact switch, reviewed schematic, and bench validation. The power architecture is not selected until complete-device measurements exist. Thermal and acoustic performance are unverified until the enclosed prototype passes the documented tests.
