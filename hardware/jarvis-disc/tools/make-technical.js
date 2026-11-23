@@ -164,9 +164,9 @@ function wiring() {
   const PWR = '#e0605a', GND = '#7d8c9c', I2S = '#6fb8d8', DATA = '#e8b45a', GRN = '#6fd29a';
 
   // power
-  b += box(80, 220, 260, 150, 'USB-C power in', ['USB-C PD sink / negotiated input', 'regulated 5 V rail sized from tests', 'do not assume 5 V / 3 A'], { stroke: PWR });
-  b += box(420, 220, 220, 150, 'Protection', ['protection sized to wiring and load', 'then regulated 5 V distribution'], { stroke: PWR });
-  b += wire([[340, 295], [420, 295]], PWR, '5 V', 365, 285);
+  b += box(80, 220, 260, 150, 'USB-C power in', ['USB-C PD sink / negotiated input', 'PD voltage per final supply design', 'not an assumed 5 V / 3 A source'], { stroke: PWR });
+  b += box(420, 220, 220, 150, 'Protection', ['input protection sized to source/load', 'buck stage to regulated 5 V distribution'], { stroke: PWR });
+  b += wire([[340, 295], [420, 295]], PWR, 'PD input', 365, 285);
   b += box(720, 150, 330, 130, 'LED supply', ['1000 uF at LED PCB input', '87 pixels: 5.22 A full-white bound', 'set cap after measured power design'], { stroke: PWR });
   b += wire([[640, 295], [680, 295], [680, 215], [720, 215]], PWR, '5 V', 650, 210);
   // controller
@@ -193,7 +193,7 @@ function wiring() {
   b += box(80, 460, 430, 190, 'Physical mic mute: latching 4PDT + aux contact', ['4 poles open mic 3V3, BCLK, WS and SD in MUTED', 'Auxiliary dry contact reports position to D5 / GPIO6', 'D5 is read-only; firmware cannot defeat isolation', 'Break-before-make switch; verify pinout and back-power'], { stroke: GRN });
   b += wire([[510, 555], [720, 555]], GRN, 'aux state only', 565, 547);
   // notes
-  b += T(80, 1134, 'Every 5 V consumer (ESP32, amp, level shifter, LED PCB, seam strip) hangs off the fused 5 V rail; red lines show the main paths only.', { size: 14, fill: DIM });
+  b += T(80, 1134, 'Every 5 V consumer (ESP32, amp, level shifter, LED PCB, seam strip) hangs off the regulated 5 V distribution; red lines show the main paths only.', { size: 14, fill: DIM });
   b += T(80, 1160, 'Pin numbers are for the Seeed XIAO ESP32-S3 (D0 to D10 = GPIO1, 2, 3, 4, 5, 6, 43, 44, 7, 8, 9). The I2S pins can be moved; verify against the datasheet before ordering.', { size: 14, fill: DIM });
   b += T(80, 1186, 'Keep the LED data wire short, join all grounds at one point, and never connect the 5 V rail to a 3.3 V pin (INMP441 and the ESP32 inputs are 3.3 V only).', { size: 14, fill: DIM });
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><title>Jarvis Disc Mk I wiring diagram</title>\n${b}</svg>\n`;
