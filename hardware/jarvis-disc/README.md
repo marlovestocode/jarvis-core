@@ -2,7 +2,7 @@
 
 A small desk voice node for jarvis-core: a 139 mm disc, 53.3 mm tall, that listens, sends your request to the main server, plays the reply from its own speaker, and animates its lights from the audio it is playing.
 
-**Status: CAD prototype, not manufacturing-ready.** The Dayton Audio CE52N-4 is selected, but the enclosure has not been physically fit-checked. Board dimensions and the custom LED PCB remain provisional. Do not order a production run from this revision.
+**Status: CAD prototype, not manufacturing-ready.** The Dayton Audio CE52N-4 is selected, but the enclosure has not been physically fit-checked. The 48 mm CAD opening is provisional and is not a confirmed fit. Board dimensions and the custom LED PCB remain provisional. Do not order a production run from this revision.
 
 ## What is in this folder
 
@@ -39,7 +39,7 @@ For a smoother finish than FDM can give, order the plinth, body and bezel in SLA
 | 1 | Seeed XIAO ESP32-S3 | Controller. Pin plan is in the wiring diagram. |
 | 1 | MAX98357A I2S amplifier breakout | Drives the speaker. |
 | 2 | INMP441 I2S microphone breakout | Budget option. For talking over Jarvis, use a ReSpeaker XVF3800 4-mic array instead (echo cancellation). |
-| 1 | Dayton Audio CE52N-4 full-range driver, 2 inch, 4 ohm, 5 W RMS (about US$8) | Mounted face down on a sealed 0.5 mm foam gasket, back into the plinth. Manufacturer data: 52 mm outside diameter, 47.5 mm baffle cutout, 30.8 mm depth. The manufacturer drawing does not define a conventional mounting-hole pattern; retention must be validated against the actual driver. See `drawings/jarvis-disc-speaker.*`. |
+| 1 | Dayton Audio CE52N-4 full-range driver, 2 inch, 4 ohm, 5 W RMS (about US$8) | Mounted face down on a sealed 0.5 mm foam gasket, back into the plinth. Manufacturer data: 52 mm outside diameter, 47.5 mm baffle cutout, 30.8 mm depth. The manufacturer drawing does not define a conventional mounting-hole pattern; a separate mechanical clamp/retainer must be designed around measurements from the actual driver before printing. See `drawings/jarvis-disc-speaker.*`. |
 | 1 | LED PCB, 70 addressable LEDs (SK6812 mini-E or similar) | Custom board: positions are in `led_layout.csv`. A PCB maker can fabricate and assemble a small run. |
 | 1 | 5-6 mm wide LED strip, 17 pixels | Wraps the plinth neck. |
 | 1 | 2 mm smoked acrylic, 124 mm disc | From `laser/top_window.svg` at any laser-cutting service. |
@@ -62,7 +62,7 @@ A ballpark for the whole build is roughly 130 to 250 USD depending on the PCB ru
 
 ## Things to check before you order
 
-- **Speaker retention and fit.** The CE52N-4 dimensions are manufacturer-published, but the drawing does not provide a mounting-hole pattern. Validate the actual driver's flange, retention method, gasket, cutout and internal clearance before printing a final plinth. Measure every board and change the variables at the top of `jarvis_disc.scad`.
+- **Speaker retention and fit.** The CE52N-4 dimensions are manufacturer-published, but the drawing does not provide a mounting-hole pattern. The current 48 mm CAD opening is provisional. Measure the actual driver and design a separate clamp/retainer, gasket, sealing land and terminal clearance before printing a final plinth. Measure every board and change the variables at the top of `jarvis_disc.scad`.
 - **Mic ports.** The 4 ports are at radius 44.5 mm, at 45, 135, 225 and 315 degrees. Your mic board must put its mics under them, or move the ports.
 - **Engraving.** Letters are bold, 0.6 mm deep. Thin fonts fail on FDM.
 - **Top etching.** The laser file is drawn from above; if your shop engraves the underside, mirror it. Convert the ROOM NAME text to outlines.
@@ -71,7 +71,7 @@ A ballpark for the whole build is roughly 130 to 250 USD depending on the PCB ru
 ## Honest trade-offs in this version
 
 - **The stack is tight.** Mic board parts sit about 0.5 mm under the LED PCB. The selected CE52N-4 is 30.8 mm deep and the plinth was raised to accommodate it. Check actual board and driver clearances before ordering.
-- **Music works, bass is limited.** The sealed plinth volume and response are estimates, not measured results. The driver has 0.85 mm Xmax; apply appropriate high-pass protection and validate excursion at the intended maximum level. The plinth must be airtight (cable hole, USB-C slot, mute opening, body joint). `jarvis_disc.scad` has the taller plinth (`lift = 16.5`, 53.3 mm overall), but the committed STL files have not been re-exported.
+- **Music works, bass is limited.** The sealed plinth volume and response are estimates, not measured results. The driver has 0.85 mm Xmax; apply appropriate high-pass protection and validate excursion at the intended maximum level. The plinth must be airtight (cable hole, USB-C slot, mute opening, body joint). `jarvis_disc.scad` has the taller plinth (`lift = 16.5`, 53.3 mm overall) and a provisional 48 mm speaker opening, but the committed STL files have not been re-exported.
 - **The side grille is decorative.** Sound leaves from the speaker firing down, through the 4 mm gap under the feet. Expect modest bass. If you want a louder grille, a later version can use two small side-firing drivers.
 - **Visible LED dots.** Under smoked acrylic the LEDs show as points. The diffuser sheet softens them at some cost in brightness.
 - **The lit blade under MK I** is a plain engraved detail, not a light.
